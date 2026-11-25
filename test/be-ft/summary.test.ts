@@ -48,6 +48,11 @@ describe('POST /api/generations/:id/chapters/:chapterId/summary', () => {
     expect(prompt).toContain('第二章正文-服务端保存');
     expect(prompt).toContain('## 智能经济：收入爆发');
     expect(JSON.parse(prompt).generationConfig.responseJsonSchema.required).toEqual(['who', 'what', 'when', 'where', 'why', 'how']);
+    // 实际发给 Gemini 的系统提示词里带着人物身份规则全文，而不只是一句"按同一套规则"
+    const system = JSON.parse(prompt).systemInstruction.parts[0].text as string;
+    expect(system).toContain('人物身份与发言归属：');
+    expect(system).toContain('不能作为依据的：频道层面的通用介绍');
+    expect(system).toContain('不写字幕和本期元数据里都没有出现过的人名');
   });
 
   // 抓：主模型繁忙时 5W1H 直接失败，评审期间遇到高峰就点不开

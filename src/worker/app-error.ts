@@ -41,3 +41,6 @@ export function errorResponse(err: AppError): Response {
   const body: ApiErrorBody = { error: { code: err.code, message: err.message } };
   return Response.json(body, { status: err.status });
 }
+
+/** 模型繁忙：503 重试后仍失败，或在时限内没有响应。只有这种错误会改用备用模型。 */
+export const isBusy = (err: unknown): err is AppError => err instanceof AppError && err.code === 'gemini_busy';

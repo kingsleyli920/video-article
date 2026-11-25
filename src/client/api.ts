@@ -1,5 +1,6 @@
 import { ERROR_MESSAGES, type ErrorCode } from '../shared/errors';
 import { readSse } from '../shared/sse';
+import { SUMMARY_TIMING } from '../shared/limits';
 import type { ApiErrorBody, StreamEvents, SummaryResponse } from '../shared/types';
 
 export class ApiError extends Error {
@@ -18,7 +19,7 @@ export type GenerationEvent = { [K in keyof StreamEvents]: { event: K; data: Str
  *   整次生成上限 10 分钟（实测 25–75 秒，服务端首包超时 120 秒、输出空闲超时 60 秒）。
  * - 5W1H：服务端调用 Gemini 的上限是 90 秒，浏览器等 100 秒。
  */
-export const TIMEOUTS = { generationIdleMs: 45_000, generationTotalMs: 600_000, summaryMs: 100_000 };
+export const TIMEOUTS = { generationIdleMs: 45_000, generationTotalMs: 600_000, summaryMs: SUMMARY_TIMING.clientMs };
 
 export interface RequestOptions {
   signal?: AbortSignal;

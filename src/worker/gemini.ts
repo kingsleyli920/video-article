@@ -8,6 +8,8 @@ export interface GeminiOptions {
   thinkingLevel?: string;
   /** 超时设置，测试时可以调短 */
   timeouts?: Partial<typeof DEFAULT_TIMEOUTS>;
+  /** 模型地址前缀，只在测试时指向模拟上游 */
+  apiBase?: string;
 }
 
 export interface Prompt {
@@ -36,6 +38,11 @@ const BUSY_RETRY_DELAY_MS = 1_500;
  * firstChunkMs：从发请求到收到第一个流式分块；idleMs：两个分块之间；requestMs：非流式请求整体。
  */
 const DEFAULT_TIMEOUTS = { firstChunkMs: 120_000, idleMs: 60_000, requestMs: 90_000 };
+
+/** 按倍率缩短的超时设置（倍率只在测试时小于 1） */
+export function geminiTimeouts(scale = 1): typeof DEFAULT_TIMEOUTS {
+  return { firstChunkMs: DEFAULT_TIMEOUTS.firstChunkMs * scale, idleMs: DEFAULT_TIMEOUTS.idleMs * scale, requestMs: DEFAULT_TIMEOUTS.requestMs * scale };
+}
 
 /** 计时到点就中止请求，并记下要抛给调用方的错误。 */
 class Watchdog {
@@ -148,7 +155,7 @@ function payload(options: GeminiOptions, prompt: Prompt, generationConfig: Recor
 }
 
 async function post(options: GeminiOptions, method: string, body: object, signal: AbortSignal): Promise<Response> {
-  const url = `${API_BASE}/${encodeURIComponent(options.model)}:${method}`;
+  const url = `${options.apiBase ?? API_BASE}/${encodeURIComponent(options.model)}:${method}`;
   const init: RequestInit = {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': options.apiKey },

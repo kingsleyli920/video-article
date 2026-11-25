@@ -3,8 +3,8 @@ import type { Chapter } from '../shared/article';
 import type { ErrorCode } from '../shared/errors';
 import type { ChapterSummary, TranscriptInfo } from '../shared/types';
 import { AppError, toAppError } from './app-error';
-import { fallbackModel, geminiOptions, isBusy } from './config';
-import { generateJson } from './gemini';
+import { fallbackModel, geminiOptions, timeoutScale } from './config';
+import { generateSummaryJson, summaryBudget } from './summary-model';
 import { summaryPrompt } from './prompts';
 import { normalizeSummary, SUMMARY_SCHEMA } from './summary-schema';
 import type { VideoMeta } from './youtube';
@@ -83,16 +83,8 @@ export class GenerationStore extends DurableObject<Env> {
         chapterTitles: context.article.chapters.map((c) => c.title),
         chapter,
       });
-      let raw: unknown;
-      try {
-        raw = await generateJson(options, prompt, SUMMARY_SCHEMA);
-      } catch (err) {
-        // 结构化输出一次返回，没有"已输出一半"的问题：主模型繁忙就整次改用备用模型
-        const fallback = fallbackModel(this.env);
-        if (!fallback || !isBusy(err)) throw err;
-        console.log(JSON.stringify({ event: 'summary_fallback', from: options.model, to: fallback, reason: (err as AppError).detail ?? null }));
-        raw = await generateJson({ ...options, model: fallback }, prompt, SUMMARY_SCHEMA);
-      }
+      // 结构化输出一次返回，没有"已输出一半"的问题：主模型繁忙或超时就在剩余预算内整次改用备用模型
+      const { raw } = await generateSummaryJson(options, fallbackModel(this.env), prompt, SUMMARY_SCHEMA, summaryBudget(timeoutScale(this.env)));
       const summary = normalizeSummary(raw);
       // 上下文已过期被删时不再写入，避免留下没有 alarm 的孤立数据
       if (await this.ctx.storage.get(CONTEXT_KEY)) await this.ctx.storage.put(summaryKey(chapterId), summary);

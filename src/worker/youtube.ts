@@ -55,6 +55,8 @@ export interface TranscriptOptions {
   signal?: AbortSignal;
   /** 测试时可以调短 */
   timeouts?: Partial<typeof TRANSCRIPT_TIMEOUTS>;
+  /** 播放器接口地址，只在测试时指向模拟上游 */
+  playerEndpoint?: string;
 }
 
 /**
@@ -63,10 +65,15 @@ export interface TranscriptOptions {
  */
 const TRANSCRIPT_TIMEOUTS = { playerMs: 10_000, captionsMs: 15_000 };
 
+/** 按倍率缩短的字幕超时（倍率只在测试时小于 1） */
+export function transcriptTimeouts(scale = 1): typeof TRANSCRIPT_TIMEOUTS {
+  return { playerMs: TRANSCRIPT_TIMEOUTS.playerMs * scale, captionsMs: TRANSCRIPT_TIMEOUTS.captionsMs * scale };
+}
+
 /** 直连 YouTube：先取播放器数据选字幕轨，再拉 srv1 格式的字幕（体积约为 json3 的十分之一）。 */
 export async function fetchTranscript(videoId: string, options: TranscriptOptions = {}): Promise<Transcript> {
   const timeouts = { ...TRANSCRIPT_TIMEOUTS, ...options.timeouts };
-  const player = await withDeadline('读取视频信息', timeouts.playerMs, options.signal, (signal) => fetchPlayer(videoId, signal));
+  const player = await withDeadline('读取视频信息', timeouts.playerMs, options.signal, (signal) => fetchPlayer(videoId, signal, options.playerEndpoint ?? PLAYER_ENDPOINT));
   const track = pickTrack(player.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? []);
   if (!track) throw new AppError('no_captions');
 
@@ -94,8 +101,8 @@ export async function fetchTranscript(videoId: string, options: TranscriptOption
   };
 }
 
-async function fetchPlayer(videoId: string, signal: AbortSignal): Promise<PlayerResponse> {
-  const res = await request(PLAYER_ENDPOINT, {
+async function fetchPlayer(videoId: string, signal: AbortSignal, endpoint: string): Promise<PlayerResponse> {
+  const res = await request(endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'user-agent': ANDROID_UA },
     body: JSON.stringify({ context: { client: ANDROID_CLIENT }, videoId }),

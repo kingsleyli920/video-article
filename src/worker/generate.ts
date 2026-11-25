@@ -1,8 +1,8 @@
 import { countArticleChars, parseArticle, validateArticle } from '../shared/article';
 import { LIMITS } from '../shared/limits';
 import { parseVideoId } from '../shared/video-id';
-import { AppError, toAppError } from './app-error';
-import { fallbackModel, geminiOptions, isBusy } from './config';
+import { AppError, isBusy, toAppError } from './app-error';
+import { fallbackModel, geminiOptions, transcriptOptions } from './config';
 import { ClientGone, EventStream } from './event-stream';
 import { streamText } from './gemini';
 import { checkDamagedNumbers } from './number-check';
@@ -67,7 +67,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
 
   try {
     await events.send('stage', { stage: 'transcript' });
-    const { transcript, info } = await loadTranscript(input.videoId, { signal: events.signal });
+    const { transcript, info } = await loadTranscript(input.videoId, { ...transcriptOptions(env), signal: events.signal });
     const transcriptText = formatTranscript(transcript.cues);
     if (transcriptText.length > LIMITS.transcriptChars) {
       throw new AppError('transcript_too_long', `${transcriptText.length} 字符，上限 ${LIMITS.transcriptChars}`);
@@ -107,7 +107,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       // 主模型还没输出任何内容就持续繁忙：整篇改用备用模型。已经有输出时不换，避免拼接两个模型的输出
       const fallback = fallbackModel(env);
       if (!fallback || !isBusy(err) || markdown !== '') throw err;
-      Object.assign(log, { fallbackFrom: model, fallbackReason: (err as AppError).detail ?? null, fallbackMs: since() });
+      Object.assign(log, { fallbackFrom: model, fallbackReason: err.detail ?? null, fallbackMs: since() });
       model = fallback;
       finishReason = await write(model);
     }

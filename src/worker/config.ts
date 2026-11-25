@@ -1,5 +1,6 @@
 import { AppError } from './app-error';
-import type { GeminiOptions } from './gemini';
+import { geminiTimeouts, type GeminiOptions } from './gemini';
+import { transcriptTimeouts, type TranscriptOptions } from './youtube';
 
 /** 应用运行配置只来自 Worker 环境：GEMINI_API_KEY 是 secret，模型名和思考强度是 vars。 */
 export function geminiOptions(env: Env): GeminiOptions {
@@ -8,7 +9,23 @@ export function geminiOptions(env: Env): GeminiOptions {
     apiKey: env.GEMINI_API_KEY,
     model: env.GEMINI_MODEL,
     thinkingLevel: env.GEMINI_THINKING_LEVEL || undefined,
+    timeouts: geminiTimeouts(timeoutScale(env)),
+    ...(env.GEMINI_API_BASE ? { apiBase: env.GEMINI_API_BASE } : {}),
   };
+}
+
+/** 字幕请求的配置；signal 由调用方补上 */
+export function transcriptOptions(env: Env): TranscriptOptions {
+  return {
+    timeouts: transcriptTimeouts(timeoutScale(env)),
+    ...(env.YOUTUBE_PLAYER_URL ? { playerEndpoint: env.YOUTUBE_PLAYER_URL } : {}),
+  };
+}
+
+/** 超时倍率：只在测试时设置 TIMEOUT_SCALE（0 到 1 之间），其他情况一律按 1 处理 */
+export function timeoutScale(env: Env): number {
+  const scale = Number(env.TIMEOUT_SCALE ?? 1);
+  return Number.isFinite(scale) && scale > 0 && scale <= 1 ? scale : 1;
 }
 
 /**
@@ -20,5 +37,3 @@ export function fallbackModel(env: Env): string | null {
   const primary: string = env.GEMINI_MODEL;
   return fallback && fallback !== primary ? fallback : null;
 }
-
-export const isBusy = (err: unknown) => err instanceof AppError && err.code === 'gemini_busy';
