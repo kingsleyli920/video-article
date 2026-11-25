@@ -15,9 +15,9 @@ export interface EventStreamOptions {
   /** 单次写入的等待上限。正常背压不算模型空闲，但下游持续写不进去时要能退出 */
   writeTimeoutMs?: number;
   /**
-   * 入站请求的 request.signal：兼容日期 2026-11-17 起，客户端断开时它会中止。
-   * 实测（wrangler dev / workerd）客户端断开后输出流不会立刻出错，要等下一次写入才失败；
-   * 模型还没开始输出时没有写入，只能靠这个信号及时发现。
+   * 入站请求的 request.signal。按 Cloudflare 文档，兼容日期 2026-11-17 起客户端断开时它会中止。
+   * 但实测（2026-11-25，本地 wrangler dev 和线上）模型还没输出时客户端断开，它没有提前触发：
+   * 服务端仍在下一次写入（模型首个分块或 15 秒一次的心跳）失败时才发现。保留它作为额外的来源，不依赖它。
    */
   clientSignal?: AbortSignal;
 }
