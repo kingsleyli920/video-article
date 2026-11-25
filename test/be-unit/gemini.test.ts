@@ -84,6 +84,63 @@ describe('streamText', () => {
   });
 });
 
+describe('超时', () => {
+  const FAST = { ...OPTIONS, timeouts: { firstChunkMs: 60, idleMs: 60, requestMs: 60 } };
+
+  /** 模拟真实 fetch：中止信号触发时，响应体随之报错 */
+  function stalledBody(signal: AbortSignal, first?: string): ReadableStream<Uint8Array> {
+    return new ReadableStream({
+      start(controller) {
+        if (first) controller.enqueue(new TextEncoder().encode(first));
+        signal.addEventListener('abort', () => controller.error(signal.reason));
+      },
+    });
+  }
+
+  // 抓：Gemini 迟迟不给首个分块时页面永远停在"等待模型输出"（线上实测出现过 5 分钟零字节）
+  it('首个分块迟迟不到时报 gemini_busy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => new Response(stalledBody(init!.signal!)));
+    await expect(streamText(FAST, PROMPT, async () => {})).rejects.toMatchObject({ code: 'gemini_busy', message: 'Gemini 模型繁忙，请稍后重试（模型超过 0.06 秒没有响应）' });
+  });
+
+  it('连响应头都不返回时同样按首包超时处理', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_url, init) => new Promise((_, reject) => init!.signal!.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))),
+    );
+    await expect(streamText(FAST, PROMPT, async () => {})).rejects.toMatchObject({ code: 'gemini_busy' });
+  });
+
+  // 抓：输出到一半卡住时一直等下去，或者把半截文章当成完整文章
+  it('输出中途长时间没有新分块时报 interrupted，已输出部分保留', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => new Response(stalledBody(init!.signal!, geminiSse(['第一段'], null))));
+    const texts: string[] = [];
+    await expect(
+      streamText(FAST, PROMPT, async (t) => {
+        texts.push(t);
+      }),
+    ).rejects.toMatchObject({ code: 'interrupted', message: '生成中断，文章不完整（模型超过 0.06 秒没有新输出）' });
+    expect(texts).toEqual(['第一段']);
+  });
+
+  it('下游写入慢不算模型空闲', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(geminiSse(['第一段', '第二段'])));
+    const texts: string[] = [];
+    const finishReason = await streamText(FAST, PROMPT, async (t) => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      texts.push(t);
+    });
+    expect(finishReason).toBe('STOP');
+    expect(texts).toEqual(['第一段', '第二段']);
+  });
+
+  it('结构化请求整体超时报 gemini_busy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_url, init) => new Promise((_, reject) => init!.signal!.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))),
+    );
+    await expect(generateJson(FAST, PROMPT, {})).rejects.toMatchObject({ code: 'gemini_busy' });
+  });
+});
+
 describe('classifyHttpError', () => {
   it.each([
     [429, '{"error":{"message":"Resource has been exhausted"}}', 'gemini_quota'],

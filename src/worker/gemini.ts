@@ -6,6 +6,8 @@ export interface GeminiOptions {
   model: string;
   /** minimal / low / medium / high，不填用模型默认值 */
   thinkingLevel?: string;
+  /** 超时设置，测试时可以调短 */
+  timeouts?: Partial<typeof DEFAULT_TIMEOUTS>;
 }
 
 export interface Prompt {
@@ -30,6 +32,36 @@ const SUMMARY_MAX_OUTPUT_TOKENS = 4_096;
 const BUSY_RETRY_DELAY_MS = 1_500;
 
 /**
+ * 上游没有超时会让页面一直停在"等待模型输出"（线上实测出现过 5 分钟零字节）。
+ * firstChunkMs：从发请求到收到第一个流式分块；idleMs：两个分块之间；requestMs：非流式请求整体。
+ */
+const DEFAULT_TIMEOUTS = { firstChunkMs: 120_000, idleMs: 60_000, requestMs: 90_000 };
+
+/** 计时到点就中止请求，并记下要抛给调用方的错误。 */
+class Watchdog {
+  readonly #controller = new AbortController();
+  #timer: ReturnType<typeof setTimeout> | null = null;
+  reason: AppError | null = null;
+
+  get signal(): AbortSignal {
+    return this.#controller.signal;
+  }
+
+  arm(ms: number, error: () => AppError): void {
+    this.clear();
+    this.#timer = setTimeout(() => {
+      this.reason = error();
+      this.#controller.abort(this.reason);
+    }, ms);
+  }
+
+  clear(): void {
+    if (this.#timer !== null) clearTimeout(this.#timer);
+    this.#timer = null;
+  }
+}
+
+/**
  * 流式生成：每收到一段正文就交给 onText（会等它完成，保证下游背压），返回模型给出的 finishReason。
  * 只在还没有任何输出之前对 503 重试一次；开始输出后不重试、不换模型。
  * 流被截断时 finishReason 为 null。
@@ -39,26 +71,45 @@ export async function streamText(
   prompt: Prompt,
   onText: (text: string) => Promise<void>,
 ): Promise<string | null> {
-  const res = await post(options, 'streamGenerateContent?alt=sse', payload(options, prompt, { maxOutputTokens: ARTICLE_MAX_OUTPUT_TOKENS }));
-  let finishReason: string | null = null;
-  for await (const message of readSse(res.body!)) {
-    const chunk = parseChunk(message.data);
-    const candidate = chunk.candidates?.[0];
-    const text = candidate?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('') ?? '';
-    if (text) await onText(text);
-    if (candidate?.finishReason) finishReason = candidate.finishReason;
+  const { firstChunkMs, idleMs } = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
+  const watchdog = new Watchdog();
+  watchdog.arm(firstChunkMs, () => new AppError('gemini_busy', `模型超过 ${firstChunkMs / 1000} 秒没有响应`));
+  try {
+    const body = payload(options, prompt, { maxOutputTokens: ARTICLE_MAX_OUTPUT_TOKENS });
+    const res = await post(options, 'streamGenerateContent?alt=sse', body, watchdog.signal);
+    let finishReason: string | null = null;
+    for await (const message of readSse(res.body!)) {
+      watchdog.clear(); // 等下游写完不算模型空闲
+      const chunk = parseChunk(message.data);
+      const candidate = chunk.candidates?.[0];
+      const text = candidate?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('') ?? '';
+      if (text) await onText(text);
+      if (candidate?.finishReason) finishReason = candidate.finishReason;
+      watchdog.arm(idleMs, () => new AppError('interrupted', `模型超过 ${idleMs / 1000} 秒没有新输出`));
+    }
+    return finishReason;
+  } catch (err) {
+    throw watchdog.reason ?? err;
+  } finally {
+    watchdog.clear();
   }
-  return finishReason;
 }
 
 /** 结构化输出：按 JSON schema 生成并返回解析后的对象（结构校验由调用方负责）。 */
 export async function generateJson(options: GeminiOptions, prompt: Prompt, schema: object): Promise<unknown> {
-  const res = await post(
-    options,
-    'generateContent',
-    payload(options, prompt, { maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS, responseMimeType: 'application/json', responseJsonSchema: schema }),
-  );
-  const chunk = parseChunk(await res.text());
+  const { requestMs } = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
+  const watchdog = new Watchdog();
+  watchdog.arm(requestMs, () => new AppError('gemini_busy', `模型超过 ${requestMs / 1000} 秒没有响应`));
+  let raw: string;
+  try {
+    const body = payload(options, prompt, { maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS, responseMimeType: 'application/json', responseJsonSchema: schema });
+    raw = await (await post(options, 'generateContent', body, watchdog.signal)).text();
+  } catch (err) {
+    throw watchdog.reason ?? err;
+  } finally {
+    watchdog.clear();
+  }
+  const chunk = parseChunk(raw);
   const candidate = chunk.candidates?.[0];
   if (candidate?.finishReason && candidate.finishReason !== 'STOP') throw new AppError('summary_invalid', candidate.finishReason);
   const text = candidate?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('') ?? '';
@@ -80,12 +131,13 @@ function payload(options: GeminiOptions, prompt: Prompt, generationConfig: Recor
   };
 }
 
-async function post(options: GeminiOptions, method: string, body: object): Promise<Response> {
+async function post(options: GeminiOptions, method: string, body: object, signal: AbortSignal): Promise<Response> {
   const url = `${API_BASE}/${encodeURIComponent(options.model)}:${method}`;
   const init: RequestInit = {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': options.apiKey },
     body: JSON.stringify(body),
+    signal,
   };
   for (let attempt = 0; ; attempt++) {
     let res: Response;

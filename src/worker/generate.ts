@@ -51,6 +51,9 @@ export async function handleGenerate(request: Request, env: Env, ctx: ExecutionC
 
 class ClientGone extends Error {}
 
+/** 模型首个 token 在线上可能要等几十秒；期间定时发 SSE 注释，让连接保持活跃（客户端按规范忽略注释）。 */
+const HEARTBEAT_INTERVAL_MS = 15_000;
+
 class EventWriter {
   readonly #writer: WritableStreamDefaultWriter<Uint8Array>;
   readonly #encoder = new TextEncoder();
@@ -70,6 +73,15 @@ class EventWriter {
     }
   }
 
+  /** 定时写入注释行，返回停止函数。写失败说明客户端已断开，直接停止。 */
+  heartbeat(intervalMs: number): () => void {
+    const timer = setInterval(() => {
+      if (this.#closed) return clearInterval(timer);
+      this.#writer.write(this.#encoder.encode(': keep-alive\n\n')).catch(() => clearInterval(timer));
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }
+
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
@@ -82,6 +94,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventWrit
   const since = () => Date.now() - startedAt;
   const log: Record<string, unknown> = { event: 'generation', videoId: input.videoId };
   let markdown = '';
+  const stopHeartbeat = events.heartbeat(HEARTBEAT_INTERVAL_MS);
 
   try {
     await events.send('stage', { stage: 'transcript' });
@@ -149,6 +162,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventWrit
     Object.assign(log, { ok: false, code: error.code });
     await events.send('error', { code: error.code, message: error.message, partial: markdown.length > 0 }).catch(() => {});
   } finally {
+    stopHeartbeat();
     await events.close();
     console.log(JSON.stringify({ ...log, totalMs: since() }));
   }
