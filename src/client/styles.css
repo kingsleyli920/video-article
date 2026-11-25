@@ -171,6 +171,10 @@ button:disabled {
   line-height: 1.6;
 }
 
+.status[hidden] {
+  display: none;
+}
+
 .status::before {
   content: "";
   flex: none;
