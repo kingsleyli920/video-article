@@ -1,7 +1,7 @@
 import { countArticleChars, parseArticle, validateArticle } from '../shared/article';
 import { REVIEW_TIMING } from '../shared/limits';
 import type { ArticleReview, Revision } from '../shared/types';
-import { AppError, toAppError } from './app-error';
+import { AppError } from './app-error';
 import type { Prompt } from './gemini';
 import { checkRequirements, describeRequirements, hasRequirements, rewritePrompt, type Requirements } from './requirements';
 import { applyRevisions, parseIssues, reviewPrompt, splitForReview, REVIEW_SCHEMA, type RejectReason } from './review';
@@ -114,5 +114,7 @@ export function groupSections(sections: string[], max: number): string[] {
 function failReview(err: unknown, step: string): never {
   if (!(err instanceof AppError)) throw err;
   if (['gemini_billing', 'gemini_quota', 'gemini_region', 'requirements_unmet'].includes(err.code)) throw err;
-  throw new AppError('review_failed', `${step}：${toAppError(err).message}`);
+  // summary_invalid 是结构化输出解析失败的通用错误码，文案里的"总结"在这里不适用，换成中性的说法
+  const cause = err.code === 'summary_invalid' ? `模型返回的格式无效${err.detail ? `（${err.detail}）` : ''}` : err.message;
+  throw new AppError('review_failed', `${step}：${cause}`);
 }
