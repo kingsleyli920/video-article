@@ -2,27 +2,27 @@
 
 **基准**：
 
-- 最新代码 `f6d5b87`；线上版本 `2b99ac9b-56d3-4c3f-90bb-3c813d5d9c53`，由 `f6d5b87` 部署，线上默认模型仍是 `gemini-3.8-flash` + low。
-- 第 1 到 8 节的全量结果基于 `ac68e96`，第 9、10 节是之后两轮的增量，第 11 节是第八轮（`d8e89d3`，线上 `94f81320`），第 12 节是补充验收。
+- 最新代码 `9360556`；线上版本 `9e80c523-6941-4279-b94c-a23aa3b70d4d`，由 `9360556` 部署，线上模型是 `gemini-4-hydrogen` + high，备用 `gemini-3.6-flash` + low。之后的提交只改文档和 `.env.example`。
+- 第 1 到 8 节的全量结果基于 `ac68e96`，第 9、10 节是之后两轮的增量，第 11 节是第八轮（`d8e89d3`，线上 `94f81320`），第 12 节是补充验收（`f6d5b87`，线上 `2b99ac9b`），第 13 节是最终配置上线后的线上验收。
 - 执行时间 2026-11-25（UTC）。
 - 分层和脚本名沿用 cert-admin-console。
 
-**结果汇总（`f6d5b87`）**：
+**结果汇总（`9360556`）**：
 
-- 不调用真实模型的测试，共 390 项全部通过：
-  - vitest 321 项：L1a 154、L1b 34、L3 39、L1c 40、L1d 54；
+- 不调用真实模型的测试，共 395 项全部通过：
+  - vitest 326 项：L1a 157、L1b 36、L3 39、L1c 40、L1d 54；
   - Playwright 69 项：L2 28、L5 受控全栈 9、L5 视觉 32（桌面、手机各 16）。
-- L1a 到 L1d 覆盖率：语句 97.96%、分支 88.12%、函数 98.00%、行 99.37%。
-- 调用真实模型的验收见第 11、12 节。第 12 节的补充验收发现了选轨和字数上限两个缺陷，修复后回归通过。
-- Gemini 预付余额在补充验收的线上验证中用完（HTTP 402），线上验证没有做完，见第 12 节。
-- 没有运行的项见第 8 节、第 11 节末尾和 `docs/ADDITIONAL_ACCEPTANCE.md` 的"剩余缺口"。
+- L1a 到 L1d 覆盖率：语句 97.88%、分支 87.61%、函数 98.00%、行 99.38%。
+- 调用真实模型的验收见第 11、12、13 节。第 12 节的补充验收发现了选轨和字数上限两个缺陷，修复后回归通过。
+- Gemini 预付余额在补充验收的线上验证中用完过一次（HTTP 402）。充值后切换到最终配置，线上验收见第 13 节：4 篇文章、5 次未缓存的 5W1H 都成功。
+- 没有运行的项见第 8 节、第 11 和 13 节末尾，以及 `docs/ADDITIONAL_ACCEPTANCE.md` 的"剩余缺口"。
 
 **受控依赖**：失败、超时、重试、备用模型切换都在受控环境里测。
 
 - **模拟上游** `test/harness/mock-upstream.ts`：模拟 YouTube 和 Gemini，场景可以设定，并记录每个请求、请求有没有被中止、持续多久。
 - **真实启动的 Worker** `test/harness/e2e-worker.ts`：wrangler dev 跑本地 workerd 和 SQLite Durable Object，用单独的配置和假 key，超时按 0.05 缩短。
 
-真实模型只用在第 6 节的线上全链路和第 7 节的内容核对。
+真实模型只用在第 6 节的线上全链路、第 7 节的内容核对，以及第 9 到 13 节各轮的验收。
 
 ## 1. 单测和功能测试（UT / FT）
 
@@ -443,6 +443,111 @@
 
 **线上**（`2b99ac9b`，3.8 Flash low）：要求 A 合格（987 字）。V08 一次被 YouTube 拦截（HTTP 403），两次取到英语人工字幕后 Gemini 返回 HTTP 402（预付余额用完）。
 
+## 13. 最终配置上线与线上验收（`9360556`，线上 `9e80c523`）
+
+配置表、结论和限制在 README 第 7 节，这里列测试的变化和原始数据。
+
+### 代码和测试的变化
+
+| 层 | 新增或改动 | 抓什么 |
+|---|---|---|
+| L1a `gemini.test.ts` | 402 和"prepayment credits are depleted"归为 `gemini_billing` | 余额用完被当成繁忙去重试，或者只报笼统的"调用失败" |
+| L1a `summary-model.test.ts` | 主模型返回 402 时不调用备用模型；备用模型用自己的思考档 | 5W1H 在余额用完时还去换模型；备用模型跟着主模型用 high |
+| L1b `generate.test.ts`、`summary.test.ts` | 402 时 Gemini 只被请求一次；备用模型请求体里的 `thinkingLevel` 是备用自己的值 | 同上，经过完整的 Worker 和 Durable Object |
+| L5 live `candidate-live.spec.ts` | 记录第一段正文之前收到的心跳次数和最长无字节间隔，断言间隔短于 45 秒 | 模型思考期间前端误判连接中断 |
+| `scripts/run-acceptance-cases.ts`、`test/fixtures/additional-real-videos.json` | 采用的补充案例入库，可以按编号批量跑 | 让别人能复现补充验收 |
+
+**变异验证**（改坏后对应用例失败，恢复后全部通过）：去掉 402 的归类（5 项失败）；文章的备用模型沿用主模型思考档（1 项失败）；5W1H 的备用模型沿用主模型思考档（1 项失败）。
+
+**全量重跑**（`9360556`，2026-11-25，部署前后各一遍）：类型检查通过；vitest 326 项、Playwright 69 项全部通过；泄漏检查通过。
+
+### 部署
+
+| 检查 | 结果 |
+|---|---|
+| `npm run cf:verify` | 账户 ID 和 `.env` 完整一致，wrangler 用的是项目令牌 |
+| `npm run deploy` | 版本 `9e80c523-6941-4279-b94c-a23aa3b70d4d`，2026-11-25T19:10:12Z |
+| `npm run cf:deploy-check` | 通过。`GEMINI_MODEL=gemini-4-hydrogen`、`GEMINI_THINKING_LEVEL=high`、`GEMINI_FALLBACK_MODEL=gemini-3.6-flash`、`GEMINI_FALLBACK_THINKING_LEVEL=low`；测试专用变量不在线上；`other-worker` 未改动 |
+| `npm run smoke -- <线上地址>` | 8 项通过 |
+| 余额恢复 | 部署前直接调用 `gemini-4-hydrogen` 返回 HTTP 200，服务档 `standard` |
+
+### 示例视频：线上真实浏览器
+
+`E2E_BASE_URL=<线上> EXPECT_MODEL=gemini-4-hydrogen npx playwright test test/e2e/live/candidate-live.spec.ts --project=live`，1 项通过，用时 3.0 分钟。
+
+| 项目 | 结果 |
+|---|---|
+| 来源面板 | 点击后 321 毫秒出现，此时正文 0 字 |
+| 字幕来源 | 内置备份，107,416 字符；实时获取被拦截（"Sign in to confirm you're not a bot"），面板上写明了原因 |
+| 第一段正文之前 | 收到 4 次心跳，最长无字节间隔 15,009 毫秒 |
+| 浏览器收到首个正文分块 / 首个可读段落 | 68.9 秒 / 69.3 秒 |
+| 服务端字幕就绪 / 首个文本 / 模型结束 / 保存完成 | 0.1 / 68.8 / 117.6 / 117.9 秒 |
+| 文章 | 5 章，10,276 字；`meta` 和 `done` 的模型都是 `gemini-4-hydrogen`；没有数字提示 |
+| 第 2 章 5W1H | `cached=false`，浏览器端 31.5 秒，六个字段都有内容 |
+| 第 4 章 5W1H | `cached=false`，浏览器端 26.0 秒，六个字段都有内容 |
+| 5W1H 请求和返回 | 两次请求都没有请求体；返回没有和正文逐字相同的 40 字片段（用例断言） |
+
+- **超时的配合**：服务端等首个分块 68.8 秒，上限 180 秒；这期间每 15 秒发一次心跳，前端最长 15.0 秒没有收到字节，上限 45 秒；全文 117.9 秒，前端总时限 10 分钟。
+- **截图和录屏**：等待（桌面、手机）、完成、两章 5W1H、手机，在 `evidence/final/online-sample/run1/`，6 张已逐张查看。
+- **没有确认的**：这次没有接服务端日志，文章的用量和两次 5W1H 的实际模型没有记录。文章的模型以 `done` 事件为准。
+- **停止生成**：这一轮没有重测，沿用第 6、8 节的结论和限制。
+
+**内容**（通读全文，回字幕核对了约 60 处数字、人名和说法）：
+
+| 项目 | 结果 |
+|---|---|
+| 15:11 数量级 | ✓ "数千亿美元乃至数万亿美元" |
+| 34:25 法案数量 | ✓ "大量相关法案（字幕此处数字不清，无法确定具体数量）"；5W1H 写"字幕此处具体数量不清" |
+| 54:06 应用公司自研模型的依据 | ✓ "拥有最深厚的领域认知"，没有加"数据优势" |
+| 52:00 投资关系 | ✓ "我们支持了离开 OpenAI 创业的 Ilya 和 Mira Murati，以及来自斯坦福……的李飞飞"，没有补姓 |
+| AD、提问人署名 | ✓ AD 没有展开；提问人全部写"主持人" |
+| 50 亿和 50 到 60 亿 | ✗ "如今全球已有 50 亿至 60 亿人接入移动宽带"，原话是现在 50 亿 |
+| 凯鹏华盈和 1994 | ✗ "1994 年……果断投资了我们、亚马逊、谷歌和 @Home"，原话是 90 年代先后投了这几家，1994 是 Marc 到硅谷的年份 |
+| tripling down | "正在加码输出"，没有写成"加倍"，也没有保留"三倍" |
+| 书名 | ✗ "《Machines 的崛起》（原文 Rise of the Machines）"，只译了一半 |
+| 快问快答 | ✗ 主持人引用的 Cheeky Point 访谈那句话并进了 Marc 的回答，写成"就像我以前在访谈中提过的" |
+| 其他 | "1946 年赤膊接受电视采访"，原话是"大概 1946 年"，不确定的语气丢了 |
+
+两章 5W1H 的时间、地点和人物都能在字幕里找到依据（约一年前的 Draghi 报告、去年的科罗拉多法案、共事三十多年、1964 年和前几周的公开信）。第 2 章 Who 写"主持人 Jen Kha"，依据和第 11 节相同：简介里的署名加上字幕里两次"Jen to your point"。
+
+### 补验 V09、V14、V17（线上，`stream-probe`）
+
+`npx tsx scripts/run-acceptance-cases.ts <线上地址> evidence/final/online-cases V09 V14 V17`，生成要求取自夹具。
+
+| | V09 `WUvTyaaNkzM` | V14 `qXcH26M7PQM` | V17 `rfscVS0vtbw` |
+|---|---|---|---|
+| 生成要求 | 给高中生写三章、最多 1200 字的笔记；保留字幕讲出的公式，区分近似与极限 | 面向高中生的科普文章；分清解释与实验观察；视觉演示只写字幕描述的部分 | 只整理函数、循环、类与对象，最多 1800 字；不补未讲出的代码 |
+| 线上取到的字幕 | 英语人工，15,895 字符 | 英语自动识别，61,823 字符 | 英语人工，261,179 字符 |
+| 来源信息到达 | 0.3 秒 | 0.4 秒 | 0.4 秒 |
+| 首个文本 / 首个可读段落 | 58.4 / 58.5 秒 | 43.4 / 43.7 秒 | 83.7 / 84.0 秒 |
+| 模型结束 / 保存完成（服务端） | 60.9 / 61.2 秒 | 68.2 / 68.5 秒 | 86.9 / 87.2 秒 |
+| 章数 / 字数 | 3 / 1,025（上限 1,200） | 5 / 6,909 | 3 / 1,523（上限 1,800） |
+| 文章的模型（`done`） | `gemini-4-hydrogen` | `gemini-4-hydrogen` | `gemini-4-hydrogen` |
+| 文章用量 | 输入 5,803、思考 12,446、输出 781 token，约 0.108 美元 | 未知（没有接日志） | 未知（没有接日志） |
+| 5W1H（未缓存） | 第 2 章，15.8 秒 | 第 3 章，19.3 秒 | 第 3 章，20.9 秒 |
+| 5W1H 的模型和用量（服务端日志） | `gemini-4-hydrogen`；输入 5,534、思考 2,398、输出 268 | `gemini-4-hydrogen`；输入 16,762、思考 2,898、输出 383 | `gemini-4-hydrogen`；输入 65,829、思考 3,408、输出 249 |
+
+- **YouTube 拦截**：V09 的前两次请求在 0.3 秒左右报 `youtube_blocked`，没有调用 Gemini，第三次取到字幕。V14、V17 一次成功。三次的原始输出都保留（`V09/`、`V09-attempt2/`、`V09-attempt3/`）。
+- **选轨**：三个视频取到的轨道、字符数和本机预检（第 12 节）一致。修复前 V09、V17 选到阿拉伯语字幕，V14 报无字幕。
+- **V17 的上限判断**：整理后 261,179 字符，上限 300,000，没有因为时长 4 小时 27 分被拒，正常进入生成。超过上限时在调用 Gemini 之前拒绝，由 L1b 的 C01 用例覆盖，没有找真实视频验证。
+- **服务档**：有日志的 4 次请求都是 `standard`，都没有 `summary_fallback` 记录。
+
+**逐篇核对**（全文通读；V09 对照了完整字幕，V14、V17 各查了约 40 处和 25 处）：
+
+- **V09**：半径取 3，和视频字幕一致；圆环近似成长 2πr、厚 dr 的矩形，写明"只能近似"；dr 取 0.1；2π×3 约 19；三角形底 3、高 2π×3，面积 π×3²。汽车速度乘 dt 的例子、x² 从 0 到 3、a(x)、3 和 3.001、da/dx 约等于 3² 都是原话。"dx 取具体非零小数时只是近似，比值趋近的值才是导数"对应字幕里"more technically"那一句。没有补字幕没讲的图形细节。
+- **V14**：解释、实验观察和推测分开写了，还标了出来（"实验与临床观察""理论解释""目前只是他的一个理论推测"）。"受控的幻觉"后面紧跟"这并不意味着外部世界不存在——你依然会被公共汽车撞到"。两个视觉演示只写了讲者口头说的部分：黑十字、品红色色块消失、出现绿色色块、眨眼后恢复。人名都和字幕一致（Nagel、Chalmers、Edelman、Tononi、Yaïr Pinto、Keisuke Suzuki、Clive Wearing、Pete Lush、Zoltan Dienes、Karl Friston、Tim Bayne、Marcello Massimini、Michael Carter）。数字也对：2016 年 AlphaGo、90 年代末、约 400 名本科生、10 秒、上世纪 80 年代、2009 年的章鱼。没有混入其他视频的内容。5W1H 里的 Kevin 和 Chris Frith 字幕里都有。
+- **V17**：`def`、小写加下划线的命名、`str()`、不写 `return` 时打印出 `None`、`return` 之后的代码不执行、`while` 从 1 到 10 和 `+= 1`、3 次机会的猜词游戏、`range(10)` 和 `range(3, 10)`、索引为 0 时的特殊处理、幂函数、二维列表和 `[0][0]`、`[2][1]`、元音换成 g 的翻译器、`__init__` 和 `self`、`Question` 类、绩点 3.5 的荣誉榜、`Chef` 和 `ChineseChef` 的继承与重写，都是讲师口头说过的。只写了要求的三个话题。5W1H 的"主讲人 Mike Dane"出自本期简介"Course developed by Mike Dane"，字幕里没有自我介绍。
+
+### 费用
+
+有服务端用量的 4 次请求合计约 0.31 美元（V09 文章 0.108，三次 5W1H 0.028、0.050、0.126），按第 11 节的 Hydrogen 标准价估算。示例视频的文章和两次 5W1H、V14 和 V17 的文章没有用量记录，按同类请求估计约 0.7 美元。最终验收合计约 1 美元。
+
+### 这一轮没有做的
+
+- 没有再比较 Neon、Carbon，也没有扩大案例范围：V03、V11、V16、V18 和 R01、R06、R12 仍然没有生成。
+- 备用模型在线上的真实切换、免费层下的表现、Priority 服务档，都没有测。
+- 不调用模型的测试在 `9360556` 上全量重跑过；之后的提交只改文档和 `.env.example`。
+
 ## 复现命令
 
 ```bash
@@ -463,4 +568,9 @@ npx tsx scripts/analyze-runs.ts evidence/round8/screen/*/                      #
 npx tsx scripts/measure-summary.ts gemini-4-hydrogen high <文章目录> 2,4
 npm run predev && CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false npx wrangler dev --var GEMINI_MODEL:gemini-4-hydrogen --var GEMINI_THINKING_LEVEL:high
 EXPECT_MODEL=gemini-4-hydrogen npx playwright test test/e2e/live/candidate-live.spec.ts --project=live
+
+# 最终线上验收（真实调用，产生费用）
+E2E_BASE_URL=https://video-article.kingsleyli920.workers.dev EXPECT_MODEL=gemini-4-hydrogen npx playwright test test/e2e/live/candidate-live.spec.ts --project=live
+npx tsx scripts/run-acceptance-cases.ts https://video-article.kingsleyli920.workers.dev evidence/final/online-cases V09 V14 V17
+npx tsx scripts/cf.ts wrangler tail --format json      # 另开一个终端，看服务端日志里的实际模型和用量
 ```

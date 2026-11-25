@@ -1,5 +1,5 @@
 {
-  "note": "补充验收采用的真实视频案例，取自 2026-11-25 的补充案例池（xvc-additional-test-cases.json，schema 1.1），只保留实际执行或计划执行的案例。字幕以生产代码实时取到的为准，检查点里的数字只有出现在实际字幕里时才作为必须保留的事实。结果和证据见 docs/ADDITIONAL_ACCEPTANCE.md。",
+  "note": "补充验收采用的真实视频案例，取自 2026-11-25 的补充案例池（xvc-additional-test-cases.json，schema 1.1），只保留实际执行的案例。字幕以生产代码实时取到的为准，检查点里的数字只有出现在实际字幕里时才作为必须保留的事实。结果和证据见 docs/ADDITIONAL_ACCEPTANCE.md。",
   "cases": [
     {
       "id": "V01",
