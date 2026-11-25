@@ -206,13 +206,44 @@ function decodeEntities(s: string): string {
 
 const MAX_PARAGRAPH_CHARS = 1_500;
 
+/** 交给模型的文本里，已确认残缺的数字换成这个占位，不再暴露可能诱导补全的残余数字 */
+export const DAMAGED_NUMBER_PLACEHOLDER = '〔字幕此处数字不清，无法确定具体数量〕';
+
+/** 字幕里确认残缺的数字。原始片段、时间和所在字幕原文都保留，作为证据，也供生成后的数字检查使用 */
+export interface DamagedNumber {
+  /** 所在字幕片段的开始时间，如 "34:25" */
+  time: string;
+  /** 原始片段，连同前面的词，如 "of,200" */
+  fragment: string;
+  /** 残缺的三位数，如 "200" */
+  digits: string;
+  /** 所在字幕片段的原文 */
+  cue: string;
+}
+
+export interface PreparedTranscript {
+  /** 给模型读的正文：残缺数字已换成占位 */
+  text: string;
+  damagedNumbers: DamagedNumber[];
+}
+
+/**
+ * 自动字幕偶尔吞掉数字开头，留下"千分位逗号 + 三位数"却没有前导数字（如 "of,200"）。这种写法不可能是完整数字。
+ * 前面紧挨着数字或逗号的（如 "1,200"、"12,345,678"）不算。
+ */
+const DAMAGED_NUMBER = /(?<![\d,]),(\d{3})(?![\d,])/g;
+
 /**
  * 把字幕片段整理成给模型读的正文：每段以 [时间] 开头；
  * 自动字幕里的 ">>" 表示换人说话，在这里另起一段并保留标记；同一人说得太长时在片段边界分段。
+ * 残缺数字换成占位，原始片段记进 damagedNumbers。合法数字被拆在相邻两条字幕里（前一条以数字结尾、
+ * 后一条以 ",200" 开头）时拼回去（"1,200"），不当成残缺。
  */
-export function formatTranscript(cues: Cue[]): string {
+export function prepareTranscript(cues: Cue[]): PreparedTranscript {
   const paragraphs: string[] = [];
+  const damagedNumbers: DamagedNumber[] = [];
   let current: { start: number; turn: boolean; parts: string[]; length: number } | null = null;
+  let previous = '';
 
   const flush = () => {
     if (current?.parts.length) {
@@ -225,28 +256,36 @@ export function formatTranscript(cues: Cue[]): string {
   };
 
   for (const cue of cues) {
-    cue.text.split('>>').forEach((piece, i) => {
+    cue.text.split('>>').forEach((rawPiece, i) => {
+      const piece = rawPiece.trim();
+      // 同一人连续说话、上一条以数字结尾、这一条以 ",ddd" 开头：同一个数被拆开了
+      const continues = i === 0 && current !== null && /\d$/.test(previous) && /^,\d{3}(?![\d,])/.test(piece);
       if (i > 0) open(cue.start, true);
-      else if (!current || current.length > MAX_PARAGRAPH_CHARS) open(cue.start, false);
-      const text = markDamagedNumbers(piece.trim());
-      if (text && current) {
+      else if (!continues && (!current || current.length > MAX_PARAGRAPH_CHARS)) open(cue.start, false);
+
+      const text = piece.replace(DAMAGED_NUMBER, (match: string, digits: string, offset: number) => {
+        if (offset === 0 && continues) return match;
+        const word = offset === 0 ? (/\S*$/.exec(previous)?.[0] ?? '') : (/\S*$/.exec(piece.slice(0, offset))?.[0] ?? '');
+        damagedNumbers.push({ time: clock(cue.start), fragment: `${word}${match}`, digits, cue: cue.text.trim() });
+        return DAMAGED_NUMBER_PLACEHOLDER;
+      });
+      if (!text || !current) return;
+      if (continues && current.parts.length) {
+        current.parts[current.parts.length - 1] += text;
+      } else {
         current.parts.push(text);
-        current.length += text.length + 1;
       }
+      current.length += text.length + 1;
+      previous = text;
     });
   }
   flush();
-  return paragraphs.join('\n\n');
+  return { text: paragraphs.join('\n\n'), damagedNumbers };
 }
 
-export const DAMAGED_NUMBER_MARK = '〔字幕数字残缺〕';
-
-/**
- * 自动字幕偶尔吞掉数字开头，留下"千分位逗号 + 三位数"却没有前导数字（如 "of,200"）。
- * 这种写法不可能是完整数字，在后面标注出来，提示模型保留不确定性，而不是自行补成某个数。
- */
-export function markDamagedNumbers(text: string): string {
-  return text.replace(/(?<![\d,]),(\d{3})(?![\d,])/g, `,$1${DAMAGED_NUMBER_MARK}`);
+/** 只要给模型读的正文时使用 */
+export function formatTranscript(cues: Cue[]): string {
+  return prepareTranscript(cues).text;
 }
 
 function clock(ms: number): string {

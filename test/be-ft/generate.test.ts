@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GenerationStore, openStore } from '../../src/worker/store';
-import { ARTICLE_MARKDOWN, ARTICLE_TEXTS, OTHER_VIDEO_ID, playerResponse, SAMPLE_VIDEO_ID, srv1 } from '../fixtures/upstream';
+import { ARTICLE_MARKDOWN, ARTICLE_TEXTS, geminiJson, OTHER_VIDEO_ID, playerResponse, SAMPLE_VIDEO_ID, srv1 } from '../fixtures/upstream';
 import { eventOf, generate, geminiSse, mockUpstream } from './helpers';
 
 afterEach(() => vi.restoreAllMocks());
@@ -82,18 +82,37 @@ describe('POST /api/generations', () => {
   });
 
   // 抓：模型把字幕里残缺的数字补成确定的数，done 里却没有提示；没有补数时误报
-  it('字幕有残缺数字且文中写成确定的数时，done 带上数字提示；文章照常保存', async () => {
-    mockUpstream({
+  // 也抓：交给模型的文章请求和 5W1H 请求里还留着 ",200"；遮蔽之后原始证据丢失、数字检查失效
+  it('字幕有残缺数字：文章和 5W1H 实际发出的请求都用占位，原始证据存进上下文，文中补出的数照样提示', async () => {
+    const upstream = mockUpstream({
       captions: srv1([
         [0, 'intro'],
         [2065, '&amp;gt;&amp;gt; we&amp;#39;re tracking on the order of,200 bills'],
       ]),
       geminiStream: geminiSse(['# 标题\n\n## 监管\n\n各州大约有1200项法案，', '另有 300 项已通过。']),
+      geminiJson: geminiJson({ who: '嘉宾', what: '州级法案', when: '', where: '美国', why: '', how: '' }),
     });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
     const done = eventOf(events, 'done')!;
     expect(done.numberWarnings).toEqual([{ time: '34:25', fragment: 'of,200', written: ['1200'] }]);
-    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).not.toBeNull();
+
+    const masked = "[00:00] intro\n\n[34:25] >> we're tracking on the order of〔字幕此处数字不清，无法确定具体数量〕 bills";
+    const articleRequest = upstream.gemini()[0]!.body;
+    expect(JSON.parse(articleRequest).contents[0].parts[0].text).toContain(`<transcript>\n${masked}\n</transcript>`);
+    expect(articleRequest).not.toContain(',200');
+
+    const generationId = eventOf(events, 'meta')!.generationId;
+    const saved = await openStore(env, generationId).load();
+    expect(saved!.transcript.text).toBe(masked);
+    expect(saved!.transcript.damagedNumbers).toEqual([
+      { time: '34:25', fragment: 'of,200', digits: '200', cue: ">> we're tracking on the order of,200 bills" },
+    ]);
+
+    const res = await exports.default.fetch(`https://app.test/api/generations/${generationId}/chapters/1/summary`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const summaryRequest = upstream.gemini()[1]!.body;
+    expect(JSON.parse(summaryRequest).contents[0].parts[0].text).toContain(`<transcript>\n${masked}\n</transcript>`);
+    expect(summaryRequest).not.toContain(',200');
   });
 
   // 抓：主模型开始输出前一直 503 时整篇失败，或者换了模型却不说明实际用的是哪个

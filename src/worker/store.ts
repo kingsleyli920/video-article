@@ -7,7 +7,7 @@ import { fallbackModel, geminiOptions, timeoutScale } from './config';
 import { generateSummaryJson, summaryBudget } from './summary-model';
 import { summaryPrompt } from './prompts';
 import { normalizeSummary, SUMMARY_SCHEMA } from './summary-schema';
-import type { VideoMeta } from './youtube';
+import type { DamagedNumber, VideoMeta } from './youtube';
 
 /** 一次生成的完整上下文，5W1H 只从这里读取，不接收前端提交的内容。 */
 export interface GenerationContext {
@@ -16,7 +16,8 @@ export interface GenerationContext {
   createdAt: string;
   model: string;
   video: VideoMeta;
-  transcript: TranscriptInfo & { text: string };
+  /** text 是交给模型的正文（残缺数字已换成占位）；damagedNumbers 是残缺数字的原始证据（旧数据没有这个字段） */
+  transcript: TranscriptInfo & { text: string; damagedNumbers?: DamagedNumber[] };
   instructions: string;
   article: { title: string; markdown: string; chapters: Chapter[] };
 }

@@ -8,11 +8,11 @@ export const SAMPLE_URL = 'https://youtu.be/xRh2sVcNXQ8';
 
 /**
  * 默认字幕整理后的正文：每段以 [时间] 开头；">>" 另起一段；
- * "&amp;gt;&amp;gt; we&amp;#39;re" 两层转义解开；残缺数字 "of,200" 后标注〔字幕数字残缺〕。共 135 个字符。
+ * "&amp;gt;&amp;gt; we&amp;#39;re" 两层转义解开；残缺数字 "of,200" 的 ",200" 换成占位〔字幕此处数字不清，无法确定具体数量〕（19 个字符）。共 142 个字符。
  */
 export const TRANSCRIPT_TEXT =
-  "[00:00] welcome to the show Alex here let us start with the first question\n\n[34:25] >> we're tracking on the order of,200〔字幕数字残缺〕 bills";
-export const TRANSCRIPT_CHARS = 135;
+  "[00:00] welcome to the show Alex here let us start with the first question\n\n[34:25] >> we're tracking on the order of〔字幕此处数字不清，无法确定具体数量〕 bills";
+export const TRANSCRIPT_CHARS = 142;
 
 /** 主模型默认输出的整篇文章（三段拼接） */
 export const ARTICLE_MARKDOWN =

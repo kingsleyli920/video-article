@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchTranscript, formatTranscript, markDamagedNumbers, parseSrv1, pickTrack, type CaptionTrack } from '../../src/worker/youtube';
+import { fetchTranscript, formatTranscript, parseSrv1, pickTrack, prepareTranscript, type CaptionTrack } from '../../src/worker/youtube';
 import { playerResponse, srv1 } from '../fixtures/upstream';
 
 afterEach(() => vi.restoreAllMocks());
@@ -105,11 +105,49 @@ describe('parseSrv1 / formatTranscript', () => {
     expect(text).toBe('[00:00] host intro question still host\n\n[00:05] >> guest answer more answer');
   });
 
-  // 抓：自动字幕吞掉数字开头（"of,200"）后，模型把它当成确定的数字补全
-  it('标注前面没有数字的千分位片段，正常数字不受影响', () => {
-    expect(markDamagedNumbers('tracking on the order of,200 bills')).toBe('tracking on the order of,200〔字幕数字残缺〕 bills');
-    expect(markDamagedNumbers('1,200 bills, $200 or $300, 12,345,678, a, 200 b')).toBe('1,200 bills, $200 or $300, 12,345,678, a, 200 b');
-    expect(formatTranscript([{ start: 0, text: 'we track of,200 bills' }])).toBe('[00:00] we track of,200〔字幕数字残缺〕 bills');
+  // 抓：给模型的文本里还留着残余数字 ",200"，模型照着补成 1,200；或者遮蔽之后原始片段丢了，没法追溯和检查
+  it('残缺数字在给模型的文本里换成占位，原始片段、时间和所在字幕原文保留为证据', () => {
+    const prepared = prepareTranscript([
+      { start: 0, text: 'welcome' },
+      { start: 2_065_000, text: "we're tracking on the order of,200 bills" },
+    ]);
+    expect(prepared.text).toBe("[00:00] welcome we're tracking on the order of〔字幕此处数字不清，无法确定具体数量〕 bills");
+    expect(prepared.text).not.toContain('200');
+    expect(prepared.damagedNumbers).toEqual([
+      { time: '34:25', fragment: 'of,200', digits: '200', cue: "we're tracking on the order of,200 bills" },
+    ]);
+  });
+
+  // 抓：把合法数字误判为残缺而遮蔽掉
+  it('完整合法的数字原样保留，不记为残缺', () => {
+    const prepared = prepareTranscript([{ start: 0, text: '1,200 bills, $200 or $300, 12,345,678, a, 200 b, 2026' }]);
+    expect(prepared).toEqual({ text: '[00:00] 1,200 bills, $200 or $300, 12,345,678, a, 200 b, 2026', damagedNumbers: [] });
+  });
+
+  // 抓：一个合法数字被拆在相邻两条字幕里（"about 1" / ",200 bills"），被误判成残缺
+  it('合法数字跨两条字幕拆开时拼回原数，不记为残缺', () => {
+    const prepared = prepareTranscript([
+      { start: 0, text: 'about 1' },
+      { start: 2_000, text: ',200 bills were filed' },
+    ]);
+    expect(prepared).toEqual({ text: '[00:00] about 1,200 bills were filed', damagedNumbers: [] });
+  });
+
+  // 抓：残缺片段正好在一条字幕开头时，前一条结尾是单词而不是数字，却被当成跨条拆开的合法数字放过
+  it('字幕开头的 ",200" 前一条以单词结尾时仍判为残缺，证据里带上前一条的末尾单词', () => {
+    const prepared = prepareTranscript([
+      { start: 0, text: 'on the order of' },
+      { start: 2_000, text: ',200 bills' },
+    ]);
+    expect(prepared.text).toBe('[00:00] on the order of 〔字幕此处数字不清，无法确定具体数量〕 bills');
+    expect(prepared.damagedNumbers).toEqual([{ time: '00:02', fragment: 'of,200', digits: '200', cue: ',200 bills' }]);
+  });
+
+  // 抓：换人说话（>>）后的 ",200" 被当成上一位说话人数字的延续
+  it('换人说话之后的 ",200" 不和上一位说话人的数字拼接', () => {
+    const prepared = prepareTranscript([{ start: 0, text: 'it was 1 >> ,200 more' }]);
+    expect(prepared.damagedNumbers).toEqual([{ time: '00:00', fragment: '1,200', digits: '200', cue: 'it was 1 >> ,200 more' }]);
+    expect(prepared.text).toBe('[00:00] it was 1\n\n[00:00] >> 〔字幕此处数字不清，无法确定具体数量〕 more');
   });
 
   it('同一人说话过长时在片段边界分段，超过一小时用 h:mm:ss', () => {

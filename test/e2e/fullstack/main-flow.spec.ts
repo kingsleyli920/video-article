@@ -123,7 +123,8 @@ test('主流程：正文逐步出现 → 完成状态、章节、数字提示 �
   expect(system).toContain('人物身份与发言归属：');
   expect(system).toContain('依据不足时，提问写"主持人"，回答写"嘉宾"（单人演讲写"演讲者"）');
   expect(system).toContain('who 字段同样遵守上面的人物规则');
-  expect(user).toContain("[00:00] welcome to the show Alex here let us start with the first question\n\n[34:25] >> we're tracking on the order of,200〔字幕数字残缺〕 bills");
+  expect(user).toContain("[00:00] welcome to the show Alex here let us start with the first question\n\n[34:25] >> we're tracking on the order of〔字幕此处数字不清，无法确定具体数量〕 bills");
+  expect(user).not.toContain(',200');
   expect(user).toContain('本期主持人 Alex Chen');
   expect(user).toContain(`\n写给投资人看，语言简洁\n</user_requirements>`);
   expect(user).toContain('<article_outline>\n1. 第一章：开场\n2. 第二章：数字\n</article_outline>');

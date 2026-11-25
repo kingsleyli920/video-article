@@ -9,7 +9,7 @@ import { checkDamagedNumbers } from './number-check';
 import { articlePrompt } from './prompts';
 import { createStore, type GenerationContext } from './store';
 import { loadTranscript } from './transcripts';
-import { formatTranscript } from './youtube';
+import { prepareTranscript } from './youtube';
 
 interface GenerationInput {
   videoId: string;
@@ -68,14 +68,20 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
   try {
     await events.send('stage', { stage: 'transcript' });
     const { transcript, info } = await loadTranscript(input.videoId, { ...transcriptOptions(env), signal: events.signal });
-    const transcriptText = formatTranscript(transcript.cues);
+    const { text: transcriptText, damagedNumbers } = prepareTranscript(transcript.cues);
     if (transcriptText.length > LIMITS.transcriptChars) {
       throw new AppError('transcript_too_long', `${transcriptText.length} 字符，上限 ${LIMITS.transcriptChars}`);
     }
     const transcriptMs = since();
     const gemini = geminiOptions(env);
     const { generationId, store } = createStore(env);
-    Object.assign(log, { source: info.source, transcriptChars: transcriptText.length, model: gemini.model, transcriptMs });
+    Object.assign(log, {
+      source: info.source,
+      transcriptChars: transcriptText.length,
+      damagedNumbers: damagedNumbers.map((d) => `${d.time} ${d.fragment}`),
+      model: gemini.model,
+      transcriptMs,
+    });
 
     await events.send('meta', {
       generationId,
@@ -119,7 +125,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     const article = parseArticle(markdown);
     const problem = validateArticle(article);
     if (problem) throw new AppError('invalid_structure', problem);
-    const numberWarnings = checkDamagedNumbers(transcriptText, markdown);
+    const numberWarnings = checkDamagedNumbers(damagedNumbers, transcriptText, markdown);
     events.throwIfGone(); // 模型结束到保存之间客户端已经离开：不再保存
 
     const context: GenerationContext = {
@@ -128,7 +134,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       createdAt: new Date(startedAt).toISOString(),
       model,
       video: transcript.video,
-      transcript: { ...info, chars: transcriptText.length, text: transcriptText },
+      transcript: { ...info, chars: transcriptText.length, text: transcriptText, damagedNumbers },
       instructions: input.instructions,
       article: { title: article.title, markdown, chapters: article.chapters },
     };

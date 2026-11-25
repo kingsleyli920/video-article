@@ -27,4 +27,16 @@ describe('5W1H 提示词', () => {
     // 补全姓名的规则依赖简介，5W1H 的用户消息里也要带上本期简介
     expect(summary.user).toContain('本期主持人 Alex Chen');
   });
+
+  // 抓：输入里残缺数字换成了占位，提示词却还在说旧的标注，模型不知道占位是什么意思
+  it('文章和 5W1H 的系统提示词都说明残缺数字占位的含义，5W1H 以字幕为准', () => {
+    const article = articlePrompt({ video, transcriptText: '[00:00] hi', instructions: '' });
+    const chapter = parseArticle('# 标题\n\n## 第一章\n\n正文').chapters[0]!;
+    const summary = summaryPrompt({ video, transcriptText: '[00:00] hi', instructions: '', chapterTitles: ['第一章'], chapter });
+    for (const system of [article.system, summary.system]) {
+      expect(system).toContain('〔字幕此处数字不清，无法确定具体数量〕');
+      expect(system).not.toContain('〔字幕数字残缺〕');
+    }
+    expect(summary.system).toContain('当前章节里即使给出了这里的具体数字，也以字幕为准');
+  });
 });

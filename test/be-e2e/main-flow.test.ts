@@ -72,6 +72,8 @@ describe('主流程：生成文章 → 5W1H', () => {
     expect(streamRequest.path).toBe('/gemini/mock-primary:streamGenerateContent?alt=sse');
     const articlePrompt = promptOf(streamRequest);
     expect(articlePrompt.user).toContain(`<transcript>\n${TRANSCRIPT_TEXT}\n</transcript>`);
+    // 残缺数字在交给模型的文本里已换成占位，不再暴露 ",200"
+    expect(articlePrompt.user).not.toContain(',200');
     expect(articlePrompt.user).toContain('<user_requirements>\n写给投资人看，突出数字\n</user_requirements>');
     expect(articlePrompt.user).toContain('简介：\n本期主持人 Alex Chen');
 
@@ -87,6 +89,7 @@ describe('主流程：生成文章 → 5W1H', () => {
     expect(summaryRequests.map((r) => [r.kind, r.path])).toEqual([['summary', '/gemini/mock-primary:generateContent']]);
     const prompt = promptOf(summaryRequests[0]!);
     expect(prompt.user).toContain(`<transcript>\n${TRANSCRIPT_TEXT}\n</transcript>`);
+    expect(prompt.user).not.toContain(',200');
     expect(prompt.user).toContain(CHAPTER_2_BLOCK);
     expect(prompt.user).toContain('<article_outline>\n1. 第一章：开场\n2. 第二章：数字\n</article_outline>');
     expect(prompt.user).not.toContain('从第一个问题开始'); // 第一章正文不进当前章节的总结
