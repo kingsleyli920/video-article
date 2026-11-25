@@ -100,4 +100,12 @@ describe('hasReadableParagraph', () => {
     expect(hasReadableParagraph(short, true)).toBe(true);
     expect(hasReadableParagraph('# 标题\n\n## 第一章', true)).toBe(false);
   });
+
+  // 补充验收 R10 抓：小标题下一行紧跟正文、中间没有空行时，整块被当成标题，全文结束也判不出可读正文
+  it('小标题和正文在同一块里（中间只有换行）时，写完的这一块算可读正文；只有标题行的块不算', async () => {
+    const { hasReadableParagraph } = await import('../../src/shared/article');
+    expect(hasReadableParagraph('# 会议流程学习笔记\n\n## 会前\n\n### 要点\n会前准备包含三项内容。\n\n')).toBe(true);
+    expect(hasReadableParagraph('# 会议流程学习笔记\n\n## 会前\n\n### 要点\n会前准备包含')).toBe(false);
+    expect(hasReadableParagraph('# 标题\n\n## 会前\n### 要点\n\n', true)).toBe(false);
+  });
 });
