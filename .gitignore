@@ -9,3 +9,5 @@ test-results/
 playwright-report/
 # 作业原始材料（公司提供）不入库
 /*.pdf
+# 本地验收证据（截图、录像、时间线），不入库
+/evidence/
