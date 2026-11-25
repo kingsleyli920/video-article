@@ -2,7 +2,7 @@ import { countArticleChars, hasReadableParagraph, parseArticle, validateArticle 
 import { LIMITS } from '../shared/limits';
 import { parseVideoId } from '../shared/video-id';
 import { AppError, isBusy, toAppError } from './app-error';
-import { fallbackModel, geminiOptions, transcriptOptions } from './config';
+import { fallbackConfig, geminiOptions, transcriptOptions } from './config';
 import { ClientGone, EventStream } from './event-stream';
 import { streamText, type GeminiStats } from './gemini';
 import { checkDamagedNumbers } from './number-check';
@@ -97,9 +97,9 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     let lastDeltaMs: number | null = null;
     const stats: GeminiStats = {};
     const prompt = articlePrompt({ video: transcript.video, transcriptText, instructions: input.instructions });
-    const write = (model: string) =>
+    const write = (model: string, thinkingLevel = gemini.thinkingLevel) =>
       streamText(
-        { ...gemini, model },
+        { ...gemini, model, thinkingLevel },
         prompt,
         async (text) => {
           firstTokenMs ??= since();
@@ -118,11 +118,11 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       finishReason = await write(model);
     } catch (err) {
       // 主模型还没输出任何内容就持续繁忙：整篇改用备用模型。已经有输出时不换，避免拼接两个模型的输出
-      const fallback = fallbackModel(env);
+      const fallback = fallbackConfig(env);
       if (!fallback || !isBusy(err) || markdown !== '') throw err;
-      Object.assign(log, { fallbackFrom: model, fallbackReason: err.detail ?? null, fallbackMs: since() });
-      model = fallback;
-      finishReason = await write(model);
+      Object.assign(log, { fallbackFrom: model, fallbackTo: fallback.model, fallbackThinkingLevel: fallback.thinkingLevel ?? null, fallbackReason: err.detail ?? null, fallbackMs: since() });
+      model = fallback.model;
+      finishReason = await write(model, fallback.thinkingLevel);
     }
     const modelDoneMs = since();
     // 文章只有一段正文时，要到最后一段发出才算读到完整段落

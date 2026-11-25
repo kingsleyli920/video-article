@@ -1,6 +1,6 @@
 import { SUMMARY_TIMING } from '../shared/limits';
 import { isBusy } from './app-error';
-import { generateJson, type GeminiOptions, type GeminiStats, type Prompt } from './gemini';
+import { generateJson, type GeminiOptions, type GeminiStats, type Prompt, type FallbackConfig } from './gemini';
 
 export interface SummaryBudget {
   /** 主备模型合计的上限 */
@@ -26,7 +26,7 @@ export function summaryBudget(scale = 1): SummaryBudget {
  */
 export async function generateSummaryJson(
   options: GeminiOptions,
-  fallbackModel: string | null,
+  fallback: FallbackConfig | null,
   prompt: Prompt,
   schema: object,
   budget: SummaryBudget = summaryBudget(),
@@ -37,13 +37,18 @@ export async function generateSummaryJson(
     const raw = await generateJson({ ...options, timeouts: { ...options.timeouts, requestMs: budget.primaryMs } }, prompt, schema, stats);
     return { raw, model: options.model, stats, ms: Date.now() - startedAt };
   } catch (err) {
-    if (!fallbackModel || !isBusy(err)) throw err;
+    if (!fallback || !isBusy(err)) throw err;
     const remainingMs = budget.serverBudgetMs - (Date.now() - startedAt);
     if (remainingMs < budget.minFallbackMs) throw err;
     console.log(
-      JSON.stringify({ event: 'summary_fallback', from: options.model, to: fallbackModel, reason: err.detail ?? null, remainingMs }),
+      JSON.stringify({ event: 'summary_fallback', from: options.model, to: fallback.model, thinkingLevel: fallback.thinkingLevel ?? null, reason: err.detail ?? null, remainingMs }),
     );
-    const raw = await generateJson({ ...options, model: fallbackModel, timeouts: { ...options.timeouts, requestMs: remainingMs } }, prompt, schema, stats);
-    return { raw, model: fallbackModel, stats, ms: Date.now() - startedAt };
+    const raw = await generateJson(
+      { ...options, model: fallback.model, thinkingLevel: fallback.thinkingLevel, timeouts: { ...options.timeouts, requestMs: remainingMs } },
+      prompt,
+      schema,
+      stats,
+    );
+    return { raw, model: fallback.model, stats, ms: Date.now() - startedAt };
   }
 }

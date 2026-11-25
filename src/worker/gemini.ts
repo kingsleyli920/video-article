@@ -52,6 +52,12 @@ interface GeminiChunk {
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 // 思考 token 也计入输出上限（官方文档），高档思考时过低的上限会截断；按官方建议至少 65,536
+/** 备用模型和它自己的思考档（见 config.ts 的 fallbackConfig） */
+export interface FallbackConfig {
+  model: string;
+  thinkingLevel?: string;
+}
+
 const ARTICLE_MAX_OUTPUT_TOKENS = 65_536;
 const SUMMARY_MAX_OUTPUT_TOKENS = 65_536;
 const BUSY_RETRY_DELAY_MS = 1_500;
@@ -225,6 +231,9 @@ export function classifyHttpError(status: number, body: string): AppError {
     // 非 JSON 响应，按状态码归类
   }
   if (/location is not supported/i.test(message)) return new AppError('gemini_region');
+  // 预付额度用完（2026-11-25 实际遇到：HTTP 402，"Your prepayment credits are depleted"）。不是繁忙：不重试、不换备用模型，
+  // 同一账单下换模型也一样会被拒，换了只会掩盖原因
+  if (status === 402 || /prepayment credits are depleted/i.test(message)) return new AppError('gemini_billing');
   if (status === 429) return new AppError('gemini_quota');
   if (status === 503 || status === 500) return new AppError('gemini_busy', `HTTP ${status}`);
   if (/api key/i.test(message)) return new AppError('gemini_error', 'API key 无效');

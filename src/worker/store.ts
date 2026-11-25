@@ -3,7 +3,7 @@ import type { Chapter } from '../shared/article';
 import type { ErrorCode } from '../shared/errors';
 import type { ChapterSummary, TranscriptInfo } from '../shared/types';
 import { AppError, toAppError } from './app-error';
-import { fallbackModel, geminiOptions, timeoutScale } from './config';
+import { fallbackConfig, geminiOptions, timeoutScale } from './config';
 import { generateSummaryJson, summaryBudget } from './summary-model';
 import { summaryPrompt } from './prompts';
 import { normalizeSummary, SUMMARY_SCHEMA } from './summary-schema';
@@ -85,7 +85,7 @@ export class GenerationStore extends DurableObject<Env> {
         chapter,
       });
       // 结构化输出一次返回，没有"已输出一半"的问题：主模型繁忙或超时就在剩余预算内整次改用备用模型
-      const { raw, model, stats, ms } = await generateSummaryJson(options, fallbackModel(this.env), prompt, SUMMARY_SCHEMA, summaryBudget(timeoutScale(this.env)));
+      const { raw, model, stats, ms } = await generateSummaryJson(options, fallbackConfig(this.env), prompt, SUMMARY_SCHEMA, summaryBudget(timeoutScale(this.env)));
       // 记录实际完成总结的模型、用量和服务档，供验收核对
       console.log(
         JSON.stringify({

@@ -14,6 +14,7 @@ const STATUS: Partial<Record<ErrorCode, number>> = {
   gemini_quota: 429,
   internal: 500,
   gemini_busy: 503,
+  gemini_billing: 503,
   youtube_timeout: 504,
 };
 

@@ -15,6 +15,7 @@ export const ERROR_MESSAGES = {
   transcript_too_long: '字幕过长，超过支持的上限',
   gemini_quota: 'Gemini 免费额度已用完或请求过于频繁，请稍后再试',
   gemini_busy: 'Gemini 模型繁忙，请稍后重试',
+  gemini_billing: 'Gemini 账户的预付额度已用完，暂时无法生成',
   gemini_region: '服务器所在地区不支持 Gemini API',
   gemini_error: '调用 Gemini 失败',
   truncated: '输出达到长度上限，文章不完整',

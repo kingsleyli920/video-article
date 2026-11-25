@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { hasReadableParagraph } from '../../../src/shared/article';
 import { SseParser } from '../../../src/shared/sse';
 import type { StreamEvents } from '../../../src/shared/types';
+import { TIMEOUTS } from '../../../src/client/api';
 
 const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
 /** 期望写文章的模型（候选配置验收时设置，例如 EXPECT_MODEL=gemini-4-hydrogen）；不设时不检查 */
@@ -112,6 +113,14 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   }
   expect(meta).not.toBeNull();
   expect(done).not.toBeNull();
+  // 等待模型输出期间：服务端每 15 秒发一次心跳（SSE 注释 ": keep-alive"），浏览器任何两次收到字节的间隔
+  // 都要短于前端的无字节超时（45 秒），否则前端会在模型思考时误判连接中断
+  const beforeFirstDelta = chunks.filter((c) => Math.round(c.t - clickAt) < firstDeltaAt!);
+  const heartbeats = beforeFirstDelta.filter((c) => c.text.includes(': keep-alive')).length;
+  const arrivals = [0, ...beforeFirstDelta.map((c) => Math.round(c.t - clickAt)), firstDeltaAt!];
+  const maxSilenceBeforeFirstDelta = Math.max(...arrivals.slice(1).map((t, i) => t - arrivals[i]!));
+  expect(maxSilenceBeforeFirstDelta).toBeLessThan(TIMEOUTS.generationIdleMs);
+  if (firstDeltaAt! > 30_000) expect(heartbeats).toBeGreaterThanOrEqual(1);
   // 文章只有一段正文时，要到最后一个正文分块才算读到完整段落
   if (firstParagraphAt === null && hasReadableParagraph(markdown, true)) firstParagraphAt = lastDeltaAt;
   if (EXPECT_MODEL) {
@@ -170,6 +179,8 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
         transcript: meta!.transcript,
         sourceAt,
         articleLengthAtSource,
+        heartbeatsBeforeFirstDelta: heartbeats,
+        maxSilenceBeforeFirstDelta,
         firstDeltaAt,
         firstParagraphAt,
         serverTiming: done!.timing,
@@ -185,5 +196,6 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
       2,
     ),
   );
+  console.log(`首个正文前收到心跳 ${heartbeats} 次，最长无字节间隔 ${maxSilenceBeforeFirstDelta} ms；`);
   console.log(`来源面板 ${sourceAt} ms（此时正文 ${articleLengthAtSource} 字）；第一个正文分块 ${firstDeltaAt} ms；第一段可读正文 ${firstParagraphAt} ms；服务端模型结束 ${done!.timing.modelDoneMs} ms；保存 ${done!.timing.savedMs} ms；${count} 章；5W1H 用时 ${summaries.map((s) => s.ms).join(' / ')} ms`);
 });

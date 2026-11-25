@@ -14,6 +14,8 @@ export interface UpstreamOptions {
   geminiJson?: object;
   /** 这些模型的 Gemini 请求一律返回 503（模拟持续繁忙） */
   busyModels?: string[];
+  /** 这些模型的 Gemini 请求一律返回 402（预付额度用完，2026-11-25 实际遇到的响应） */
+  billingModels?: string[];
 }
 
 export interface UpstreamCall {
@@ -32,6 +34,9 @@ export function mockUpstream(options: UpstreamOptions) {
       return typeof player === 'number' ? new Response('', { status: player }) : Response.json(player);
     }
     if (url.startsWith('https://www.youtube.com/api/timedtext')) return new Response(options.captions ?? srv1([[0, 'live caption text']]));
+    if (options.billingModels?.some((model) => url.includes(`/models/${model}:`))) {
+      return Response.json({ error: { code: 402, message: 'Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.', status: 'RESOURCE_EXHAUSTED' } }, { status: 402 });
+    }
     if (options.busyModels?.some((model) => url.includes(`/models/${model}:`))) {
       return Response.json({ error: { code: 503, message: 'The model is overloaded.', status: 'UNAVAILABLE' } }, { status: 503 });
     }

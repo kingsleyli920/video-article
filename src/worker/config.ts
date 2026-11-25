@@ -1,5 +1,5 @@
 import { AppError } from './app-error';
-import { geminiTimeouts, type GeminiOptions } from './gemini';
+import { geminiTimeouts, type FallbackConfig, type GeminiOptions } from './gemini';
 import { transcriptTimeouts, type TranscriptOptions } from './youtube';
 
 /** 应用运行配置只来自 Worker 环境：GEMINI_API_KEY 是 secret，模型名和思考强度是 vars。 */
@@ -31,9 +31,13 @@ export function timeoutScale(env: Env): number {
 /**
  * 备用模型：主模型在开始输出之前持续繁忙（503 重试后仍失败，或首个分块超时）时，改用它完成这一次请求。
  * 只在还没有任何输出时切换，不会把两个模型的输出拼成一篇。没配置或和主模型相同时返回 null。
+ * 备用模型用自己的思考档（GEMINI_FALLBACK_THINKING_LEVEL）：主模型改成 high 之后，备用模型仍按验证过的 low 运行，
+ * 不沿用主模型的思考档。
  */
-export function fallbackModel(env: Env): string | null {
+export function fallbackConfig(env: Env): FallbackConfig | null {
   const fallback: string = env.GEMINI_FALLBACK_MODEL ?? '';
   const primary: string = env.GEMINI_MODEL;
-  return fallback && fallback !== primary ? fallback : null;
+  if (!fallback || fallback === primary) return null;
+  const thinkingLevel: string = env.GEMINI_FALLBACK_THINKING_LEVEL ?? '';
+  return { model: fallback, ...(thinkingLevel ? { thinkingLevel } : {}) };
 }

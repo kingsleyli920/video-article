@@ -248,6 +248,8 @@ describe('外部取消', () => {
 describe('classifyHttpError', () => {
   it.each([
     [429, '{"error":{"message":"Resource has been exhausted"}}', 'gemini_quota'],
+    [402, '{"error":{"code":402,"message":"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.","status":"RESOURCE_EXHAUSTED"}}', 'gemini_billing'],
+    [429, '{"error":{"message":"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing."}}', 'gemini_billing'],
     [400, '{"error":{"message":"User location is not supported for the API use."}}', 'gemini_region'],
     [400, '{"error":{"message":"API key not valid. Please pass a valid API key."}}', 'gemini_error'],
     [503, 'not json', 'gemini_busy'],

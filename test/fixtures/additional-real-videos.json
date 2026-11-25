@@ -1,0 +1,180 @@
+{
+  "note": "补充验收采用的真实视频案例，取自 2026-11-25 的补充案例池（xvc-additional-test-cases.json，schema 1.1），只保留实际执行或计划执行的案例。字幕以生产代码实时取到的为准，检查点里的数字只有出现在实际字幕里时才作为必须保留的事实。结果和证据见 docs/ADDITIONAL_ACCEPTANCE.md。",
+  "cases": [
+    {
+      "id": "V01",
+      "videoId": "USLudgP7o-w",
+      "url": "https://www.youtube.com/watch?v=USLudgP7o-w",
+      "title": "Hear vs Listen – English In A Minute",
+      "channel": "BBC Learning English",
+      "genre": "英语教学短片",
+      "priority": "P0",
+      "instructions": "给英语初学者写不超过300字的中文学习笔记，只用一个章节；保留 hear、listen 及视频中的例句，不新增用法。",
+      "checks": [
+        "短字幕可形成简短完整文章，不凑长文、不虚构主持人。",
+        "保留 hear 与主动留意声音的 listen 的区别；不得把 listen to 错写为 listen 的唯一形式。",
+        "例句仅可来自实际字幕；5W1H 未说明的时间、地点应保持未知。"
+      ]
+    },
+    {
+      "id": "V02",
+      "videoId": "xKxrkht7CpY",
+      "url": "https://www.youtube.com/watch?v=xKxrkht7CpY",
+      "title": "How do solar panels work? – Richard Komp",
+      "channel": "TED-Ed",
+      "genre": "动画科普",
+      "priority": "P0",
+      "instructions": "面向非理工读者，分能源规模、发电原理两章，全文不超过600字；保留字幕中的数值与单位，不补回本分析或投资建议。",
+      "checks": [
+        "实际字幕若出现 173,000 terawatts，应换算为17.3万太瓦，不得改变能量/功率对象与单位。",
+        "实际字幕若出现10,000倍，应保留比较对象，不能变成发电效率。",
+        "署名作者、动画制作与配音身份不能自动当成访谈中的发言者；无明确姓名可用讲解者。"
+      ]
+    },
+    {
+      "id": "V06",
+      "videoId": "arj7oStGLkU",
+      "url": "https://www.youtube.com/watch?v=arj7oStGLkU",
+      "title": "Inside the Mind of a Master Procrastinator | Tim Urban | TED",
+      "channel": "TED",
+      "genre": "个人主题演讲",
+      "priority": "P0",
+      "instructions": "",
+      "checks": [
+        "本例首轮不填写生成要求，用于验证默认中文文章、章节结构与真实发言归属；单人演讲不虚构第二个采访者。",
+        "即时满足的猴子、恐慌怪兽是比喻，不是脑结构或临床诊断。",
+        "区分有截止日期与无截止日期的拖延。",
+        "若字幕包含人生周历，周与天不能互换；示意寿命不得写成统计平均值。"
+      ]
+    },
+    {
+      "id": "V07",
+      "videoId": "D9Ihs241zeg",
+      "url": "https://www.youtube.com/watch?v=D9Ihs241zeg",
+      "title": "Chimamanda Ngozi Adichie: The Danger of a Single Story | TED",
+      "channel": "TED",
+      "genre": "文学与社会主题演讲",
+      "priority": "P0",
+      "instructions": "给大学新生写三章、最多1200字的中文阅读笔记，每章用演讲中的故事支撑观点；保留转述与不确定性，不虚构主持人，不补讲者其他作品。",
+      "checks": [
+        "如果涉及开始阅读的年龄，保留母亲的说法与讲者自己估计的区别，不把不确定叙述改成确定事实。",
+        "片面叙述或刻板印象不等于所有描述全是假的。",
+        "个人经历不能概括为整个国家或群体的普遍事实。",
+        "故事人物的话与讲者自己的观点不串位。"
+      ]
+    },
+    {
+      "id": "V08",
+      "videoId": "aircAruvnKk",
+      "url": "https://www.youtube.com/watch?v=aircAruvnKk",
+      "title": "But what is a neural network? | Deep learning chapter 1",
+      "channel": "3Blue1Brown",
+      "genre": "技术动画讲解",
+      "priority": "P0",
+      "instructions": "面向有高中数学基础的读者，按网络结构、信息传递、激活函数三章写中文笔记，最多1500字；保留字幕讲出的示例数字，不加代码或其他网络架构。",
+      "checks": [
+        "实际字幕若包含28×28=784、10个输出及隐藏层规模，分别核对对象，不能混用。",
+        "权重与偏置总数只有字幕明确说出时才要求保留，不根据画面/网站额外推算后塞进正文。",
+        "如果选中字幕包含结尾 Lisha Li 的发言，不能全部归给主讲者。",
+        "不能把简化示例写成所有神经网络的固定结构。"
+      ]
+    },
+    {
+      "id": "V09",
+      "videoId": "WUvTyaaNkzM",
+      "url": "https://www.youtube.com/watch?v=WUvTyaaNkzM",
+      "title": "The essence of calculus",
+      "channel": "3Blue1Brown",
+      "genre": "数学动画讲解",
+      "priority": "P1",
+      "instructions": "给高中生写三章、最多1200字的中文笔记；保留字幕明确讲出的公式，区分近似与极限，不补字幕未说明的图形细节。",
+      "checks": [
+        "圆周长、薄圆环面积近似、圆面积不可混淆。",
+        "有限宽度近似不得误写为无条件严格等式。",
+        "官网半径例子不同，必须以实际视频字幕为准，不能拿网站例子的半径反判视频错。",
+        "图示未被口头描述时，不编完整几何过程。"
+      ]
+    },
+    {
+      "id": "V12",
+      "videoId": "UK8ccWSZkic",
+      "url": "https://www.youtube.com/watch?v=UK8ccWSZkic",
+      "title": "Debate: Does the world need nuclear energy?",
+      "channel": "TED / Stewart Brand and Mark Z. Jacobson",
+      "genre": "多人辩论",
+      "priority": "P0",
+      "instructions": "最多1200字，按支持理由、反对理由、争议焦点三章整理；区分发言者，不替双方裁定谁正确，不补今天的政策或技术进展。",
+      "checks": [
+        "相反观点不能合并成双方共识。",
+        "数字和主张按实际发言者归属，不从文章章节名推断发言人。",
+        "主持人的提问不能写入嘉宾立场。",
+        "保留主张中的条件与不确定性；5W1H 的 Who 不漏掉本章实质参与者。"
+      ]
+    },
+    {
+      "id": "V13",
+      "videoId": "PHe0bXAIuk0",
+      "url": "https://www.youtube.com/watch?v=PHe0bXAIuk0",
+      "title": "How The Economic Machine Works by Ray Dalio",
+      "channel": "Principles by Ray Dalio",
+      "genre": "经济原理动画讲解",
+      "priority": "P0",
+      "instructions": "面向大学生，写三章、最多1500字的中文经济学笔记；保留货币、信用、收入、债务的区别，金额和比例按字幕，不补投资建议。",
+      "checks": [
+        "不同经济量和主体不能互换，收入不等于利润、债务不等于货币。",
+        "示例中的金额、比例与条件保留，不能写成现实最新统计。",
+        "保留讲者框架的归属，不冒充现实个体的投资建议。"
+      ]
+    },
+    {
+      "id": "V14",
+      "videoId": "qXcH26M7PQM",
+      "url": "https://www.youtube.com/watch?v=qXcH26M7PQM",
+      "title": "Is Reality a Controlled Hallucination? – with Anil Seth",
+      "channel": "The Royal Institution",
+      "genre": "科学讲座与视觉演示",
+      "priority": "P1",
+      "instructions": "写成面向高中生的中文科普文章，分清讲者提出的解释与实验观察；涉及视觉演示时，只写字幕明确描述的部分，不根据常识补画面。",
+      "checks": [
+        "解释框架与实验观察、已确认事实不能混为一谈。",
+        "不能把 controlled hallucination 扩写为科学已证明外部世界不存在。",
+        "字幕没描述的视觉错觉画面不补。",
+        "不从官方另一个 Q&A 视频混入本片内容。"
+      ]
+    },
+    {
+      "id": "V15",
+      "videoId": "vHYeChEf2lA",
+      "url": "https://www.youtube.com/watch?v=vHYeChEf2lA",
+      "title": "CS50 SQL — Lecture 0 / Querying",
+      "channel": "Harvard CS50 / Carter Zenke",
+      "genre": "长课程与代码演示",
+      "priority": "P0",
+      "instructions": "给 SQL 初学者整理中文课程笔记，按查询、筛选、排序与聚合组织；只列字幕明确说出的代码和结果，不猜屏幕代码；保留学生提问与讲师回答的归属。",
+      "checks": [
+        "主讲者为 Carter Zenke，不能因为 CS50 就写成 David Malan。",
+        "COUNT(*) 的78行、译者字段的76个非空值、COUNT(DISTINCT publisher) 的33个不同值要分清；非空值不等于不同译者人数。",
+        "对标题做 MAX/MIN 的示例按字母顺序，不是字符串长度。",
+        "演示拼写错误不当作正确列名，.quit 不误称 SQL 语法。",
+        "这些精确核对点以实际选中字幕包含的内容为准，不能从外部参考把字幕缺失内容补入输出。"
+      ]
+    },
+    {
+      "id": "V17",
+      "videoId": "rfscVS0vtbw",
+      "url": "https://www.youtube.com/watch?v=rfscVS0vtbw",
+      "title": "Learn Python – Full Course for Beginners [Tutorial]",
+      "channel": "freeCodeCamp.org / Mike Dane",
+      "genre": "完整编程教程",
+      "priority": "P2",
+      "instructions": "只整理函数、循环、类与对象，最多1800字；不补画面里未被字幕讲出的代码，不推断程序输出。",
+      "checks": [
+        "先用当前生产预处理计算字符数；在上限内才生成，超上限应在调用 Gemini 前明确拒绝。",
+        "不能仅因4小时以上就判断输入超限。",
+        "若在范围内，检查后段类与对象等内容没有被前半段挤掉。",
+        "只保留要求的话题，不把整门课程概要塞入1800字。",
+        "不能把未口述的屏幕代码完整重建后当成字幕事实。"
+      ]
+    }
+  ]
+}

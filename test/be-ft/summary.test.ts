@@ -63,6 +63,17 @@ describe('POST /api/generations/:id/chapters/:chapterId/summary', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ chapterId: '2', cached: false, summary: { ...SUMMARY, when: null } });
     expect(upstream.gemini().map((c) => c.url.split('/models/')[1]!.split(':')[0])).toEqual(['test-model', 'test-model', 'test-fallback']);
+    expect(upstream.gemini().map((c) => JSON.parse(c.body).generationConfig.thinkingConfig)).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'high' }, { thinkingLevel: 'low' }]);
+  });
+
+  // 抓：5W1H 遇到 402 时重试或换备用模型
+  it('主模型返回 402（预付额度用完）：只请求一次，不换备用模型，返回 gemini_billing', async () => {
+    const { generationId } = await savedGeneration();
+    const upstream = mockUpstream({ billingModels: ['test-model', 'test-fallback'], geminiJson: geminiJson(SUMMARY) });
+    const res = await summarize(generationId, '2');
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: { code: 'gemini_billing', message: 'Gemini 账户的预付额度已用完，暂时无法生成' } });
+    expect(upstream.gemini().map((c) => c.url.split('/models/')[1]!.split(':')[0])).toEqual(['test-model']);
   });
 
   // 抓：前端把整篇文章塞进请求体也被接受

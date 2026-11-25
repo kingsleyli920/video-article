@@ -134,6 +134,16 @@ describe('POST /api/generations', () => {
     expect(eventOf(events, 'done')!.model).toBe('test-fallback');
     expect(events.filter((e) => e.event === 'delta').map((e) => (e.data as { text: string }).text).join('')).toBe(ARTICLE_MARKDOWN);
     expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.model).toBe('test-fallback');
+    // 主模型用 high；备用模型用它自己经过验证的思考档 low，不沿用主模型的 high
+    expect(upstream.gemini().map((c) => JSON.parse(c.body).generationConfig.thinkingConfig)).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'high' }, { thinkingLevel: 'low' }]);
+  });
+
+  // 抓：预付额度用完（402）时重试或换同一账单下的备用模型，或者只报"调用失败"让人看不出原因
+  it('主模型返回 402（预付额度用完）：只请求一次，不重试、不换备用模型，报 gemini_billing', async () => {
+    const upstream = mockUpstream({ billingModels: ['test-model', 'test-fallback'], geminiStream: geminiSse(ARTICLE_TEXTS) });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    expect(upstream.gemini().map((c) => c.url.split('/models/')[1]!.split(':')[0])).toEqual(['test-model']);
+    expect(events.at(-1)).toEqual({ event: 'error', data: { code: 'gemini_billing', message: 'Gemini 账户的预付额度已用完，暂时无法生成', partial: false } });
   });
 
   // 抓：主模型写到一半出错后换模型重写，两个模型的输出拼成一篇
