@@ -86,6 +86,8 @@ test('示例视频：实时字幕 → 流式文章 → 保存 → 章节 5W1H', 
   }
   expect(done).not.toBeNull();
   expect(firstDeltaAt).not.toBeNull();
+  // 页面显示的字数和服务端按统一口径算出的一致
+  await expect(status).toContainText(`${done!.chars} 字`);
   expect(firstDeltaAt!).toBeLessThan(done!.timing.modelDoneMs - 5_000);
   const growing = samples.filter(([, n], i) => i > 0 && n > samples[i - 1]![1]);
   expect(growing.length).toBeGreaterThanOrEqual(3);
@@ -122,7 +124,7 @@ test('示例视频：实时字幕 → 流式文章 → 保存 → 章节 5W1H', 
   writeFileSync(testInfo.outputPath('article.md'), markdown);
   writeFileSync(
     testInfo.outputPath('evidence.json'),
-    JSON.stringify({ transcript: meta?.transcript, model: meta?.model, firstDeltaAt, serverTiming: done!.timing, chapters: done!.chapters, samples, summaryChapterId: '2', summary: rows, chunkCount: chunks.length }, null, 2),
+    JSON.stringify({ generationId: meta?.generationId, transcript: meta?.transcript, model: meta?.model, firstDeltaAt, serverTiming: done!.timing, chars: done!.chars, chapters: done!.chapters, samples, summaryChapterId: '2', summary: rows, chunkCount: chunks.length }, null, 2),
   );
   console.log(`第一段正文到达浏览器 ${firstDeltaAt} ms；服务端模型结束 ${done!.timing.modelDoneMs} ms；共 ${chunks.length} 个分块，${chapterCount} 章`);
 });
