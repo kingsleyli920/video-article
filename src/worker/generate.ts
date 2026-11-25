@@ -97,7 +97,9 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     let lastDeltaMs: number | null = null;
     const stats: GeminiStats = {};
     const prompt = articlePrompt({ video: transcript.video, transcriptText, instructions: input.instructions });
-    const write = (model: string, thinkingLevel = gemini.thinkingLevel) =>
+    // 思考档由调用方明确给出，不设默认值：备用模型没配思考档时传进来的是 undefined，请求里就不带 thinkingConfig，
+    // 不会悄悄用回主模型的档位
+    const write = (model: string, thinkingLevel: string | undefined) =>
       streamText(
         { ...gemini, model, thinkingLevel },
         prompt,
@@ -115,7 +117,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     let model = gemini.model;
     let finishReason: string | null;
     try {
-      finishReason = await write(model);
+      finishReason = await write(model, gemini.thinkingLevel);
     } catch (err) {
       // 主模型还没输出任何内容就持续繁忙：整篇改用备用模型。已经有输出时不换，避免拼接两个模型的输出
       const fallback = fallbackConfig(env);

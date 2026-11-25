@@ -14,11 +14,12 @@ const SUMMARY = { who: '甲', what: '乙', when: '', where: '', why: '', how: ''
 type Behavior = 'hang' | 'ok' | 503 | 400 | 402;
 
 /** 按模型名返回预设行为；hang 表示一直不响应，但和真实 fetch 一样在中止时抛出 */
-function upstream(byModel: Record<string, Behavior>) {
+function upstream(byModel: Record<string, Behavior>, bodies: string[] = []) {
   const calls: string[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     const model = String(input).split('/').pop()!.split(':')[0]!;
     calls.push(model);
+    bodies.push(String(init?.body ?? ''));
     const behavior = byModel[model];
     if (behavior === 'ok') return Promise.resolve(Response.json(geminiJson(SUMMARY)));
     if (behavior === 503) return Promise.resolve(Response.json({ error: { code: 503, message: 'overloaded' } }, { status: 503 }));
@@ -102,6 +103,15 @@ describe('5W1H 主备模型的总预算', () => {
     const { error } = await timed(generateSummaryJson(OPTIONS, FALLBACK, PROMPT, {}, summaryBudget(0.01)));
     expect(error?.code).toBe('gemini_billing');
     expect(calls).toEqual(['primary-model']);
+  });
+
+  // 抓：备用模型没有配置思考档时，5W1H 的备用请求沿用主模型的 high
+  it('备用模型没有配置思考档时，备用请求不带 thinkingConfig', async () => {
+    const bodies: string[] = [];
+    upstream({ 'primary-model': 503, 'fallback-model': 'ok' }, bodies);
+    const { value } = await timed(generateSummaryJson(OPTIONS, { model: 'fallback-model' }, PROMPT, {}, { serverBudgetMs: 10_000, primaryMs: 8_000, minFallbackMs: 1_000 }));
+    expect(value?.model).toBe('fallback-model');
+    expect(bodies.map((body) => JSON.parse(body).generationConfig.thinkingConfig)).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'high' }, undefined]);
   });
 
   it('没有配置备用模型时，主模型繁忙直接报 gemini_busy', async () => {

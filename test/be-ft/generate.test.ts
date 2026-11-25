@@ -1,6 +1,8 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LIMITS } from '../../src/shared/limits';
+import { readSse } from '../../src/shared/sse';
+import { handleGenerate } from '../../src/worker/generate';
 import { GenerationStore, openStore } from '../../src/worker/store';
 import { ARTICLE_MARKDOWN, ARTICLE_TEXTS, geminiJson, OTHER_VIDEO_ID, playerResponse, SAMPLE_VIDEO_ID, srv1 } from '../fixtures/upstream';
 import { eventOf, generate, geminiSse, mockUpstream } from './helpers';
@@ -136,6 +138,30 @@ describe('POST /api/generations', () => {
     expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.model).toBe('test-fallback');
     // 主模型用 high；备用模型用它自己经过验证的思考档 low，不沿用主模型的 high
     expect(upstream.gemini().map((c) => JSON.parse(c.body).generationConfig.thinkingConfig)).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'high' }, { thinkingLevel: 'low' }]);
+  });
+
+  // 抓：备用模型没有配置思考档时，请求里又带上了主模型的 high（实际请求和日志里记的 null 不一致）
+  it('备用模型没有配置思考档时，备用请求不带 thinkingConfig，不沿用主模型的 high', async () => {
+    const upstream = mockUpstream({ busyModels: ['test-model'], geminiStream: geminiSse(ARTICLE_TEXTS) });
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (work: Promise<unknown>) => void pending.push(work), passThroughOnException: () => {} } as unknown as ExecutionContext;
+    const request = new Request('https://app.test/api/generations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: url(OTHER_VIDEO_ID) }),
+    });
+    const res = await handleGenerate(request, { ...env, GEMINI_FALLBACK_THINKING_LEVEL: '' } as unknown as Env, ctx);
+    const events: { event: string; data: { model?: string } }[] = [];
+    for await (const message of readSse(res.body!)) events.push({ event: message.event, data: JSON.parse(message.data) });
+    await Promise.all(pending);
+
+    expect(events.at(-1)).toMatchObject({ event: 'done', data: { model: 'test-fallback' } });
+    const requests = upstream.gemini().map((c) => ({ model: c.url.split('/models/')[1]!.split(':')[0], thinkingConfig: JSON.parse(c.body).generationConfig.thinkingConfig }));
+    expect(requests).toEqual([
+      { model: 'test-model', thinkingConfig: { thinkingLevel: 'high' } },
+      { model: 'test-model', thinkingConfig: { thinkingLevel: 'high' } },
+      { model: 'test-fallback', thinkingConfig: undefined },
+    ]);
   });
 
   // 抓：预付额度用完（402）时重试或换同一账单下的备用模型，或者只报"调用失败"让人看不出原因
