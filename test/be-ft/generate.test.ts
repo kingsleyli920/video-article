@@ -1,5 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LIMITS } from '../../src/shared/limits';
 import { GenerationStore, openStore } from '../../src/worker/store';
 import { ARTICLE_MARKDOWN, ARTICLE_TEXTS, geminiJson, OTHER_VIDEO_ID, playerResponse, SAMPLE_VIDEO_ID, srv1 } from '../fixtures/upstream';
 import { eventOf, generate, geminiSse, mockUpstream } from './helpers';
@@ -240,6 +241,31 @@ describe('POST /api/generations', () => {
     expect(upstreamCancelled).toBe(true);
     expect(save).not.toHaveBeenCalled();
     expect(await openStore(env, generationId).load()).toBeNull();
+  });
+
+  // 补充验收 C01 抓：上限按视频时长或原始字幕长度判断，而不是按整理后交给模型的文本；等于上限时被误拒，超出 1 个字符时仍调用 Gemini。
+  // 整理后的文本是 "[00:00] " 加一条字幕原文，长度 = 8 + 原文长度；上限 L 取自生产常量 LIMITS.transcriptChars。
+  it.each([
+    ['L-1', -1, '600', true],
+    ['L', 0, '600', true],
+    ['L+1', 1, '600', false],
+    ['L（视频时长 13.9 小时）', 0, '50000', true],
+  ])('整理后正好 %s 个字符：上限内继续生成，超出时在调用 Gemini 前报 transcript_too_long', async (_label, delta, lengthSeconds, allowed) => {
+    const L = LIMITS.transcriptChars;
+    const text = 'abcdefghij'.repeat(Math.ceil(L / 10)).slice(0, L - 8 + delta);
+    const player = playerResponse();
+    player.videoDetails.lengthSeconds = lengthSeconds;
+    const upstream = mockUpstream({ player, captions: srv1([[0, text]]), geminiStream: geminiSse(ARTICLE_TEXTS) });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    if (allowed) {
+      expect(eventOf(events, 'meta')!.transcript.chars).toBe(L + delta);
+      expect(eventOf(events, 'done')).toBeDefined();
+      expect(upstream.gemini()).toHaveLength(1);
+    } else {
+      expect(eventOf(events, 'meta')).toBeUndefined();
+      expect(eventOf(events, 'error')).toEqual({ code: 'transcript_too_long', message: '字幕过长，超过支持的上限（300001 字符，上限 300000）', partial: false });
+      expect(upstream.gemini()).toHaveLength(0);
+    }
   });
 
   it('字幕超过上限时报 transcript_too_long，不调用 Gemini', async () => {

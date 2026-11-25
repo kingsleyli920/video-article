@@ -39,6 +39,27 @@ describe('fetchTranscript', () => {
   });
 
   // 抓：YouTube 人机验证被当成"视频不存在"，用户看不出是被拦截
+  // 补充验收预检 V08 抓：播放器数据里的默认音轨信息没有传给选轨，原声英语视频仍取到阿拉伯语字幕
+  it('按播放器数据里的默认音轨选原声语言的字幕轨', async () => {
+    const tracks = [
+      { baseUrl: 'https://www.youtube.com/api/timedtext?v=x&lang=ar&fmt=srv3', languageCode: 'ar', vssId: '.ar' },
+      { baseUrl: 'https://www.youtube.com/api/timedtext?v=x&lang=en&fmt=srv3', languageCode: 'en', vssId: '.en', name: { runs: [{ text: 'English' }] } },
+      { baseUrl: 'https://www.youtube.com/api/timedtext?v=x&lang=en&kind=asr&variant=gemini&fmt=srv3', languageCode: 'en', kind: 'asr', vssId: 'a.en' },
+    ];
+    const player = playerResponse({ tracks }) as ReturnType<typeof playerResponse> & { captions: { playerCaptionsTracklistRenderer: Record<string, unknown> } };
+    Object.assign(player.captions.playerCaptionsTracklistRenderer, {
+      audioTracks: [{ audioTrackId: 'hi.3', defaultCaptionTrackIndex: 0 }, { audioTrackId: 'en-US.4', defaultCaptionTrackIndex: 1 }],
+      defaultAudioTrackIndex: 1,
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json(player))
+      .mockResolvedValueOnce(new Response(srv1([[0, 'hello']])));
+    const transcript = await fetchTranscript('aircAruvnKk');
+    expect([transcript.language, transcript.kind, transcript.trackVssId]).toEqual(['en', 'manual', '.en']);
+    expect(String(fetchSpy.mock.calls[1]![0])).toBe('https://www.youtube.com/api/timedtext?v=x&lang=en&fmt=srv1');
+  });
+
   it('LOGIN_REQUIRED 且原因是 bot 验证时报 youtube_blocked', async () => {
     mockYouTube(playerResponse({ status: 'LOGIN_REQUIRED', reason: "Sign in to confirm you're not a bot" }), '');
     await expect(fetchTranscript('xRh2sVcNXQ8')).rejects.toMatchObject({ code: 'youtube_blocked' });
@@ -87,6 +108,43 @@ describe('pickTrack', () => {
 
   it('全是变体轨时返回 null', () => {
     expect(pickTrack([track('fr', 'asr', true)])).toBeNull();
+  });
+
+  // 以下几种轨道结构取自 2026-11-25 补充验收预检时 YouTube 实际返回的播放器数据（只保留语言、类型和变体参数）
+  const real = (languageCode: string, kind?: 'asr', variant?: string): CaptionTrack => ({
+    baseUrl: `https://www.youtube.com/api/timedtext?lang=${languageCode}${kind ? `&kind=${kind}` : ''}${variant ? `&variant=${variant}` : ''}`,
+    languageCode,
+    kind,
+  });
+
+  // 补充验收预检 V08、V09 抓：原声英语的自动识别轨带 variant=gemini 被排除后，按排序选中了阿拉伯语人工字幕
+  it('3Blue1Brown 型：原声自动识别轨带变体参数时，按默认音轨（en-US）选英语人工字幕', () => {
+    const tracks = [real('ar'), real('bn'), real('zh'), real('en'), real('en', 'asr', 'gemini')];
+    expect(pickTrack(tracks, { audioTrackId: 'en-US.4', defaultCaptionTrackIndex: 3 })).toBe(tracks[3]);
+  });
+
+  // 补充验收预检 V14 抓：唯一的字幕轨是原声英语自动识别轨、带 variant=gemini，被误判为没有字幕
+  it('Royal Institution 型：只有带变体参数的原声自动识别轨时选它，不报无字幕', () => {
+    const tracks = [real('en', 'asr', 'gemini')];
+    expect(pickTrack(tracks, { audioTrackId: 'en-US.4' })).toBe(tracks[0]);
+  });
+
+  // 补充验收预检 V17 抓：没有自动识别轨时直接选第一条人工字幕（阿拉伯语）
+  it('freeCodeCamp 型：没有自动识别轨时按默认音轨（en）选英语人工字幕', () => {
+    const tracks = [real('ar'), real('bg'), real('zh-CN'), real('en'), real('iw')];
+    expect(pickTrack(tracks, { audioTrackId: 'en.4', defaultCaptionTrackIndex: 3 })).toBe(tracks[3]);
+  });
+
+  // 抓：没有音轨编号、也没有自动识别轨时无从判断原声
+  it('BBC 型：只有默认字幕轨信息时按它的语言选（en-GB）', () => {
+    const tracks = [real('de'), real('en-GB')];
+    expect(pickTrack(tracks, { defaultCaptionTrackIndex: 1 })).toBe(tracks[1]);
+  });
+
+  // 抓：其他语言的配音轨（variant=timing-optimized）被当成原声；示例视频选中的轨道必须和以前一样（英语自动识别轨）
+  it('示例视频型：配音轨带 timing-optimized 时仍选原声英语自动识别轨', () => {
+    const tracks = [real('ar', 'asr', 'timing-optimized'), real('bn', 'asr', 'timing-optimized'), real('en', 'asr'), real('fr-FR', 'asr', 'timing-optimized')];
+    expect(pickTrack(tracks, { audioTrackId: 'en-US.4' })).toBe(tracks[2]);
   });
 });
 
@@ -158,6 +216,48 @@ describe('parseSrv1 / formatTranscript', () => {
     ]);
     expect(prepared.text).toBe('[00:00] it was 1\n\n[00:00] >> 〔字幕此处数字不清，无法确定具体数量〕 more');
     expect(prepared.damagedNumbers).toEqual([{ time: '00:01', fragment: ',200', digits: '200', cue: ',200 more' }]);
+  });
+
+  // 补充验收 C02（第 1 组）抓：合法的多组千分位数被拆在两条字幕里（"12" / ",345,678"），没有拼回，或被误当成残缺
+  it('多组千分位跨两条字幕拆开时拼回原数，不记为残缺', () => {
+    const prepared = prepareTranscript([
+      { start: 0, text: '12' },
+      { start: 8_000, text: ',345,678 dollars' },
+    ]);
+    expect(prepared).toEqual({ text: '[00:00] 12,345,678 dollars', damagedNumbers: [] });
+  });
+
+  // 补充验收 C02（第 2 组）抓：带小数的金额被拆开（"$1" / ",200.50"），小数点后被截断或被误当成残缺
+  it('带小数的金额跨两条字幕拆开时拼回原数，不记为残缺', () => {
+    const prepared = prepareTranscript([
+      { start: 0, text: '$1' },
+      { start: 8_000, text: ',200.50' },
+    ]);
+    expect(prepared).toEqual({ text: '[00:00] $1,200.50', damagedNumbers: [] });
+  });
+
+  // 补充验收 C02（第 3 组）抓：同一条字幕里的残缺数字没有按遮蔽策略处理，或丢了证据
+  it('同一条字幕里的 "of,200" 遮蔽并保留证据', () => {
+    const prepared = prepareTranscript([{ start: 0, text: 'There are of,200 bills.' }]);
+    expect(prepared).toEqual({
+      text: '[00:00] There are of〔字幕此处数字不清，无法确定具体数量〕 bills.',
+      damagedNumbers: [{ time: '00:00', fragment: 'of,200', digits: '200', cue: 'There are of,200 bills.' }],
+    });
+  });
+
+  // 补充验收 C03 抓：文字相同的两句（另一位说话人的重复确认）被去重；不同事件的数字和顺序丢失；&amp; 没有还原
+  it('相同文字的重复确认按说话人分别保留，事件顺序、数字和转义字符都正确', () => {
+    const xml = srv1([
+      [0, '第一次试验耗时2天。'],
+      [8, '我们确认了结果。'],
+      [16, '&amp;gt;&amp;gt; 我们确认了结果。'],
+      [24, '第二次试验耗时3天。'],
+      [32, '条目包含 A &amp;amp; B，保留它们的区别。'],
+    ]);
+    expect(prepareTranscript(parseSrv1(xml))).toEqual({
+      text: '[00:00] 第一次试验耗时2天。 我们确认了结果。\n\n[00:16] >> 我们确认了结果。 第二次试验耗时3天。 条目包含 A & B，保留它们的区别。',
+      damagedNumbers: [],
+    });
   });
 
   it('同一人说话过长时在片段边界分段，超过一小时用 h:mm:ss', () => {

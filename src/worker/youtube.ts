@@ -34,7 +34,19 @@ export interface CaptionTrack {
 interface PlayerResponse {
   playabilityStatus?: { status?: string; reason?: string };
   videoDetails?: { title?: string; author?: string; shortDescription?: string; lengthSeconds?: string };
-  captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] } };
+  captions?: {
+    playerCaptionsTracklistRenderer?: {
+      captionTracks?: CaptionTrack[];
+      audioTracks?: DefaultAudio[];
+      defaultAudioTrackIndex?: number;
+    };
+  };
+}
+
+/** 播放器数据里的默认音轨：音轨编号带原声语言（如 "en-US.4"），并指向这条音轨的默认字幕轨 */
+export interface DefaultAudio {
+  audioTrackId?: string;
+  defaultCaptionTrackIndex?: number;
 }
 
 const PLAYER_ENDPOINT = 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false';
@@ -74,7 +86,8 @@ export function transcriptTimeouts(scale = 1): typeof TRANSCRIPT_TIMEOUTS {
 export async function fetchTranscript(videoId: string, options: TranscriptOptions = {}): Promise<Transcript> {
   const timeouts = { ...TRANSCRIPT_TIMEOUTS, ...options.timeouts };
   const player = await withDeadline('读取视频信息', timeouts.playerMs, options.signal, (signal) => fetchPlayer(videoId, signal, options.playerEndpoint ?? PLAYER_ENDPOINT));
-  const track = pickTrack(player.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? []);
+  const renderer = player.captions?.playerCaptionsTracklistRenderer;
+  const track = pickTrack(renderer?.captionTracks ?? [], renderer?.audioTracks?.[renderer.defaultAudioTrackIndex ?? 0] ?? {});
   if (!track) throw new AppError('no_captions');
 
   const xml = await withDeadline('下载字幕', timeouts.captionsMs, options.signal, async (signal) => {
@@ -159,15 +172,26 @@ async function request(url: string, init: RequestInit): Promise<Response> {
 }
 
 /**
- * 选字幕轨：排除自动配音的变体轨（地址带 variant），
- * 优先选与原声（自动识别轨）同语言的人工字幕，其次是自动识别轨，最后是任意人工字幕。
+ * 选字幕轨：先确定原声语言，再在同语言的轨道里按"人工字幕 → 不带变体参数的自动识别 → 带变体参数的自动识别"选。
+ *
+ * 原声语言依次看：默认音轨的编号（"en-US.4" → en）、不带变体参数的自动识别轨、默认音轨的默认字幕轨。
+ * 地址带 variant 的轨道不能一概排除：自动配音轨带 variant=timing-optimized，但有些视频的原声自动识别轨也带
+ * variant=gemini（2026-11-25 预检：3Blue1Brown、Royal Institution），排除后会选到排在前面的阿拉伯语人工字幕，
+ * 或者误报没有字幕。判断不出原声时，选第一条不带变体参数的人工字幕或自动识别轨。
  */
-export function pickTrack(tracks: CaptionTrack[]): CaptionTrack | null {
-  const usable = tracks.filter((t) => !/[?&]variant=/.test(t.baseUrl));
-  const asr = usable.find((t) => t.kind === 'asr');
-  const manual = usable.filter((t) => t.kind !== 'asr');
-  const spoken = asr && baseLang(asr.languageCode);
-  return manual.find((t) => baseLang(t.languageCode) === spoken) ?? asr ?? manual[0] ?? null;
+export function pickTrack(tracks: CaptionTrack[], audio: DefaultAudio = {}): CaptionTrack | null {
+  const variant = (t: CaptionTrack) => /[?&]variant=/.test(t.baseUrl);
+  const asr = (t: CaptionTrack) => t.kind === 'asr';
+  const fromAudio = audio.audioTrackId ? baseLang(audio.audioTrackId.split('.')[0]!) : '';
+  const fromAsr = tracks.find((t) => asr(t) && !variant(t));
+  const fromDefault = audio.defaultCaptionTrackIndex === undefined ? undefined : tracks[audio.defaultCaptionTrackIndex];
+  const spoken = fromAudio || (fromAsr && baseLang(fromAsr.languageCode)) || (fromDefault && baseLang(fromDefault.languageCode));
+  if (spoken) {
+    const same = tracks.filter((t) => baseLang(t.languageCode) === spoken);
+    const chosen = same.find((t) => !asr(t) && !variant(t)) ?? same.find((t) => asr(t) && !variant(t)) ?? same.find(asr) ?? same[0];
+    if (chosen) return chosen;
+  }
+  return tracks.find((t) => !asr(t) && !variant(t)) ?? tracks.find((t) => !variant(t)) ?? null;
 }
 
 function baseLang(code: string): string {
@@ -233,11 +257,14 @@ export interface PreparedTranscript {
  */
 const DAMAGED_NUMBER = /(?<![\d,]),(\d{3})(?![\d,])/g;
 
+/** 被拆到下一条字幕开头的千分位部分：一组或多组 ",ddd"，可带小数 */
+const CONTINUED_NUMBER = /^,\d{3}(?:,\d{3})*(?:\.\d+)?(?![\d,])/;
+
 /**
  * 把字幕片段整理成给模型读的正文：每段以 [时间] 开头；
  * 自动字幕里的 ">>" 表示换人说话，在这里另起一段并保留标记；同一人说得太长时在片段边界分段。
  * 残缺数字换成占位，原始片段记进 damagedNumbers。合法数字被拆在相邻两条字幕里（前一条以数字结尾、
- * 后一条以 ",200" 开头）时拼回去（"1,200"），不当成残缺。
+ * 后一条以 ",200"、",345,678" 或 ",200.50" 开头）时拼回去（"1,200"、"12,345,678"、"$1,200.50"），不当成残缺。
  */
 export function prepareTranscript(cues: Cue[]): PreparedTranscript {
   const paragraphs: string[] = [];
@@ -258,8 +285,8 @@ export function prepareTranscript(cues: Cue[]): PreparedTranscript {
   for (const cue of cues) {
     cue.text.split('>>').forEach((rawPiece, i) => {
       const piece = rawPiece.trim();
-      // 同一人连续说话、上一条以数字结尾、这一条以 ",ddd" 开头：同一个数被拆开了
-      const continues = i === 0 && current !== null && /\d$/.test(previous) && /^,\d{3}(?![\d,])/.test(piece);
+      // 同一人连续说话、上一条以数字结尾、这一条以完整的千分位开头（",200"、",345,678"、",200.50"）：同一个数被拆开了
+      const continues = i === 0 && current !== null && /\d$/.test(previous) && CONTINUED_NUMBER.test(piece);
       if (i > 0) {
         open(cue.start, true);
         // 换人说话：上一位说话人末尾的数字不能和后面的内容拼接，也不能进入残缺片段的证据；">>" 后面暂时没有文字时也要清掉
