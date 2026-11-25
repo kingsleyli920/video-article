@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": { "lib": ["es2023", "dom", "dom.iterable"], "types": [] },
-  "include": ["src/client/**/*", "src/shared/**/*", "test/fe-unit/**/*"]
+  "include": ["src/client/**/*", "src/shared/**/*", "test/fe-unit/**/*", "test/fe-ft/**/*"]
 }

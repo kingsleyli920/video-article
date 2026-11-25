@@ -36,10 +36,12 @@ export function renderSummaryTable(summary: ChapterSummary): HTMLTableElement {
 export function bindSummaries(
   root: HTMLElement,
   generationId: string,
-  request: (generationId: string, chapterId: string) => Promise<SummaryResponse> = requestSummary,
+  request: (generationId: string, chapterId: string, options: { signal: AbortSignal }) => Promise<SummaryResponse> = requestSummary,
 ): () => void {
   const loaded = new Set<string>();
   const loading = new Set<string>();
+  // 解绑（开始新的一次生成）时中止这篇文章还在进行的 5W1H 请求，不再占用服务端
+  const controller = new AbortController();
 
   const onClick = async (event: Event) => {
     const target = (event.target as Element | null)?.closest<HTMLButtonElement>('.summary-toggle, .summary-retry');
@@ -62,10 +64,12 @@ export function bindSummaries(
     panel.hidden = false;
     panel.replaceChildren(paragraph('summary-loading', '正在生成 5W1H 总结…'));
     try {
-      const { summary } = await request(generationId, chapterId);
+      const { summary } = await request(generationId, chapterId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       panel.replaceChildren(renderSummaryTable(summary));
       loaded.add(chapterId);
     } catch (err) {
+      if (controller.signal.aborted) return;
       const message = paragraph('summary-error', err instanceof ApiError ? err.message : '请求失败');
       const retry = document.createElement('button');
       retry.type = 'button';
@@ -80,7 +84,10 @@ export function bindSummaries(
   };
 
   root.addEventListener('click', onClick);
-  return () => root.removeEventListener('click', onClick);
+  return () => {
+    root.removeEventListener('click', onClick);
+    controller.abort();
+  };
 }
 
 function paragraph(className: string, text: string): HTMLParagraphElement {

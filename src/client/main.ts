@@ -101,7 +101,8 @@ async function generate(input: GenerationInput): Promise<void> {
       clearInterval(ticker);
       const cancelled = error.code === 'cancelled';
       view.fail(markdown, error.message);
-      showStatus(cancelled ? 'idle' : 'error', cancelled ? `已停止生成，已生成的内容保留在下方。` : error.message, source, true);
+      const stoppedText = markdown ? '已停止生成，已生成的内容保留在下方。' : '已停止生成。';
+      showStatus(cancelled ? 'idle' : 'error', cancelled ? stoppedText : error.message, source, true);
     },
   };
 
@@ -110,7 +111,10 @@ async function generate(input: GenerationInput): Promise<void> {
   } finally {
     clearInterval(ticker);
     running = null;
+    // 停止按钮马上要隐藏，焦点还在它上面时移到"生成文章"，键盘用户不会丢失位置
+    const stopHadFocus = document.activeElement === stopButton;
     setRunning(false);
+    if (stopHadFocus) submitButton.focus();
   }
 }
 
@@ -142,6 +146,8 @@ function showStatus(tone: Tone, text: string, detail = '', withRetry = false): v
   }
   statusBox.replaceChildren(...children);
   statusBox.dataset.tone = tone;
+  // 生成中每秒刷新一次已用时间，不让读屏软件每秒播报；完成、失败、停止这些结果照常播报
+  statusBox.setAttribute('aria-live', tone === 'busy' ? 'off' : 'polite');
   statusBox.hidden = false;
 }
 

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
-import { SseParser } from '../../src/shared/sse';
-import type { StreamEvents } from '../../src/shared/types';
+import { SseParser } from '../../../src/shared/sse';
+import type { StreamEvents } from '../../../src/shared/types';
 
 const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
 

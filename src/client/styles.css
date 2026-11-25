@@ -209,6 +209,9 @@ button:disabled {
 
 .status-text {
   flex: 1;
+  /* 视频标题可能是一长串不带空格的字符（如 #a16z#AI#…），在灰框内换行，不撑出手机视口 */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .status-detail {
@@ -358,8 +361,9 @@ button:disabled {
   margin-top: 6px;
 }
 
-.incomplete-note {
-  margin-top: 28px;
+/* 前缀 .article：和 .article p 同在文章里，选择器要比它具体，否则上边距会被 .article p 的 margin 盖掉 */
+.article .incomplete-note {
+  margin: 28px 0 0;
   padding: 10px 14px;
   border-left: 3px solid var(--warn);
   border-radius: 4px;
@@ -378,8 +382,8 @@ button:disabled {
   line-height: 1.7;
 }
 
-.summary-loading,
-.summary-error {
+.article .summary-loading,
+.article .summary-error {
   margin: 0;
   color: var(--muted);
 }

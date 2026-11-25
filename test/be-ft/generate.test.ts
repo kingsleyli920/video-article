@@ -40,6 +40,47 @@ describe('POST /api/generations', () => {
     expect(prompt).toContain('live caption text');
   });
 
+  // 抓：模型还没开始输出（没有任何写入）时用户离开，服务端要等首个分块超时（线上 120 秒）才放手，之后还去调备用模型
+  it('模型还没输出时入站请求中止：立即中止上游请求，不调用备用模型，不保存', async () => {
+    const geminiCalls: { model: string; signal: AbortSignal }[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith('https://www.youtube.com/youtubei/v1/player')) return Response.json(playerResponse());
+      if (url.startsWith('https://www.youtube.com/api/timedtext')) return new Response(srv1([[0, 'live caption text']]));
+      if (url.includes('generativelanguage.googleapis.com')) {
+        const signal = init!.signal!;
+        geminiCalls.push({ model: url.split('/models/')[1]!.split(':')[0]!, signal });
+        // 模型一直不返回，和真实 fetch 一样在中止时失败
+        return new Promise<Response>((_, reject) => signal.addEventListener('abort', () => reject(signal.reason)));
+      }
+      throw new Error(`测试未预设的出站请求：${url}`);
+    });
+    const client = new AbortController();
+    const res = await exports.default.fetch('https://app.test/api/generations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: url(OTHER_VIDEO_ID) }),
+      signal: client.signal,
+    });
+    // 手动读到"generating"阶段为止，不取消响应体：只让入站请求中止，单独验证这条发现断开的路径
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let received = '';
+    while (!received.includes('"stage":"generating"')) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      received += decoder.decode(value, { stream: true });
+    }
+    const generationId = /"generationId":"([0-9a-f]{64})"/.exec(received)![1]!;
+    await vi.waitFor(() => expect(geminiCalls).toHaveLength(1));
+
+    client.abort();
+    await vi.waitFor(() => expect(geminiCalls[0]!.signal.aborted).toBe(true), { timeout: 1_000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(geminiCalls.map((c) => c.model)).toEqual(['test-model']);
+    expect(await openStore(env, generationId).load()).toBeNull();
+  });
+
   // 抓：模型把字幕里残缺的数字补成确定的数，done 里却没有提示；没有补数时误报
   it('字幕有残缺数字且文中写成确定的数时，done 带上数字提示；文章照常保存', async () => {
     mockUpstream({

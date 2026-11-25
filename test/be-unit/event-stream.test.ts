@@ -51,6 +51,29 @@ describe('EventStream', () => {
     expect(() => events.throwIfGone()).toThrow(ClientGone);
   });
 
+  // 抓：模型还没开始输出（没有写入）时客户端断开，服务端要等到超时才发现，还会接着调备用模型
+  it('入站请求的中止信号触发时，不需要任何写入就立即中止上游信号', async () => {
+    const client = new AbortController();
+    const events = new EventStream(unreadStream(), { clientSignal: client.signal });
+    expect(events.signal.aborted).toBe(false);
+    client.abort();
+    expect(events.signal.aborted).toBe(true);
+    expect(() => events.throwIfGone()).toThrow(ClientGone);
+    await expect(events.send('stage', { stage: 'generating' })).rejects.toMatchObject({ reason: 'disconnected' });
+  });
+
+  // 抓：正常写完关闭之后，客户端再断开（关掉页面）被误记为中途断开
+  it('正常关闭之后入站请求再中止，不算客户端中途断开', async () => {
+    const client = new AbortController();
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+    const events = new EventStream(writable.getWriter(), { clientSignal: client.signal });
+    const drained = readAll(readable);
+    await events.close();
+    await drained;
+    client.abort();
+    expect(events.signal.aborted).toBe(false);
+  });
+
   it('自己正常关闭输出流不算客户端断开', async () => {
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
     const events = new EventStream(writable.getWriter());

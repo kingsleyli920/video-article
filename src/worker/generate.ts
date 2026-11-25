@@ -38,7 +38,7 @@ export async function readGenerationInput(request: Request): Promise<GenerationI
 export async function handleGenerate(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const input = await readGenerationInput(request);
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const events = new EventStream(writable.getWriter());
+  const events = new EventStream(writable.getWriter(), { clientSignal: request.signal });
   ctx.waitUntil(runGeneration(input, env, events));
   return new Response(readable, {
     headers: {

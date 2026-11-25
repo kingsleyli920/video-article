@@ -14,6 +14,12 @@ export class ClientGone extends Error {
 export interface EventStreamOptions {
   /** 单次写入的等待上限。正常背压不算模型空闲，但下游持续写不进去时要能退出 */
   writeTimeoutMs?: number;
+  /**
+   * 入站请求的 request.signal：兼容日期 2026-11-17 起，客户端断开时它会中止。
+   * 实测（wrangler dev / workerd）客户端断开后输出流不会立刻出错，要等下一次写入才失败；
+   * 模型还没开始输出时没有写入，只能靠这个信号及时发现。
+   */
+  clientSignal?: AbortSignal;
 }
 
 const DEFAULT_WRITE_TIMEOUT_MS = 30_000;
@@ -35,7 +41,12 @@ export class EventStream {
   constructor(writer: WritableStreamDefaultWriter<Uint8Array>, options: EventStreamOptions = {}) {
     this.#writer = writer;
     this.#writeTimeoutMs = options.writeTimeoutMs ?? DEFAULT_WRITE_TIMEOUT_MS;
-    // 客户端断开时响应体被取消，输出流随即出错：不用等下一次写入或心跳就能发现
+    // 两个来源发现客户端断开：入站请求的中止信号（不依赖写入，等待模型时也有效），以及输出流被关闭或出错
+    const { clientSignal } = options;
+    if (clientSignal?.aborted) this.#fail('disconnected');
+    clientSignal?.addEventListener('abort', () => {
+      if (!this.#closed) this.#fail('disconnected');
+    });
     writer.closed.then(
       () => {
         if (!this.#closed) this.#fail('disconnected');

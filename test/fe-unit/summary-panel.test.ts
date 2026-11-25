@@ -6,14 +6,14 @@ import type { SummaryResponse } from '../../src/shared/types';
 
 const SUMMARY = { who: 'Mark', what: 'AI 收入增长', when: null, where: '企业市场', why: '效率提升', how: '按 token 计费' };
 
-function setup(request: (id: string, chapter: string) => Promise<SummaryResponse>) {
+function setup(request: (id: string, chapter: string, options: { signal: AbortSignal }) => Promise<SummaryResponse>) {
   const root = document.createElement('div');
   root.append(buildArticle('## 第一章\n\n正文\n\n## 第二章\n\n正文', 'done'));
   document.body.replaceChildren(root);
-  bindSummaries(root, 'gen-1', request);
+  const unbind = bindSummaries(root, 'gen-1', request);
   const button = root.querySelector<HTMLButtonElement>('section[data-chapter-id="1"] .summary-toggle')!;
   const panel = root.querySelector<HTMLElement>('section[data-chapter-id="1"] .summary-panel')!;
-  return { root, button, panel };
+  return { root, button, panel, unbind };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -37,6 +37,26 @@ describe('renderSummaryTable', () => {
 
 describe('bindSummaries', () => {
   // 抓：加载中重复点击发出多次请求
+  // 抓：换了文章（解绑）之后，旧文章还在进行的 5W1H 请求没有中止，晚到的结果还会改写旧面板
+  it('解绑时中止进行中的请求，之后返回的结果不再写入面板', async () => {
+    let resolve!: (value: SummaryResponse) => void;
+    let signal!: AbortSignal;
+    const request = vi.fn((_id: string, _chapter: string, options: { signal: AbortSignal }) => {
+      signal = options.signal;
+      return new Promise<SummaryResponse>((r) => (resolve = r));
+    });
+    const { button, panel, unbind } = setup(request);
+    button.click();
+    expect(signal.aborted).toBe(false);
+
+    unbind();
+    expect(signal.aborted).toBe(true);
+    resolve({ chapterId: '1', cached: false, summary: SUMMARY });
+    await flush();
+    expect(panel.textContent).toBe('正在生成 5W1H 总结…');
+    expect(panel.querySelector('table')).toBeNull();
+  });
+
   it('加载中重复点击只发一次请求，只带 generationId 和章节 id', async () => {
     let resolve!: (value: SummaryResponse) => void;
     const request = vi.fn(() => new Promise<SummaryResponse>((r) => (resolve = r)));
@@ -46,7 +66,7 @@ describe('bindSummaries', () => {
     button.click();
     button.click();
     expect(request).toHaveBeenCalledTimes(1);
-    expect(request).toHaveBeenCalledWith('gen-1', '1');
+    expect(request).toHaveBeenCalledWith('gen-1', '1', { signal: expect.any(AbortSignal) });
     expect(panel.hidden).toBe(false);
     expect(panel.textContent).toBe('正在生成 5W1H 总结…');
     expect(button.getAttribute('aria-busy')).toBe('true');

@@ -11,3 +11,5 @@ playwright-report/
 /*.pdf
 # 本地验收证据（截图、录像、时间线），不入库
 /evidence/
+
+.DS_Store
