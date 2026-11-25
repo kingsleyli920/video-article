@@ -4,6 +4,7 @@ import { hasReadableParagraph } from '../../../src/shared/article';
 import { SseParser } from '../../../src/shared/sse';
 import type { StreamEvents } from '../../../src/shared/types';
 import { TIMEOUTS } from '../../../src/client/api';
+import { bodyGrowth, worthKeeping, type Sample } from './body-growth';
 
 const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
 /** 期望写文章的模型（候选配置验收时设置，例如 EXPECT_MODEL=gemini-4-hydrogen）；不设时不检查 */
@@ -12,6 +13,11 @@ const EXPECT_MODEL = process.env.EXPECT_MODEL;
 const CASE_URL = process.env.CASE_URL;
 const CASE_INSTRUCTIONS = process.env.CASE_INSTRUCTIONS ?? '';
 const FIELDS = ['who', 'what', 'when', 'where', 'why', 'how'];
+/**
+ * 生成中多久看一次页面正文的长度。短文章的正文可能不到半秒就发完（补充验收里 268 字的那篇约 470 毫秒），
+ * 页面每 80 毫秒重绘一次；1.5 秒看一次会把整个增长过程错过，只看到 0 字和完整长度。
+ */
+const SAMPLE_INTERVAL_MS = 100;
 
 declare global {
   interface Window {
@@ -30,6 +36,7 @@ function echoedSpans(value: string, article: string, window = 40): number {
  * 候选配置验收（真实 YouTube 和 Gemini）。抓：
  * - 来源面板要等正文出来才显示（等待期间页面一片空白）；
  * - 正文在模型结束后才一次性到达浏览器；
+ * - 正文分块陆续到了浏览器，页面却等到完成才一次贴出来；
  * - 实际写文章的不是候选模型（悄悄换了备用模型）；
  * - 两个不同章节的 5W1H 有一个走了缓存、字段缺失、请求夹带正文或把正文原样抄回。
  * 会真实调用 1 次生成 + 2 次总结。
@@ -75,14 +82,16 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   await page.screenshot({ path: testInfo.outputPath('1-waiting-source-mobile.png') });
   await page.setViewportSize({ width: 1280, height: 860 });
 
-  // 生成中每 1.5 秒采样一次正文长度，直到结束
+  // 生成中每 100 毫秒看一次正文长度，直到结束。长度没变时每 1.5 秒留一条（等模型思考的几十秒里一直是 0），
+  // 长度变了的每条都留；结束后的那一条一定留
   const status = page.locator('#status');
-  const samples: [number, number][] = [];
+  const samples: Sample[] = [];
   for (;;) {
     const [t, length, tone] = await page.evaluate(() => [performance.now(), document.getElementById('article')!.textContent!.length, document.getElementById('status')!.dataset.tone] as const);
-    samples.push([Math.round(t - clickAt), length]);
+    const sample: Sample = [Math.round(t - clickAt), length];
+    if (tone !== 'busy' || worthKeeping(samples.at(-1), sample)) samples.push(sample);
     if (tone !== 'busy') break;
-    await page.waitForTimeout(1_500);
+    await page.waitForTimeout(SAMPLE_INTERVAL_MS);
   }
   await expect(status).toHaveAttribute('data-tone', 'ok');
   await expect(status).toContainText('已完成');
@@ -96,12 +105,16 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   let firstDeltaAt: number | null = null;
   let firstParagraphAt: number | null = null;
   let lastDeltaAt: number | null = null;
+  let doneAt: number | null = null;
   let meta: StreamEvents['meta'] | null = null;
   let done: StreamEvents['done'] | null = null;
   for (const chunk of chunks) {
     for (const message of parser.push(chunk.text)) {
       if (message.event === 'meta') meta = JSON.parse(message.data);
-      if (message.event === 'done') done = JSON.parse(message.data);
+      if (message.event === 'done') {
+        done = JSON.parse(message.data);
+        doneAt = Math.round(chunk.t - clickAt);
+      }
       if (message.event === 'delta') {
         firstDeltaAt ??= Math.round(chunk.t - clickAt);
         lastDeltaAt = Math.round(chunk.t - clickAt);
@@ -131,6 +144,9 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   // 真流式：正文分块在不同时刻陆续到达，首个分块早于模型结束。高档思考下短文的正文几秒就发完，不能要求"早 5 秒"
   expect(deltaTimes.size).toBeGreaterThanOrEqual(3);
   expect(firstDeltaAt!).toBeLessThan(done!.timing.modelDoneMs);
+  // 页面上的正文也在完成前就开始增长：完成前至少有一次采样看到的是中间长度，不是分块到了却攒到完成才一次贴出来
+  const growth = bodyGrowth(samples, doneAt!);
+  expect(growth.ok, growth.reason).toBe(true);
   writeFileSync(testInfo.outputPath('article.md'), markdown);
   await page.screenshot({ path: testInfo.outputPath('2-done.png') });
 
@@ -183,6 +199,8 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
         maxSilenceBeforeFirstDelta,
         firstDeltaAt,
         firstParagraphAt,
+        doneAt,
+        bodyGrowth: growth,
         serverTiming: done!.timing,
         chars: done!.chars,
         chapters: done!.chapters,
