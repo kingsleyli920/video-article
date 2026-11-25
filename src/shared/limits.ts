@@ -18,3 +18,13 @@ export const LIMITS = {
  * - 主模型失败后剩余预算不足 minFallbackMs 时不再换备用模型，直接报繁忙。
  */
 export const SUMMARY_TIMING = { clientMs: 100_000, serverBudgetMs: 85_000, primaryMs: 50_000, minFallbackMs: 15_000 } as const;
+
+/**
+ * 文章写完之后的核对阶段，都在同一条生成连接里进行（服务端每 15 秒发心跳，前端整次生成的上限是 10 分钟）：
+ * - REVIEW_TIMING：按章核对字幕，各章并行，每一章主模型最多 primaryMs，主备合计 serverBudgetMs。
+ *   高档思考实测每章 34 到 67 秒，所以给到 150 秒。
+ * - REQUIREMENTS_TIMING：从用户要求里提取可计算的约束，低档思考，一般几秒。
+ * - maxUnits：并行核对的单元数上限（Workers 同时只能开 6 个出站连接），章节更多时相邻章节合并。
+ */
+export const REVIEW_TIMING = { serverBudgetMs: 210_000, primaryMs: 150_000, minFallbackMs: 20_000, maxUnits: 6 } as const;
+export const REQUIREMENTS_TIMING = { serverBudgetMs: 50_000, primaryMs: 30_000, minFallbackMs: 10_000 } as const;

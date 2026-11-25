@@ -56,6 +56,11 @@ let meta: StreamEvents['meta'] | null = null;
 let done: StreamEvents['done'] | null = null;
 let failure: StreamEvents['error'] | null = null;
 let probeError: string | null = null;
+/** 阶段事件到达的时间；核对修订相关：初稿、修订列表、最终文章到达的时间 */
+const stages: [number, string][] = [];
+let draft: string | null = null;
+let revisions: StreamEvents['revised']['revisions'] = [];
+let revisedAt: number | null = null;
 
 try {
   touch();
@@ -88,6 +93,14 @@ try {
         meta = data;
         metaAt ??= ms;
       }
+      if (message.event === 'stage') stages.push([ms, (data as StreamEvents['stage']).stage]);
+      if (message.event === 'revised') {
+        // 核对后的最终文章：初稿另存，article.md 写最终版本
+        draft = markdown;
+        markdown = (data as StreamEvents['revised']).markdown;
+        revisions = (data as StreamEvents['revised']).revisions;
+        revisedAt = ms;
+      }
       if (message.event === 'done') done = data;
       if (message.event === 'error') failure = data;
       if (message.event === 'delta') {
@@ -115,7 +128,12 @@ console.log(`探针：来源信息 ${metaAt} ms，首个正文文本 ${firstDelt
 if (done) {
   const t = done.timing;
   console.log(`服务端：字幕就绪 ${t.transcriptMs} ms，模型首个 token ${t.firstTokenMs} ms，模型结束 ${t.modelDoneMs} ms，保存完成 ${t.savedMs} ms`);
-  console.log(`结果：done，共 ${done.chapters.length} 章`);
+  console.log(`结果：done，共 ${done.chapters.length} 章、${done.chars} 字`);
+  if (done.review) {
+    const r = done.review;
+    console.log(`核对：${r.sections} 个单元，修订 ${r.revisions} 处${r.rewritten ? `；按要求修订过（${r.rewritten.unmet.join('；')}，${r.rewritten.charsBefore} → ${r.rewritten.charsAfter} 字）` : ''}${r.checks.length ? `；${r.checks.join('；')}` : ''}；核对结束 ${t.reviewedMs ?? '?'} ms`);
+  }
+  console.log(`阶段：${stages.map(([ms, s]) => `${s}@${ms}`).join('  ')}`);
   if (firstDeltaAt !== null) console.log(`第一段正文比模型结束早到 ${t.modelDoneMs - firstDeltaAt} ms`);
 } else {
   console.log(`结果：${failure ? `error ${failure.code}：${failure.message}` : probeError ? `探针异常：${probeError}` : '没有收到 done 或 error'}`);
@@ -125,9 +143,11 @@ console.log('正文增长（毫秒 → 字符数）：' + growth.filter((_, i) =
 
 if (outDir) {
   writeFileSync(join(outDir, 'article.md'), markdown);
+  if (draft !== null) writeFileSync(join(outDir, 'draft.md'), draft);
+  writeFileSync(join(outDir, 'revisions.json'), JSON.stringify(revisions, null, 2));
   writeFileSync(
     join(outDir, 'timeline.json'),
-    JSON.stringify({ outcome: done ? 'done' : failure ? 'error' : 'incomplete', probeError, headersAt, responseHeaders, metaAt, firstDeltaAt, firstParagraphAt, lastDeltaAt, endAt, meta, done, failure, timeline }, null, 2),
+    JSON.stringify({ outcome: done ? 'done' : failure ? 'error' : 'incomplete', probeError, headersAt, responseHeaders, metaAt, firstDeltaAt, firstParagraphAt, lastDeltaAt, stages, revisedAt, endAt, meta, done, failure, timeline }, null, 2),
   );
   console.log(`已写入 ${outDir}/（input.json、raw.sse、timeline.json、article.md）`);
 }

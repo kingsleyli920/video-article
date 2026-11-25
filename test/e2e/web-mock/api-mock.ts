@@ -117,6 +117,7 @@ export function done(overrides: Partial<StreamEvents['done']> = {}): StreamEvent
     timing: { transcriptMs: 800, firstTokenMs: 4200, modelDoneMs: 30000, savedMs: 30100 },
     numberWarnings: [],
     model: PRIMARY_MODEL,
+    review: { sections: ARTICLE_CHAPTERS.length, revisions: 0, rewritten: null, checks: [] },
     ...overrides,
   };
 }

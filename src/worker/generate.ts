@@ -1,12 +1,15 @@
 import { countArticleChars, hasReadableParagraph, parseArticle, validateArticle } from '../shared/article';
-import { LIMITS } from '../shared/limits';
+import { LIMITS, REQUIREMENTS_TIMING, REVIEW_TIMING } from '../shared/limits';
 import { parseVideoId } from '../shared/video-id';
 import { AppError, isBusy, toAppError } from './app-error';
-import { fallbackConfig, geminiOptions, transcriptOptions } from './config';
+import { fallbackConfig, geminiOptions, timeoutScale, transcriptOptions } from './config';
 import { ClientGone, EventStream } from './event-stream';
-import { streamText, type GeminiStats } from './gemini';
+import { finalizeArticle } from './finalize';
+import { streamText, type FallbackConfig, type GeminiOptions, type GeminiStats } from './gemini';
+import { generateJsonWithFallback, scaleBudget } from './json-model';
 import { checkDamagedNumbers } from './number-check';
 import { articlePrompt } from './prompts';
+import { NO_REQUIREMENTS, parseRequirements, REQUIREMENTS_SCHEMA, requirementsPrompt, type Requirements } from './requirements';
 import { createStore, type GenerationContext } from './store';
 import { loadTranscript } from './transcripts';
 import { transcriptPreview } from './transcript-preview';
@@ -92,6 +95,13 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     });
     await events.send('stage', { stage: 'generating' });
 
+    const scale = timeoutScale(env);
+    const fallback = fallbackConfig(env);
+    const usage: { requirements: unknown; rewrite: unknown; review: unknown[] } = { requirements: null, rewrite: null, review: [] };
+    // 用户要求里的可计算约束（字数、章数、小节）：和写文章同时开始提取，文章写完时已经有结果，不增加等待
+    const requirements = extractRequirements(input.instructions, gemini, fallback, scale, events.signal, usage);
+    requirements.catch(() => {}); // 出错留到收尾阶段统一处理，这里只避免未处理的拒绝
+
     let firstTokenMs: number | null = null;
     let firstParagraphMs: number | null = null;
     let lastDeltaMs: number | null = null;
@@ -120,7 +130,6 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       finishReason = await write(model, gemini.thinkingLevel);
     } catch (err) {
       // 主模型还没输出任何内容就持续繁忙：整篇改用备用模型。已经有输出时不换，避免拼接两个模型的输出
-      const fallback = fallbackConfig(env);
       if (!fallback || !isBusy(err) || markdown !== '') throw err;
       Object.assign(log, { fallbackFrom: model, fallbackTo: fallback.model, fallbackThinkingLevel: fallback.thinkingLevel ?? null, fallbackReason: err.detail ?? null, fallbackMs: since() });
       model = fallback.model;
@@ -129,7 +138,6 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     const modelDoneMs = since();
     // 文章只有一段正文时，要到最后一段发出才算读到完整段落
     if (firstParagraphMs === null && finishReason === 'STOP' && hasReadableParagraph(markdown, true)) firstParagraphMs = lastDeltaMs;
-    const chars = countArticleChars(markdown);
     // 用量、模型版本、服务档都来自已经收到的终止事件和响应头，不为它多等连接关闭
     Object.assign(log, {
       model,
@@ -140,15 +148,40 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       firstTokenMs,
       firstParagraphMs,
       modelDoneMs,
-      articleChars: chars,
+      draftChars: countArticleChars(markdown),
     });
     assertFinished(finishReason);
+    const draftProblem = validateArticle(parseArticle(markdown));
+    if (draftProblem) throw new AppError('invalid_structure', draftProblem);
 
+    // 初稿已经流式发给页面。保存之前先核对：可计算的用户约束、逐章对照字幕（见 finalize.ts）
+    const draft = markdown;
+    const final = await finalizeArticle(
+      { draft, video: transcript.video, transcriptText, instructions: input.instructions, requirements },
+      {
+        json: async (prompt, schema) => {
+          const { raw, model: usedModel, stats: s } = await generateJsonWithFallback(gemini, fallback, prompt, schema, scaleBudget(REVIEW_TIMING, scale), { purpose: 'review', signal: events.signal });
+          usage.review.push({ model: usedModel, usage: s.usage ?? null });
+          return raw;
+        },
+        rewrite: async (prompt) => {
+          let text = '';
+          const s: GeminiStats = {};
+          const reason = await streamText(gemini, prompt, async (chunk) => void (text += chunk), events.signal, s);
+          usage.rewrite = { model: gemini.model, usage: s.usage ?? null };
+          assertFinished(reason);
+          return text;
+        },
+      },
+      (stage) => events.send('stage', { stage }),
+    );
+    markdown = final.markdown;
+    const reviewedMs = since();
     const article = parseArticle(markdown);
-    const problem = validateArticle(article);
-    if (problem) throw new AppError('invalid_structure', problem);
+    const chars = countArticleChars(markdown);
     const numberWarnings = checkDamagedNumbers(damagedNumbers, transcriptText, markdown);
-    events.throwIfGone(); // 模型结束到保存之间客户端已经离开：不再保存
+    Object.assign(log, { articleChars: chars, review: final.review, reviewRejected: final.rejected, requirements: final.requirements, reviewUsage: usage, reviewedMs });
+    events.throwIfGone(); // 核对结束到保存之间客户端已经离开：不再保存
 
     const context: GenerationContext = {
       version: 1,
@@ -159,6 +192,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       transcript: { ...info, chars: transcriptText.length, text: transcriptText, damagedNumbers },
       instructions: input.instructions,
       article: { title: article.title, markdown, chapters: article.chapters },
+      review: { ...final.review, items: final.revisions, requirements: final.requirements, ...(markdown === draft ? {} : { draft }) },
     };
     try {
       await store.save(context);
@@ -167,9 +201,11 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       throw new AppError('save_failed');
     }
 
-    const timing = { transcriptMs, firstTokenMs, firstParagraphMs, modelDoneMs, savedMs: since() };
+    // 最终文章和初稿不同：先把最终版本发给页面，页面显示的和刚保存的是同一份
+    if (markdown !== draft) await events.send('revised', { markdown, revisions: final.revisions });
+    const timing = { transcriptMs, firstTokenMs, firstParagraphMs, modelDoneMs, reviewedMs, savedMs: since() };
     Object.assign(log, { ok: true, chapters: article.chapters.length, savedMs: timing.savedMs, numberWarnings: numberWarnings.length });
-    await events.send('done', { chapters: article.chapters.map(({ id, title }) => ({ id, title })), chars, timing, numberWarnings, model });
+    await events.send('done', { chapters: article.chapters.map(({ id, title }) => ({ id, title })), chars, timing, numberWarnings, model, review: final.review });
   } catch (err) {
     if (err instanceof ClientGone) {
       // stoppedMs：上游请求已经被取消、本流程停止的时点
@@ -192,4 +228,23 @@ function assertFinished(finishReason: string | null): void {
   if (finishReason === 'MAX_TOKENS') throw new AppError('truncated');
   if (finishReason === null) throw new AppError('interrupted', '模型没有给出结束标记');
   throw new AppError('blocked', finishReason);
+}
+
+/** 没有用户要求时不调用模型；提取用低档思考（只是从一句话里找数字），主模型繁忙时换备用模型 */
+async function extractRequirements(
+  instructions: string,
+  gemini: GeminiOptions,
+  fallback: FallbackConfig | null,
+  scale: number,
+  signal: AbortSignal,
+  usage: { requirements: unknown },
+): Promise<Requirements> {
+  if (!instructions.trim()) return NO_REQUIREMENTS;
+  const { raw, model, stats } = await generateJsonWithFallback({ ...gemini, thinkingLevel: 'low' }, fallback, requirementsPrompt(instructions), REQUIREMENTS_SCHEMA, scaleBudget(REQUIREMENTS_TIMING, scale), {
+    purpose: 'requirements',
+    signal,
+  });
+  const { requirements, dropped } = parseRequirements(raw, instructions);
+  usage.requirements = { model, usage: stats.usage ?? null, dropped };
+  return requirements;
 }

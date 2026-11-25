@@ -1,7 +1,7 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { parseArticle } from '../shared/article';
-import type { NumberWarning } from '../shared/types';
+import type { ArticleReview, NumberWarning, Revision, RevisionType } from '../shared/types';
 
 export type ArticleState = 'streaming' | 'done' | 'failed';
 
@@ -63,27 +63,81 @@ export interface ArticleView {
   reset(): void;
   /** 生成中：合并 80ms 内的多次更新再重绘 */
   update(markdown: string): void;
-  /** notices：显示在标题下方的提示（如疑似补全了残缺数字），不改正文 */
-  finish(markdown: string, notices?: string[]): void;
-  fail(markdown: string, message: string): void;
+  /** notices：显示在标题下方的提示（如疑似补全了残缺数字），不改正文。checked：核对记录，有内容时显示在标题下方 */
+  finish(markdown: string, notices?: string[], checked?: ReviewRecord): void;
+  /** label：文章下方说明的前缀，默认"内容不完整" */
+  fail(markdown: string, message: string, label?: string): void;
+}
+
+/** 服务端的核对结果和采用的修订 */
+export interface ReviewRecord {
+  review: ArticleReview;
+  revisions: Revision[];
+}
+
+const REVISION_LABEL: Record<RevisionType, string> = { time: '时间', attribution: '发言归属', quantity: '数量', unsupported: '没有依据', language: '语言' };
+
+/**
+ * 核对记录：按要求修订过、可计算约束的核对结果、对照字幕做的每一处修订（原句、改成什么、字幕依据）。
+ * 最终文章和流式看到的初稿不一样时，读者能在这里看到改了哪里和为什么。没有任何内容时返回 null。
+ * 全部用 textContent 写入，原句和字幕原文里的标记不会被当成 HTML。
+ */
+export function buildReviewRecord({ review, revisions }: ReviewRecord): HTMLElement | null {
+  if (!review.rewritten && review.checks.length === 0 && revisions.length === 0) return null;
+  const box = document.createElement('div');
+  box.className = 'article-review';
+  box.setAttribute('role', 'note');
+  if (review.rewritten) {
+    const { unmet, charsBefore, charsAfter } = review.rewritten;
+    box.append(textElement('p', `初稿没有满足生成要求（${unmet.join('；')}），已按要求修订，全文从 ${charsBefore.toLocaleString('en-US')} 字改为 ${charsAfter.toLocaleString('en-US')} 字。`));
+  }
+  if (review.checks.length) box.append(textElement('p', `生成要求核对：${review.checks.join('；')}。`));
+  if (revisions.length) {
+    const details = document.createElement('details');
+    details.append(textElement('summary', `对照字幕核对后修订了 ${revisions.length} 处，点开查看原句、修订和字幕依据`));
+    const list = document.createElement('ol');
+    for (const revision of revisions) {
+      const item = document.createElement('li');
+      const change = document.createElement('p');
+      change.className = 'revision-change';
+      const tag = textElement('span', REVISION_LABEL[revision.type]);
+      tag.className = 'revision-type';
+      change.append(tag, textElement('del', revision.before), ' → ', textElement('ins', revision.after || '（删去）'));
+      const reason = textElement('p', revision.reason);
+      reason.className = 'revision-reason';
+      const evidence = textElement('p', `字幕原文：${revision.evidence}`);
+      evidence.className = 'revision-evidence';
+      item.append(change, reason, evidence);
+      list.append(item);
+    }
+    details.append(list);
+    box.append(details);
+  }
+  return box;
 }
 
 export function createArticleView(root: HTMLElement): ArticleView {
   let latest = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const paint = (state: ArticleState, note?: string, notices: string[] = []) => {
+  const paint = (state: ArticleState, note?: string, notices: string[] = [], checked?: ReviewRecord) => {
     clearTimeout(timer);
     timer = undefined;
     const fragment = buildArticle(latest, state);
+    const boxes: HTMLElement[] = [];
     if (notices.length) {
       const box = document.createElement('div');
       box.className = 'article-notice';
       box.setAttribute('role', 'note');
       box.append(...notices.map((text) => textElement('p', text)));
+      boxes.push(box);
+    }
+    const record = checked ? buildReviewRecord(checked) : null;
+    if (record) boxes.push(record);
+    if (boxes.length) {
       const title = fragment.querySelector('h1');
-      if (title) title.after(box);
-      else fragment.prepend(box);
+      if (title) title.after(...boxes);
+      else fragment.prepend(...boxes);
     }
     if (note) {
       const p = textElement('p', note);
@@ -106,13 +160,13 @@ export function createArticleView(root: HTMLElement): ArticleView {
       latest = markdown;
       timer ??= setTimeout(() => paint('streaming'), RENDER_INTERVAL_MS);
     },
-    finish(markdown, notices = []) {
+    finish(markdown, notices = [], checked) {
       latest = markdown;
-      paint('done', undefined, notices);
+      paint('done', undefined, notices, checked);
     },
-    fail(markdown, message) {
+    fail(markdown, message, label = '内容不完整') {
       latest = markdown;
-      paint('failed', markdown ? `内容不完整：${message}` : undefined);
+      paint('failed', markdown ? `${label}：${message}` : undefined);
     },
   };
 }

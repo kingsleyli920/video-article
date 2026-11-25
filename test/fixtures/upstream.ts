@@ -49,6 +49,20 @@ export function geminiJson(value: unknown, finishReason = 'STOP') {
   return { candidates: [{ content: { parts: [{ text: JSON.stringify(value) }], role: 'model' }, finishReason }] };
 }
 
+export type GeminiPurpose = 'article' | 'rewrite' | 'review' | 'requirements' | 'summary';
+
+/** 按系统提示词的开头判断一次 Gemini 请求是做什么的（文章、按要求修订、对照字幕核对、提取约束、5W1H） */
+export function geminiPurpose(url: string, body: unknown): GeminiPurpose {
+  const system = String((body as { systemInstruction?: { parts?: { text?: string }[] } } | null)?.systemInstruction?.parts?.[0]?.text ?? '');
+  if (url.includes('streamGenerateContent')) return system.startsWith('你是中文内容编辑。下面是一篇') ? 'rewrite' : 'article';
+  if (system.startsWith('你是事实核对编辑')) return 'review';
+  if (system.startsWith('你负责从用户写给文章生成器的要求里')) return 'requirements';
+  return 'summary';
+}
+
+/** 约束提取的"什么都没提"结果 */
+export const NO_REQUIREMENTS_JSON = { maxChars: 0, minChars: 0, charsQuote: '', chaptersMin: 0, chaptersMax: 0, chaptersQuote: '', sectionsPerChapter: 0, sectionTitles: [], sectionsQuote: '' };
+
 export const ARTICLE_TEXTS = [
   '# 对话测试嘉宾：测试议题\n\n## 技术革命：',
   '八十年一遇\n\n### 当前阶段\n\n**主持人:** 我们在第几局？\n\n**嘉宾:** 第三年。\n\n',

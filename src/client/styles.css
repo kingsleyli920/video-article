@@ -443,6 +443,76 @@ button:disabled {
   margin-top: 6px;
 }
 
+/* 核对记录：按要求修订、约束核对结果、对照字幕的逐处修订 */
+.article-review {
+  margin: 0 0 24px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.article .article-review p {
+  margin: 0;
+}
+
+.article .article-review > p + p,
+.article .article-review > p + details {
+  margin-top: 6px;
+}
+
+.article-review summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.article-review ol {
+  margin: 10px 0 2px;
+  padding-left: 22px;
+}
+
+.article-review li + li {
+  margin-top: 12px;
+}
+
+.article-review .revision-change {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.article-review .revision-type {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.article-review del {
+  color: var(--faint);
+}
+
+.article-review ins {
+  text-decoration: none;
+  background: var(--accent-soft);
+}
+
+.article .article-review .revision-reason,
+.article .article-review .revision-evidence {
+  margin-top: 2px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.article-review .revision-evidence {
+  color: var(--faint);
+}
+
 /* 前缀 .article：和 .article p 同在文章里，选择器要比它具体，否则上边距会被 .article p 的 margin 盖掉 */
 .article .incomplete-note {
   margin: 28px 0 0;

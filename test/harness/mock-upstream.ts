@@ -6,6 +6,7 @@
  * 管理接口：PUT /__scenario（整体替换场景）、POST /__reset（恢复默认场景并清空记录）、GET /__requests（请求记录）。
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { geminiPurpose, NO_REQUIREMENTS_JSON } from '../fixtures/upstream';
 
 export type VideoScenario =
   | { kind: 'ok'; title?: string; channel?: string; description?: string; cues: [number, string][] }
@@ -30,19 +31,36 @@ export type SummaryScenario =
   | { kind: 'hang' }
   | { kind: 'invalid' };
 
+/** 对照字幕核对（generateContent）的行为。ok：每个核对请求只返回 quote 出现在该请求 <section> 里的问题，各章因此各拿各的 */
+export type ReviewScenario =
+  | { kind: 'ok'; issues: { type: string; quote: string; evidence: string; problem: string; replacement: string }[]; delayMs?: number }
+  | { kind: 'busy' }
+  | { kind: 'hang' }
+  | { kind: 'invalid' };
+
+/** 约束提取（generateContent）的行为。ok：返回给定的提取结果 */
+export type RequirementsScenario = { kind: 'ok'; result: Record<string, unknown> } | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' };
+
 export interface Scenario {
   videos: Record<string, VideoScenario>;
-  /** 按模型名，streamGenerateContent 的行为 */
+  /** 按模型名，写文章（streamGenerateContent）的行为 */
   streams: Record<string, StreamScenario>;
   /** 按模型名，generateContent（5W1H）的行为 */
   summaries: Record<string, SummaryScenario>;
+  /** 按模型名，对照字幕核对的行为；没列出的模型返回"没有问题" */
+  reviews?: Record<string, ReviewScenario>;
+  /** 按模型名，约束提取的行为；没列出的模型返回"没有可计算的约束" */
+  requirements?: Record<string, RequirementsScenario>;
+  /** 按模型名，按要求修订（streamGenerateContent）的行为；没列出的模型返回 503 */
+  rewrites?: Record<string, StreamScenario>;
 }
 
 export interface RecordedRequest {
   at: string;
   method: string;
   path: string;
-  kind: 'player' | 'captions' | 'stream' | 'summary' | 'other';
+  /** stream：写文章；rewrite：按要求修订；review：对照字幕核对；requirements：约束提取；summary：5W1H */
+  kind: 'player' | 'captions' | 'stream' | 'rewrite' | 'review' | 'requirements' | 'summary' | 'other';
   model?: string;
   videoId?: string;
   body: unknown;
@@ -167,9 +185,27 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
     if (gemini) {
       const model = decodeURIComponent(gemini[1]!);
       entry.model = model;
-      if (gemini[2] === 'streamGenerateContent') {
+      const purpose = geminiPurpose(url.pathname, body);
+      if (purpose === 'rewrite') {
+        entry.kind = 'rewrite';
+        return stream(res, scenario.rewrites?.[model] ?? { kind: 'busy' });
+      }
+      if (purpose === 'article') {
         entry.kind = 'stream';
         return stream(res, scenario.streams[model] ?? { kind: 'busy' });
+      }
+      if (purpose === 'review') {
+        entry.kind = 'review';
+        const behavior = scenario.reviews?.[model] ?? { kind: 'ok', issues: [] };
+        if (behavior.kind !== 'ok') return summary(res, behavior);
+        const user = String((body as { contents?: { parts?: { text?: string }[] }[] } | null)?.contents?.[0]?.parts?.[0]?.text ?? '');
+        const section = user.slice(user.lastIndexOf('<section>'));
+        return structured(res, { issues: behavior.issues.filter((i) => section.includes(i.quote)) }, behavior.delayMs);
+      }
+      if (purpose === 'requirements') {
+        entry.kind = 'requirements';
+        const behavior = scenario.requirements?.[model] ?? { kind: 'ok', result: NO_REQUIREMENTS_JSON };
+        return behavior.kind === 'ok' ? structured(res, behavior.result) : summary(res, behavior);
       }
       entry.kind = 'summary';
       return summary(res, scenario.summaries[model] ?? { kind: 'busy' });
@@ -212,15 +248,20 @@ async function stream(res: ServerResponse, behavior: StreamScenario) {
   res.end();
 }
 
-async function summary(res: ServerResponse, behavior: SummaryScenario) {
+async function summary(res: ServerResponse, behavior: SummaryScenario | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' }) {
   if (behavior.kind === 'hang') return;
   if (behavior.kind === 'busy') return busy(res);
   if (behavior.kind === 'invalid') {
     return json(res, 200, { candidates: [{ content: { parts: [{ text: '这不是 JSON' }], role: 'model' }, finishReason: 'STOP' }] });
   }
-  if (behavior.delayMs) await sleep(behavior.delayMs);
+  return structured(res, behavior.summary, behavior.delayMs);
+}
+
+/** generateContent 的正常响应：把 value 作为 JSON 文本放进候选里 */
+async function structured(res: ServerResponse, value: unknown, delayMs?: number) {
+  if (delayMs) await sleep(delayMs);
   if (res.destroyed) return;
-  json(res, 200, { candidates: [{ content: { parts: [{ text: JSON.stringify(behavior.summary) }], role: 'model' }, finishReason: 'STOP' }] });
+  json(res, 200, { candidates: [{ content: { parts: [{ text: JSON.stringify(value) }], role: 'model' }, finishReason: 'STOP' }] });
 }
 
 function busy(res: ServerResponse) {

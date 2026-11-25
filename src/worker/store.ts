@@ -1,12 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Chapter } from '../shared/article';
 import type { ErrorCode } from '../shared/errors';
-import type { ChapterSummary, TranscriptInfo } from '../shared/types';
+import type { ArticleReview, ChapterSummary, Revision, TranscriptInfo } from '../shared/types';
 import { AppError, toAppError } from './app-error';
 import { fallbackConfig, geminiOptions, timeoutScale } from './config';
 import { generateSummaryJson, summaryBudget } from './summary-model';
 import { summaryPrompt } from './prompts';
 import { normalizeSummary, SUMMARY_SCHEMA } from './summary-schema';
+import type { Requirements } from './requirements';
 import type { DamagedNumber, VideoMeta } from './youtube';
 
 /** 一次生成的完整上下文，5W1H 只从这里读取，不接收前端提交的内容。 */
@@ -19,7 +20,10 @@ export interface GenerationContext {
   /** text 是交给模型的正文（残缺数字已换成占位）；damagedNumbers 是残缺数字的原始证据（旧数据没有这个字段） */
   transcript: TranscriptInfo & { text: string; damagedNumbers?: DamagedNumber[] };
   instructions: string;
+  /** 最终文章（核对修订之后的版本）；5W1H 的章节取自这里 */
   article: { title: string; markdown: string; chapters: Chapter[] };
+  /** 核对记录：采用的修订、提取到的约束；最终文章和流式初稿不同时另存一份初稿（旧数据没有这个字段） */
+  review?: ArticleReview & { items: Revision[]; requirements: Requirements; draft?: string };
 }
 
 /** RPC 跨不了自定义错误类，失败用错误码表示 */

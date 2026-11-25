@@ -154,10 +154,16 @@ export async function streamText(
   }
 }
 
-/** 结构化输出：按 JSON schema 生成并返回解析后的对象（结构校验由调用方负责）。 */
-export async function generateJson(options: GeminiOptions, prompt: Prompt, schema: object, stats: GeminiStats = {}): Promise<unknown> {
+/**
+ * 结构化输出：按 JSON schema 生成并返回解析后的对象（结构校验由调用方负责）。
+ * signal 中止（客户端断开）时立即取消请求并抛出中止原因。
+ */
+export async function generateJson(options: GeminiOptions, prompt: Prompt, schema: object, stats: GeminiStats = {}, signal?: AbortSignal): Promise<unknown> {
+  if (signal?.aborted) throw signal.reason;
   const { requestMs } = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
   const watchdog = new Watchdog();
+  const onCancel = () => watchdog.cancel(signal!.reason);
+  signal?.addEventListener('abort', onCancel, { once: true });
   watchdog.arm(requestMs, () => new AppError('gemini_busy', `模型超过 ${requestMs / 1000} 秒没有响应`));
   let raw: string;
   try {
@@ -170,9 +176,11 @@ export async function generateJson(options: GeminiOptions, prompt: Prompt, schem
     stats.serviceTierHeader = res.headers.get('x-gemini-service-tier');
     raw = await res.text();
   } catch (err) {
+    if (signal?.aborted) throw signal.reason;
     throw watchdog.reason ?? err;
   } finally {
     watchdog.clear();
+    signal?.removeEventListener('abort', onCancel);
   }
   const chunk = parseChunk(raw);
   if (chunk.usageMetadata) stats.usage = chunk.usageMetadata;
