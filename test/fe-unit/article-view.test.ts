@@ -90,7 +90,7 @@ describe('createArticleView', () => {
     const root = document.createElement('div');
     const view = createArticleView(root);
     const warning = numberWarningText({ time: '34:25', fragment: 'of,200', written: ['1200', '1,200'] });
-    expect(warning).toBe('字幕 34:25 附近有一处数字残缺（原文"of,200"），文中写成了确定的数"1200"、"1,200"。这个数没有字幕依据，请以原视频为准。');
+    expect(warning).toBe('字幕 34:25 附近有一处数字残缺（原文"of,200"），文中写成了"1200"、"1,200"，疑似补全了残缺数字，请核对原字幕或原视频。');
     view.finish('# 标题\n\n## 第一章\n\n大约有1200项法案。', [warning, '<b>第二条</b>']);
     const notice = root.querySelector('h1 + .article-notice');
     expect([...notice!.querySelectorAll('p')].map((p) => p.textContent)).toEqual([warning, '<b>第二条</b>']);

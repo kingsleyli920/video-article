@@ -93,7 +93,7 @@ async function generate(input: GenerationInput): Promise<void> {
       const warnings = result.numberWarnings ?? [];
       view.finish(markdown, warnings.map(numberWarningText));
       unbindSummaries = bindSummaries(articleRoot, generationId);
-      const warningText = warnings.length ? `文中有 ${warnings.length} 处数字没有字幕依据，见标题下方的提示。` : '';
+      const warningText = warnings.length ? `文中有 ${warnings.length} 处疑似补全了残缺数字，见标题下方的提示。` : '';
       const modelNote = result.model && result.model !== requestedModel ? ` · 主模型繁忙，本次由 ${result.model} 生成` : '';
       showStatus('ok', `已完成，共 ${result.chapters.length} 章、${result.chars} 字，用时 ${seconds()} 秒。${warningText}点击章节标题旁的 5W1H 查看总结。`, source + modelNote);
     },

@@ -143,11 +143,21 @@ describe('parseSrv1 / formatTranscript', () => {
     expect(prepared.damagedNumbers).toEqual([{ time: '00:02', fragment: 'of,200', digits: '200', cue: ',200 bills' }]);
   });
 
-  // 抓：换人说话（>>）后的 ",200" 被当成上一位说话人数字的延续
-  it('换人说话之后的 ",200" 不和上一位说话人的数字拼接', () => {
+  // 抓：换人说话（>>）后的 ",200" 被当成上一位说话人数字的延续，或者证据里拼进了上一位说话人的数字
+  it('换人说话之后的 ",200" 不和上一位说话人的数字拼接，证据里也不带上一位说话人的数字', () => {
     const prepared = prepareTranscript([{ start: 0, text: 'it was 1 >> ,200 more' }]);
-    expect(prepared.damagedNumbers).toEqual([{ time: '00:00', fragment: '1,200', digits: '200', cue: 'it was 1 >> ,200 more' }]);
+    expect(prepared.damagedNumbers).toEqual([{ time: '00:00', fragment: ',200', digits: '200', cue: 'it was 1 >> ,200 more' }]);
     expect(prepared.text).toBe('[00:00] it was 1\n\n[00:00] >> 〔字幕此处数字不清，无法确定具体数量〕 more');
+  });
+
+  // 抓：">>" 落在一条字幕末尾、后面暂时没有文字时，没有清掉前文，下一条开头的 ",200" 被误判为合法数字的延续
+  it('">>" 在字幕末尾、下一条以 ",200" 开头：仍判为残缺并遮蔽，不拼接上一位说话人的数字', () => {
+    const prepared = prepareTranscript([
+      { start: 0, text: 'it was 1 >>' },
+      { start: 1_000, text: ',200 more' },
+    ]);
+    expect(prepared.text).toBe('[00:00] it was 1\n\n[00:00] >> 〔字幕此处数字不清，无法确定具体数量〕 more');
+    expect(prepared.damagedNumbers).toEqual([{ time: '00:01', fragment: ',200', digits: '200', cue: ',200 more' }]);
   });
 
   it('同一人说话过长时在片段边界分段，超过一小时用 h:mm:ss', () => {

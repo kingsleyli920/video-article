@@ -63,7 +63,7 @@ export interface ArticleView {
   reset(): void;
   /** 生成中：合并 80ms 内的多次更新再重绘 */
   update(markdown: string): void;
-  /** notices：显示在标题下方的提示（如数字没有字幕依据），不改正文 */
+  /** notices：显示在标题下方的提示（如疑似补全了残缺数字），不改正文 */
   finish(markdown: string, notices?: string[]): void;
   fail(markdown: string, message: string): void;
 }
@@ -120,7 +120,7 @@ export function createArticleView(root: HTMLElement): ArticleView {
 /** 把服务端的数字检查结果写成给读者看的一句话 */
 export function numberWarningText({ time, fragment, written }: NumberWarning): string {
   const where = time ? `字幕 ${time} 附近` : '字幕里';
-  return `${where}有一处数字残缺（原文"${fragment}"），文中写成了确定的数"${written.join('"、"')}"。这个数没有字幕依据，请以原视频为准。`;
+  return `${where}有一处数字残缺（原文"${fragment}"），文中写成了"${written.join('"、"')}"，疑似补全了残缺数字，请核对原字幕或原视频。`;
 }
 
 function textElement<K extends keyof HTMLElementTagNameMap>(tag: K, text: string): HTMLElementTagNameMap[K] {

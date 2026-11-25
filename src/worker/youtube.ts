@@ -260,8 +260,11 @@ export function prepareTranscript(cues: Cue[]): PreparedTranscript {
       const piece = rawPiece.trim();
       // 同一人连续说话、上一条以数字结尾、这一条以 ",ddd" 开头：同一个数被拆开了
       const continues = i === 0 && current !== null && /\d$/.test(previous) && /^,\d{3}(?![\d,])/.test(piece);
-      if (i > 0) open(cue.start, true);
-      else if (!continues && (!current || current.length > MAX_PARAGRAPH_CHARS)) open(cue.start, false);
+      if (i > 0) {
+        open(cue.start, true);
+        // 换人说话：上一位说话人末尾的数字不能和后面的内容拼接，也不能进入残缺片段的证据；">>" 后面暂时没有文字时也要清掉
+        previous = '';
+      } else if (!continues && (!current || current.length > MAX_PARAGRAPH_CHARS)) open(cue.start, false);
 
       const text = piece.replace(DAMAGED_NUMBER, (match: string, digits: string, offset: number) => {
         if (offset === 0 && continues) return match;

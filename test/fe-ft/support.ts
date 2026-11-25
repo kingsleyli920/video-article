@@ -249,7 +249,7 @@ export const page = {
     return [...this.article.querySelectorAll<HTMLButtonElement>('.summary-toggle')];
   },
 
-  /** 标题下方的提示（数字没有字幕依据） */
+  /** 标题下方的提示（疑似补全了残缺数字） */
   get notices(): string[] {
     return [...this.article.querySelectorAll('.article-notice p')].map((p) => p.textContent ?? '');
   },

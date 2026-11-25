@@ -40,7 +40,7 @@ const SECOND_ARTICLE = [
   '**嘉宾:** 一切正常。',
 ];
 
-const NUMBER_NOTICE = '字幕 34:25 附近有一处数字残缺（原文"of,200"），文中写成了确定的数"1200"。这个数没有字幕依据，请以原视频为准。';
+const NUMBER_NOTICE = '字幕 34:25 附近有一处数字残缺（原文"of,200"），文中写成了"1200"，疑似补全了残缺数字，请核对原字幕或原视频。';
 
 test.beforeEach(async () => {
   await resetUpstream();
@@ -80,7 +80,7 @@ test('主流程：正文逐步出现 → 完成状态、章节、数字提示 �
   console.log(`生成中的正文长度：${lengths.join(' → ')}；完成时 ${log[doneAt]!.len}`);
 
   // 完成：状态条、标题、章节、标题下方的数字提示，5W1H 可点，表单恢复
-  expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、68 字，用时 \d+ 秒。文中有 1 处数字没有字幕依据，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。$/);
+  expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、68 字，用时 \d+ 秒。文中有 1 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。$/);
   await expect(status.locator('.status-detail')).toHaveText(VIDEO_SOURCE);
   await expect(page.locator('#article h1')).toHaveText('对话测试嘉宾：受控上游');
   await expect(page.locator('#article h2')).toHaveText(['第一章：开场', '第二章：数字']);

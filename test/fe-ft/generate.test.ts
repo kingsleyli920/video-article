@@ -162,14 +162,14 @@ describe('完成时的提示', () => {
     });
 
     expect(page.notices).toEqual([
-      '字幕 34:25 附近有一处数字残缺（原文"of,200"），文中写成了确定的数"1200"。这个数没有字幕依据，请以原视频为准。',
-      '字幕里有一处数字残缺（原文"3."），文中写成了确定的数"3.5"、"35"。这个数没有字幕依据，请以原视频为准。',
+      '字幕 34:25 附近有一处数字残缺（原文"of,200"），文中写成了"1200"，疑似补全了残缺数字，请核对原字幕或原视频。',
+      '字幕里有一处数字残缺（原文"3."），文中写成了"3.5"、"35"，疑似补全了残缺数字，请核对原字幕或原视频。',
     ]);
     const notice = page.article.querySelector('.article-notice');
     expect(notice?.previousElementSibling?.tagName).toBe('H1');
     expect(notice?.getAttribute('role')).toBe('note');
     expect(page.status.tone).toBe('ok');
-    expect(page.status.text).toBe('已完成，共 2 章、36 字，用时 0 秒。文中有 2 处数字没有字幕依据，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。');
+    expect(page.status.text).toBe('已完成，共 2 章、36 字，用时 0 秒。文中有 2 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。');
   });
 
   // 抓：备用模型写的文章没有注明，用户以为是主模型的结果
