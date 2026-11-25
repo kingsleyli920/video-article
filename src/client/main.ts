@@ -2,7 +2,7 @@ import { ERROR_MESSAGES } from '../shared/errors';
 import { LIMITS } from '../shared/limits';
 import type { StreamEvents } from '../shared/types';
 import { parseVideoId } from '../shared/video-id';
-import { createArticleView } from './article-view';
+import { createArticleView, numberWarningText } from './article-view';
 import { runGeneration, type GenerationStage, type GenerationUi } from './generation';
 import { bindSummaries } from './summary-panel';
 
@@ -70,6 +70,7 @@ async function generate(input: GenerationInput): Promise<void> {
   const seconds = () => Math.round((Date.now() - startedAt) / 1000);
   let stage: GenerationStage = 'transcript';
   let source = '';
+  let requestedModel = '';
   const renderProgress = () => showStatus('busy', `${STAGE_TEXT[stage]} · 已用时 ${seconds()} 秒`, source);
   const ticker = setInterval(renderProgress, 1_000);
   renderProgress();
@@ -81,6 +82,7 @@ async function generate(input: GenerationInput): Promise<void> {
     },
     meta(meta) {
       source = describeSource(meta);
+      requestedModel = meta.model;
       renderProgress();
     },
     delta(markdown) {
@@ -88,9 +90,12 @@ async function generate(input: GenerationInput): Promise<void> {
     },
     done(result, markdown, generationId) {
       clearInterval(ticker);
-      view.finish(markdown);
+      const warnings = result.numberWarnings ?? [];
+      view.finish(markdown, warnings.map(numberWarningText));
       unbindSummaries = bindSummaries(articleRoot, generationId);
-      showStatus('ok', `已完成，共 ${result.chapters.length} 章、${result.chars} 字，用时 ${seconds()} 秒。点击章节标题旁的 5W1H 查看总结。`, source);
+      const warningText = warnings.length ? `文中有 ${warnings.length} 处数字没有字幕依据，见标题下方的提示。` : '';
+      const modelNote = result.model && result.model !== requestedModel ? ` · 主模型繁忙，本次由 ${result.model} 生成` : '';
+      showStatus('ok', `已完成，共 ${result.chapters.length} 章、${result.chars} 字，用时 ${seconds()} 秒。${warningText}点击章节标题旁的 5W1H 查看总结。`, source + modelNote);
     },
     fail(error, markdown) {
       clearInterval(ticker);

@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { parseArticle } from '../shared/article';
+import type { NumberWarning } from '../shared/types';
 
 export type ArticleState = 'streaming' | 'done' | 'failed';
 
@@ -62,7 +63,8 @@ export interface ArticleView {
   reset(): void;
   /** 生成中：合并 80ms 内的多次更新再重绘 */
   update(markdown: string): void;
-  finish(markdown: string): void;
+  /** notices：显示在标题下方的提示（如数字没有字幕依据），不改正文 */
+  finish(markdown: string, notices?: string[]): void;
   fail(markdown: string, message: string): void;
 }
 
@@ -70,10 +72,19 @@ export function createArticleView(root: HTMLElement): ArticleView {
   let latest = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const paint = (state: ArticleState, note?: string) => {
+  const paint = (state: ArticleState, note?: string, notices: string[] = []) => {
     clearTimeout(timer);
     timer = undefined;
     const fragment = buildArticle(latest, state);
+    if (notices.length) {
+      const box = document.createElement('div');
+      box.className = 'article-notice';
+      box.setAttribute('role', 'note');
+      box.append(...notices.map((text) => textElement('p', text)));
+      const title = fragment.querySelector('h1');
+      if (title) title.after(box);
+      else fragment.prepend(box);
+    }
     if (note) {
       const p = textElement('p', note);
       p.className = 'incomplete-note';
@@ -95,15 +106,21 @@ export function createArticleView(root: HTMLElement): ArticleView {
       latest = markdown;
       timer ??= setTimeout(() => paint('streaming'), RENDER_INTERVAL_MS);
     },
-    finish(markdown) {
+    finish(markdown, notices = []) {
       latest = markdown;
-      paint('done');
+      paint('done', undefined, notices);
     },
     fail(markdown, message) {
       latest = markdown;
       paint('failed', markdown ? `内容不完整：${message}` : undefined);
     },
   };
+}
+
+/** 把服务端的数字检查结果写成给读者看的一句话 */
+export function numberWarningText({ time, fragment, written }: NumberWarning): string {
+  const where = time ? `字幕 ${time} 附近` : '字幕里';
+  return `${where}有一处数字残缺（原文"${fragment}"），文中写成了确定的数"${written.join('"、"')}"。这个数没有字幕依据，请以原视频为准。`;
 }
 
 function textElement<K extends keyof HTMLElementTagNameMap>(tag: K, text: string): HTMLElementTagNameMap[K] {

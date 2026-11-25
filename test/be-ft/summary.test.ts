@@ -50,6 +50,16 @@ describe('POST /api/generations/:id/chapters/:chapterId/summary', () => {
     expect(JSON.parse(prompt).generationConfig.responseJsonSchema.required).toEqual(['who', 'what', 'when', 'where', 'why', 'how']);
   });
 
+  // 抓：主模型繁忙时 5W1H 直接失败，评审期间遇到高峰就点不开
+  it('主模型繁忙（503 重试后仍失败）时改用备用模型生成总结', async () => {
+    const { generationId } = await savedGeneration();
+    const upstream = mockUpstream({ busyModels: ['test-model'], geminiJson: geminiJson(SUMMARY) });
+    const res = await summarize(generationId, '2');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ chapterId: '2', cached: false, summary: { ...SUMMARY, when: null } });
+    expect(upstream.gemini().map((c) => c.url.split('/models/')[1]!.split(':')[0])).toEqual(['test-model', 'test-model', 'test-fallback']);
+  });
+
   // 抓：前端把整篇文章塞进请求体也被接受
   it('带请求体的总结请求一律拒绝，不调用 Gemini', async () => {
     const { generationId } = await savedGeneration();

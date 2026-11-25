@@ -339,6 +339,25 @@ button:disabled {
   animation: pulse 1s steps(2) infinite;
 }
 
+.article-notice {
+  margin: 0 0 24px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--warn);
+  border-radius: 4px;
+  background: var(--warn-soft);
+  color: #8a4b00;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.article-notice p {
+  margin: 0;
+}
+
+.article-notice p + p {
+  margin-top: 6px;
+}
+
 .incomplete-note {
   margin-top: 28px;
   padding: 10px 14px;

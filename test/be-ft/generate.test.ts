@@ -23,6 +23,7 @@ describe('POST /api/generations', () => {
       { id: '1', title: '技术革命：八十年一遇' },
       { id: '2', title: '智能经济：收入爆发' },
     ]);
+    expect(eventOf(events, 'done')!.numberWarnings).toEqual([]);
 
     const saved = await openStore(env, meta.generationId).load();
     expect(saved).toMatchObject({
@@ -37,6 +38,42 @@ describe('POST /api/generations', () => {
     const prompt = upstream.gemini()[0]!.body;
     expect(prompt).toContain('写给投资人');
     expect(prompt).toContain('live caption text');
+  });
+
+  // 抓：模型把字幕里残缺的数字补成确定的数，done 里却没有提示；没有补数时误报
+  it('字幕有残缺数字且文中写成确定的数时，done 带上数字提示；文章照常保存', async () => {
+    mockUpstream({
+      captions: srv1([
+        [0, 'intro'],
+        [2065, '&amp;gt;&amp;gt; we&amp;#39;re tracking on the order of,200 bills'],
+      ]),
+      geminiStream: geminiSse(['# 标题\n\n## 监管\n\n各州大约有1200项法案，', '另有 300 项已通过。']),
+    });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    const done = eventOf(events, 'done')!;
+    expect(done.numberWarnings).toEqual([{ time: '34:25', fragment: 'of,200', written: ['1200'] }]);
+    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).not.toBeNull();
+  });
+
+  // 抓：主模型开始输出前一直 503 时整篇失败，或者换了模型却不说明实际用的是哪个
+  it('主模型开始输出前持续繁忙（503 重试后仍失败）时整篇改用备用模型，done 和保存的上下文记录实际模型', async () => {
+    const upstream = mockUpstream({ busyModels: ['test-model'], geminiStream: geminiSse(ARTICLE_TEXTS) });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    expect(upstream.gemini().map((c) => c.url.split('/models/')[1]!.split(':')[0])).toEqual(['test-model', 'test-model', 'test-fallback']);
+    expect(eventOf(events, 'meta')!.model).toBe('test-model');
+    expect(eventOf(events, 'done')!.model).toBe('test-fallback');
+    expect(events.filter((e) => e.event === 'delta').map((e) => (e.data as { text: string }).text).join('')).toBe(ARTICLE_MARKDOWN);
+    expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.model).toBe('test-fallback');
+  });
+
+  // 抓：主模型写到一半出错后换模型重写，两个模型的输出拼成一篇
+  it('主模型已经开始输出后出现 503 错误事件时不换模型，报 gemini_busy 并保留部分内容', async () => {
+    const overloaded = `data: ${JSON.stringify({ error: { code: 503, message: 'The model is overloaded.', status: 'UNAVAILABLE' } })}\r\n\r\n`;
+    const upstream = mockUpstream({ geminiStream: geminiSse(['# 标题\n\n## 第一章\n\n写到一半'], null) + overloaded });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    expect(upstream.gemini()).toHaveLength(1);
+    expect(events.at(-1)).toEqual({ event: 'error', data: { code: 'gemini_busy', message: 'Gemini 模型繁忙，请稍后重试（HTTP 503）', partial: true } });
+    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
   });
 
   // 抓：示例视频实时抓取失败时直接报错，或者用了备份却不告诉用户

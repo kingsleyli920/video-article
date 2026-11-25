@@ -124,7 +124,7 @@ test('示例视频：实时字幕 → 流式文章 → 保存 → 章节 5W1H', 
   writeFileSync(testInfo.outputPath('article.md'), markdown);
   writeFileSync(
     testInfo.outputPath('evidence.json'),
-    JSON.stringify({ generationId: meta?.generationId, transcript: meta?.transcript, model: meta?.model, firstDeltaAt, serverTiming: done!.timing, chars: done!.chars, chapters: done!.chapters, samples, summaryChapterId: '2', summary: rows, chunkCount: chunks.length }, null, 2),
+    JSON.stringify({ generationId: meta?.generationId, transcript: meta?.transcript, model: meta?.model, firstDeltaAt, serverTiming: done!.timing, chars: done!.chars, doneModel: done!.model, numberWarnings: done!.numberWarnings, chapters: done!.chapters, samples, summaryChapterId: '2', summary: rows, chunkCount: chunks.length }, null, 2),
   );
   console.log(`第一段正文到达浏览器 ${firstDeltaAt} ms；服务端模型结束 ${done!.timing.modelDoneMs} ms；共 ${chunks.length} 个分块，${chapterCount} 章`);
 });

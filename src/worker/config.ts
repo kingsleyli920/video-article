@@ -10,3 +10,15 @@ export function geminiOptions(env: Env): GeminiOptions {
     thinkingLevel: env.GEMINI_THINKING_LEVEL || undefined,
   };
 }
+
+/**
+ * 备用模型：主模型在开始输出之前持续繁忙（503 重试后仍失败，或首个分块超时）时，改用它完成这一次请求。
+ * 只在还没有任何输出时切换，不会把两个模型的输出拼成一篇。没配置或和主模型相同时返回 null。
+ */
+export function fallbackModel(env: Env): string | null {
+  const fallback: string = env.GEMINI_FALLBACK_MODEL ?? '';
+  const primary: string = env.GEMINI_MODEL;
+  return fallback && fallback !== primary ? fallback : null;
+}
+
+export const isBusy = (err: unknown) => err instanceof AppError && err.code === 'gemini_busy';

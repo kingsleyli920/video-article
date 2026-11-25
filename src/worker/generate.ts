@@ -2,9 +2,10 @@ import { countArticleChars, parseArticle, validateArticle } from '../shared/arti
 import { LIMITS } from '../shared/limits';
 import { parseVideoId } from '../shared/video-id';
 import { AppError, toAppError } from './app-error';
-import { geminiOptions } from './config';
+import { fallbackModel, geminiOptions, isBusy } from './config';
 import { ClientGone, EventStream } from './event-stream';
 import { streamText } from './gemini';
+import { checkDamagedNumbers } from './number-check';
 import { articlePrompt } from './prompts';
 import { createStore, type GenerationContext } from './store';
 import { loadTranscript } from './transcripts';
@@ -86,32 +87,46 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
 
     let firstTokenMs: number | null = null;
     const prompt = articlePrompt({ video: transcript.video, transcriptText, instructions: input.instructions });
-    const finishReason = await streamText(
-      gemini,
-      prompt,
-      async (text) => {
-        firstTokenMs ??= since();
-        markdown += text;
-        if (markdown.length > LIMITS.articleChars) throw new AppError('article_too_long');
-        await events.send('delta', { text });
-      },
-      events.signal,
-    );
+    const write = (model: string) =>
+      streamText(
+        { ...gemini, model },
+        prompt,
+        async (text) => {
+          firstTokenMs ??= since();
+          markdown += text;
+          if (markdown.length > LIMITS.articleChars) throw new AppError('article_too_long');
+          await events.send('delta', { text });
+        },
+        events.signal,
+      );
+    let model = gemini.model;
+    let finishReason: string | null;
+    try {
+      finishReason = await write(model);
+    } catch (err) {
+      // 主模型还没输出任何内容就持续繁忙：整篇改用备用模型。已经有输出时不换，避免拼接两个模型的输出
+      const fallback = fallbackModel(env);
+      if (!fallback || !isBusy(err) || markdown !== '') throw err;
+      Object.assign(log, { fallbackFrom: model, fallbackReason: (err as AppError).detail ?? null, fallbackMs: since() });
+      model = fallback;
+      finishReason = await write(model);
+    }
     const modelDoneMs = since();
     const chars = countArticleChars(markdown);
-    Object.assign(log, { finishReason, firstTokenMs, modelDoneMs, articleChars: chars });
+    Object.assign(log, { model, finishReason, firstTokenMs, modelDoneMs, articleChars: chars });
     assertFinished(finishReason);
 
     const article = parseArticle(markdown);
     const problem = validateArticle(article);
     if (problem) throw new AppError('invalid_structure', problem);
+    const numberWarnings = checkDamagedNumbers(transcriptText, markdown);
     events.throwIfGone(); // 模型结束到保存之间客户端已经离开：不再保存
 
     const context: GenerationContext = {
       version: 1,
       generationId,
       createdAt: new Date(startedAt).toISOString(),
-      model: gemini.model,
+      model,
       video: transcript.video,
       transcript: { ...info, chars: transcriptText.length, text: transcriptText },
       instructions: input.instructions,
@@ -125,8 +140,8 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     }
 
     const timing = { transcriptMs, firstTokenMs, modelDoneMs, savedMs: since() };
-    Object.assign(log, { ok: true, chapters: article.chapters.length, savedMs: timing.savedMs });
-    await events.send('done', { chapters: article.chapters.map(({ id, title }) => ({ id, title })), chars, timing });
+    Object.assign(log, { ok: true, chapters: article.chapters.length, savedMs: timing.savedMs, numberWarnings: numberWarnings.length });
+    await events.send('done', { chapters: article.chapters.map(({ id, title }) => ({ id, title })), chars, timing, numberWarnings, model });
   } catch (err) {
     if (err instanceof ClientGone) {
       // stoppedMs：上游请求已经被取消、本流程停止的时点

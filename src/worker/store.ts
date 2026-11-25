@@ -3,7 +3,7 @@ import type { Chapter } from '../shared/article';
 import type { ErrorCode } from '../shared/errors';
 import type { ChapterSummary, TranscriptInfo } from '../shared/types';
 import { AppError, toAppError } from './app-error';
-import { geminiOptions } from './config';
+import { fallbackModel, geminiOptions, isBusy } from './config';
 import { generateJson } from './gemini';
 import { summaryPrompt } from './prompts';
 import { normalizeSummary, SUMMARY_SCHEMA } from './summary-schema';
@@ -75,17 +75,24 @@ export class GenerationStore extends DurableObject<Env> {
       const cached = await this.getSummary(chapterId);
       if (cached) return { ok: true, summary: cached, cached: true };
 
-      const raw = await generateJson(
-        geminiOptions(this.env),
-        summaryPrompt({
-          video: context.video,
-          transcriptText: context.transcript.text,
-          instructions: context.instructions,
-          chapterTitles: context.article.chapters.map((c) => c.title),
-          chapter,
-        }),
-        SUMMARY_SCHEMA,
-      );
+      const options = geminiOptions(this.env);
+      const prompt = summaryPrompt({
+        video: context.video,
+        transcriptText: context.transcript.text,
+        instructions: context.instructions,
+        chapterTitles: context.article.chapters.map((c) => c.title),
+        chapter,
+      });
+      let raw: unknown;
+      try {
+        raw = await generateJson(options, prompt, SUMMARY_SCHEMA);
+      } catch (err) {
+        // 结构化输出一次返回，没有"已输出一半"的问题：主模型繁忙就整次改用备用模型
+        const fallback = fallbackModel(this.env);
+        if (!fallback || !isBusy(err)) throw err;
+        console.log(JSON.stringify({ event: 'summary_fallback', from: options.model, to: fallback, reason: (err as AppError).detail ?? null }));
+        raw = await generateJson({ ...options, model: fallback }, prompt, SUMMARY_SCHEMA);
+      }
       const summary = normalizeSummary(raw);
       // 上下文已过期被删时不再写入，避免留下没有 alarm 的孤立数据
       if (await this.ctx.storage.get(CONTEXT_KEY)) await this.ctx.storage.put(summaryKey(chapterId), summary);

@@ -11,7 +11,8 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GenerationStore"] }],
   "vars": {
-    "GEMINI_MODEL": "gemini-3.6-flash",
+    "GEMINI_MODEL": "gemini-3.8-flash",
+    "GEMINI_FALLBACK_MODEL": "gemini-3.6-flash",
     "GEMINI_THINKING_LEVEL": "low"
   },
   "observability": { "enabled": true }

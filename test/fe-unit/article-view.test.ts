@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildArticle, createArticleView } from '../../src/client/article-view';
+import { buildArticle, createArticleView, numberWarningText } from '../../src/client/article-view';
 
 const MARKDOWN = '# 对话安德森：万亿美金之问\n\n## 技术革命：八十年一遇\n\n### 当前阶段\n\n**Jen:** 第几局？\n\n**Mark:** 第三年。\n\n## 智能经济：收入爆发\n\n1. 消费端：光速普及\n2. 企业端：按 token 计费';
 
@@ -83,6 +83,22 @@ describe('createArticleView', () => {
     expect(root.querySelector('.incomplete-note')?.textContent).toBe('内容不完整：生成中断，文章不完整');
     vi.advanceTimersByTime(200);
     expect(root.dataset.state).toBe('failed');
+  });
+
+  // 抓：数字提示没显示、显示在正文末尾读者看不到，或者被当作 HTML 解析
+  it('finish 带提示时在标题下方逐条显示，正文不变；没有提示时不加提示框', () => {
+    const root = document.createElement('div');
+    const view = createArticleView(root);
+    const warning = numberWarningText({ time: '34:25', fragment: 'of,200', written: ['1200', '1,200'] });
+    expect(warning).toBe('字幕 34:25 附近有一处数字残缺（原文"of,200"），文中写成了确定的数"1200"、"1,200"。这个数没有字幕依据，请以原视频为准。');
+    view.finish('# 标题\n\n## 第一章\n\n大约有1200项法案。', [warning, '<b>第二条</b>']);
+    const notice = root.querySelector('h1 + .article-notice');
+    expect([...notice!.querySelectorAll('p')].map((p) => p.textContent)).toEqual([warning, '<b>第二条</b>']);
+    expect(notice!.querySelector('b')).toBeNull();
+    expect(root.querySelector('.chapter-body p')?.textContent).toBe('大约有1200项法案。');
+
+    view.finish('# 标题\n\n## 第一章\n\n正文');
+    expect(root.querySelector('.article-notice')).toBeNull();
   });
 
   it('reset 清空文章和状态，取消待执行的重绘', () => {

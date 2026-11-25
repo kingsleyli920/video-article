@@ -12,7 +12,7 @@ export default defineConfig({
           cloudflareTest({
             wrangler: { configPath: './wrangler.jsonc' },
             // 测试一律用假 key 和固定模型；出站请求全部被测试里的 fetch 替身拦截
-            miniflare: { bindings: { GEMINI_API_KEY: 'test-key', GEMINI_MODEL: 'test-model', GEMINI_THINKING_LEVEL: 'low' } },
+            miniflare: { bindings: { GEMINI_API_KEY: 'test-key', GEMINI_MODEL: 'test-model', GEMINI_FALLBACK_MODEL: 'test-fallback', GEMINI_THINKING_LEVEL: 'low' } },
           }),
         ],
         test: { name: 'be-ft', include: ['test/be-ft/**/*.test.ts'] },
