@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>视频对话文章</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="intro">
+        <p class="brand">视频对话文章</p>
+        <p class="lede">输入一个带字幕的 YouTube 视频链接，生成按章节组织的中文对话文章。全文生成后，可以查看每一章的 5W1H 总结。</p>
+      </header>
+
+      <form id="generate-form" class="composer" novalidate>
+        <label class="field">
+          <span class="field-label">YouTube 链接</span>
+          <input id="video-url" name="url" type="url" required autocomplete="off" placeholder="https://www.youtube.com/watch?v=…" />
+        </label>
+        <label class="field">
+          <span class="field-label">生成要求 <span class="optional">可选</span></span>
+          <textarea id="instructions" name="instructions" rows="3" maxlength="1000" placeholder="例如：写给不懂技术的投资人，只保留商业相关的内容，语言简洁。"></textarea>
+        </label>
+        <div class="actions">
+          <button id="submit" type="submit" class="primary">生成文章</button>
+        </div>
+      </form>
+
+      <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+      <article id="article" class="article" aria-live="off"></article>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

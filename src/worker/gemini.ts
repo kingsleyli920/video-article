@@ -1,0 +1,131 @@
+import { readSse } from '../shared/sse';
+import { AppError } from './app-error';
+
+export interface GeminiOptions {
+  apiKey: string;
+  model: string;
+  /** minimal / low / medium / high，不填用模型默认值 */
+  thinkingLevel?: string;
+}
+
+export interface Prompt {
+  system: string;
+  user: string;
+}
+
+interface GeminiPart {
+  text?: string;
+  thought?: boolean;
+}
+
+interface GeminiChunk {
+  candidates?: { content?: { parts?: GeminiPart[] }; finishReason?: string }[];
+  promptFeedback?: { blockReason?: string };
+  error?: { code?: number; status?: string; message?: string };
+}
+
+const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const ARTICLE_MAX_OUTPUT_TOKENS = 32_768;
+const SUMMARY_MAX_OUTPUT_TOKENS = 4_096;
+const BUSY_RETRY_DELAY_MS = 1_500;
+
+/**
+ * 流式生成：每收到一段正文就交给 onText（会等它完成，保证下游背压），返回模型给出的 finishReason。
+ * 只在还没有任何输出之前对 503 重试一次；开始输出后不重试、不换模型。
+ * 流被截断时 finishReason 为 null。
+ */
+export async function streamText(
+  options: GeminiOptions,
+  prompt: Prompt,
+  onText: (text: string) => Promise<void>,
+): Promise<string | null> {
+  const res = await post(options, 'streamGenerateContent?alt=sse', payload(options, prompt, { maxOutputTokens: ARTICLE_MAX_OUTPUT_TOKENS }));
+  let finishReason: string | null = null;
+  for await (const message of readSse(res.body!)) {
+    const chunk = parseChunk(message.data);
+    const candidate = chunk.candidates?.[0];
+    const text = candidate?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('') ?? '';
+    if (text) await onText(text);
+    if (candidate?.finishReason) finishReason = candidate.finishReason;
+  }
+  return finishReason;
+}
+
+/** 结构化输出：按 JSON schema 生成并返回解析后的对象（结构校验由调用方负责）。 */
+export async function generateJson(options: GeminiOptions, prompt: Prompt, schema: object): Promise<unknown> {
+  const res = await post(
+    options,
+    'generateContent',
+    payload(options, prompt, { maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS, responseMimeType: 'application/json', responseJsonSchema: schema }),
+  );
+  const chunk = parseChunk(await res.text());
+  const candidate = chunk.candidates?.[0];
+  if (candidate?.finishReason && candidate.finishReason !== 'STOP') throw new AppError('summary_invalid', candidate.finishReason);
+  const text = candidate?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('') ?? '';
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new AppError('summary_invalid', '不是合法 JSON');
+  }
+}
+
+function payload(options: GeminiOptions, prompt: Prompt, generationConfig: Record<string, unknown>) {
+  return {
+    systemInstruction: { parts: [{ text: prompt.system }] },
+    contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
+    generationConfig: {
+      ...generationConfig,
+      ...(options.thinkingLevel ? { thinkingConfig: { thinkingLevel: options.thinkingLevel } } : {}),
+    },
+  };
+}
+
+async function post(options: GeminiOptions, method: string, body: object): Promise<Response> {
+  const url = `${API_BASE}/${encodeURIComponent(options.model)}:${method}`;
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': options.apiKey },
+    body: JSON.stringify(body),
+  };
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch {
+      throw new AppError('gemini_error', '网络请求失败');
+    }
+    if (res.ok) return res;
+    const error = classifyHttpError(res.status, await res.text());
+    if (error.code === 'gemini_busy' && attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, BUSY_RETRY_DELAY_MS));
+      continue;
+    }
+    throw error;
+  }
+}
+
+export function classifyHttpError(status: number, body: string): AppError {
+  let message = '';
+  try {
+    message = (JSON.parse(body) as GeminiChunk).error?.message ?? '';
+  } catch {
+    // 非 JSON 响应，按状态码归类
+  }
+  if (/location is not supported/i.test(message)) return new AppError('gemini_region');
+  if (status === 429) return new AppError('gemini_quota');
+  if (status === 503 || status === 500) return new AppError('gemini_busy', `HTTP ${status}`);
+  if (/api key/i.test(message)) return new AppError('gemini_error', 'API key 无效');
+  return new AppError('gemini_error', `HTTP ${status}`);
+}
+
+function parseChunk(data: string): GeminiChunk {
+  let chunk: GeminiChunk;
+  try {
+    chunk = JSON.parse(data) as GeminiChunk;
+  } catch {
+    throw new AppError('interrupted', '模型响应格式异常');
+  }
+  if (chunk.error) throw classifyHttpError(chunk.error.code ?? 500, JSON.stringify({ error: chunk.error }));
+  if (chunk.promptFeedback?.blockReason) throw new AppError('blocked', chunk.promptFeedback.blockReason);
+  return chunk;
+}

@@ -1,0 +1,47 @@
+{
+  "name": "video-article",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsx scripts/build-client.ts",
+    "predev": "tsx scripts/dev-vars.ts",
+    "dev": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler dev",
+    "typecheck": "tsc -p tsconfig.worker.json && tsc -p tsconfig.client.json && tsc -p tsconfig.node.json",
+    "types": "tsx scripts/dev-vars.ts && wrangler types",
+    "test:be:unit": "vitest run --project be-unit",
+    "test:be:ft": "vitest run --project be-ft",
+    "test:fe:unit": "vitest run --project fe-unit",
+    "test:fast": "vitest run",
+    "test:e2e:ui": "playwright test --project fullstack",
+    "transcript:fetch": "tsx scripts/fetch-transcript.ts",
+    "cf:verify": "tsx scripts/cf.ts verify",
+    "cf:confirm": "tsx scripts/cf.ts confirm",
+    "cf:secret:gemini": "tsx scripts/cf.ts secret-gemini",
+    "deploy": "npm run build && tsx scripts/cf.ts wrangler deploy",
+    "check:leaks": "npm run build && wrangler deploy --dry-run --outdir .wrangler/dry-run && tsx scripts/check-leaks.ts"
+  },
+  "dependencies": {
+    "dompurify": "^3.5.0",
+    "marked": "^18.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.9.2",
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "jsdom": "^31.0.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.168.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "esbuild@0.28.2": true,
+    "workerd@1.20260815.1": true,
+    "workerd@1.20261123.1": true
+  }
+}

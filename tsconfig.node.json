@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "lib": ["es2023", "dom", "dom.iterable"], "types": ["node"] },
+  "include": ["scripts/**/*", "test/be-unit/**/*", "test/e2e/**/*", "*.config.ts"]
+}

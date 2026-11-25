@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "video-article",
+  "main": "src/worker/index.ts",
+  // 不写 account_id：部署目标只来自项目 .env，并由 scripts/cf.ts 核对
+  "compatibility_date": "2026-11-20",
+  "build": { "command": "npm run build", "watch_dir": ["src/client", "src/shared"] },
+  "assets": { "directory": "./dist/client" },
+  "durable_objects": {
+    "bindings": [{ "name": "GENERATIONS", "class_name": "GenerationStore" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GenerationStore"] }],
+  "vars": {
+    "GEMINI_MODEL": "gemini-3.6-flash",
+    "GEMINI_THINKING_LEVEL": "low"
+  },
+  "observability": { "enabled": true }
+}
