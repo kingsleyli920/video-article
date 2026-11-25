@@ -16,6 +16,13 @@ export interface TranscriptInfo {
   chars: number;
   /** 使用内置备份时，实时获取失败的原因 */
   liveError?: string;
+  /** 字幕原文的少量片段（带原始时间戳），只在 meta 里发给页面，不保存 */
+  preview?: TranscriptPreviewSnippet[];
+}
+
+export interface TranscriptPreviewSnippet {
+  time: string;
+  text: string;
 }
 
 export interface ChapterRef {
@@ -27,6 +34,8 @@ export interface ChapterRef {
 export interface GenerationTiming {
   transcriptMs: number;
   firstTokenMs: number | null;
+  /** 第一段写完、不是标题的正文发出的时间（旧版本没有这个字段） */
+  firstParagraphMs?: number | null;
   modelDoneMs: number;
   savedMs: number;
 }

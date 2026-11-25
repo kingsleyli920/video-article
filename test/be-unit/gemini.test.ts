@@ -46,7 +46,27 @@ describe('streamText', () => {
     const [url, init] = fetchSpy.mock.calls[0]!;
     expect(String(url)).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse');
     expect((init!.headers as Record<string, string>)['x-goog-api-key']).toBe('test-key');
-    expect(JSON.parse(String(init!.body)).generationConfig).toEqual({ maxOutputTokens: 32768, thinkingConfig: { thinkingLevel: 'low' } });
+    // 思考 token 计入输出上限，默认上限按官方建议 65,536，避免高档思考被截断
+    expect(JSON.parse(String(init!.body)).generationConfig).toEqual({ maxOutputTokens: 65536, thinkingConfig: { thinkingLevel: 'low' } });
+  });
+
+  // 抓：用量、实际模型版本、服务档没有记录，或者为了等用量而一直等连接关闭
+  it('从终止事件里记下用量和模型版本，从响应头记下服务档；可单独指定输出上限', async () => {
+    const last = { candidates: [{ content: { parts: [{ text: '尾' }], role: 'model' }, finishReason: 'STOP' }], modelVersion: 'gemini-x-001', usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20, thoughtsTokenCount: 30, cachedContentTokenCount: 80, serviceTier: 'standard' } };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(`${geminiSse(['正文'], null)}data: ${JSON.stringify(last)}\r\n\r\n`, { headers: { 'x-gemini-service-tier': 'standard' } }),
+    );
+    const stats = {};
+    const texts: string[] = [];
+    const finishReason = await streamText({ ...OPTIONS, maxOutputTokens: 1234 }, PROMPT, async (t) => void texts.push(t), undefined, stats);
+    expect(finishReason).toBe('STOP');
+    expect(texts.join('')).toBe('正文尾');
+    expect(stats).toEqual({
+      serviceTierHeader: 'standard',
+      modelVersion: 'gemini-x-001',
+      usage: { promptTokenCount: 100, candidatesTokenCount: 20, thoughtsTokenCount: 30, cachedContentTokenCount: 80, serviceTier: 'standard' },
+    });
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body)).generationConfig.maxOutputTokens).toBe(1234);
   });
 
   // 抓：首次 503 直接失败；或者在已经输出后重试，导致两次输出拼在一起
@@ -242,6 +262,20 @@ describe('generateJson', () => {
     expect(await generateJson(OPTIONS, PROMPT, { type: 'object' })).toEqual({ who: 'Mark' });
     const body = JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body));
     expect(body.generationConfig).toMatchObject({ responseMimeType: 'application/json', responseJsonSchema: { type: 'object' } });
+  });
+
+  // 抓：5W1H 的实际模型版本、用量（含思考 token）和服务档没有记录，验收时无法确认是谁写的总结；或输出上限仍是会被高档思考截断的旧值
+  it('记下用量、模型版本和服务档；思考 token 计入输出上限，默认上限 65,536', async () => {
+    const response = { ...geminiJson({ who: 'Mark' }), modelVersion: 'gemini-y-002', usageMetadata: { promptTokenCount: 300, candidatesTokenCount: 40, thoughtsTokenCount: 3000, serviceTier: 'standard' } };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(response, { headers: { 'x-gemini-service-tier': 'priority' } }));
+    const stats = {};
+    expect(await generateJson(OPTIONS, PROMPT, { type: 'object' }, stats)).toEqual({ who: 'Mark' });
+    expect(stats).toEqual({
+      serviceTierHeader: 'priority',
+      modelVersion: 'gemini-y-002',
+      usage: { promptTokenCount: 300, candidatesTokenCount: 40, thoughtsTokenCount: 3000, serviceTier: 'standard' },
+    });
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body)).generationConfig.maxOutputTokens).toBe(65536);
   });
 
   it('模型输出不是 JSON 时报 summary_invalid', async () => {

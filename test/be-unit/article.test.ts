@@ -81,3 +81,14 @@ describe('validateArticle', () => {
     expect(validateArticle(parseArticle('# 标题\n\n## 第一章\n\n正文\n\n## 第二章\n\n正文'))).toBeNull();
   });
 });
+
+describe('hasReadableParagraph', () => {
+  // 抓：把只有标题的 "# 对" 当成"开始可以阅读"，或者把还没写完的段落算进去
+  it('只有写完、后面跟着空行、不是标题的段落才算可读正文', async () => {
+    const { hasReadableParagraph } = await import('../../src/shared/article');
+    expect(hasReadableParagraph('# 对')).toBe(false);
+    expect(hasReadableParagraph('# 对话标题\n\n## 第一章\n\n')).toBe(false);
+    expect(hasReadableParagraph('# 对话标题\n\n## 第一章\n\n**主持人:** 我们从哪')).toBe(false);
+    expect(hasReadableParagraph('# 对话标题\n\n## 第一章\n\n**主持人:** 我们从哪里开始？\n\n')).toBe(true);
+  });
+});

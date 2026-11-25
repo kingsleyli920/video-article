@@ -22,9 +22,8 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('YouTube 链接').fill(SAMPLE_URL);
 });
 
-// 抓：视频标题里一长串不带空格的字符（如连写的 hashtag）在状态条里不换行，伸出灰色状态框、把页面撑出横向滚动
-// 已知失败（visual-mobile）：.status 没有像 .article 那样设 overflow-wrap，.status-text 作为 flex 子项的最小宽度等于最长的词
-test('状态条里的长视频标题不溢出', async ({ page, api }, testInfo) => {
+// 抓：视频标题里一长串不带空格的字符（如连写的 hashtag）在来源面板里不换行，伸出面板边框、把页面撑出横向滚动
+test('来源面板里的长视频标题不溢出', async ({ page, api }, testInfo) => {
   api.queueGeneration(
     sseReply(
       generationEvents({
@@ -36,7 +35,8 @@ test('状态条里的长视频标题不溢出', async ({ page, api }, testInfo) 
   );
   await page.getByRole('button', { name: '生成文章' }).click();
   await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok');
-  await expect(page.locator('#status .status-detail')).toBeVisible();
+  await expect(page.locator('#source .source-title')).toHaveText('Marc Andreessen on AI #a16z#AI#Andreessen#TrillionDollarQuestion#OpenSourceModels');
+  await expect(page.locator('#source .source-title')).toBeVisible();
   // 现场截图留作证据（不是基线）
   await page.screenshot({ path: testInfo.outputPath('long-video-title.png'), fullPage: true });
   await expectNoHorizontalOverflow(page);

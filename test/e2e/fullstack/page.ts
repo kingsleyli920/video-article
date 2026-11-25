@@ -7,8 +7,23 @@ import type { Locator, Page } from '@playwright/test';
 /** 模拟上游里默认可用的视频（不是内置备份的示例视频，取不到字幕就直接报错） */
 export const VIDEO_URL = 'https://www.youtube.com/watch?v=mockvideo01';
 
-/** 默认视频的状态条附注（标题 · 字幕类型 · 来源） */
-export const VIDEO_SOURCE = '受控上游测试视频 · 自动生成字幕（en）· 来源：YouTube 实时获取';
+/**
+ * 默认视频在来源面板里的各行（标签 + 内容）。字符数 142 是模拟上游三条字幕经 prepareTranscript 整理后的长度：
+ * 两条相邻字幕并成一段 74 字符，空行 2，第三段 66 字符（残缺数字 ",200" 换成 19 字符的占位）。
+ */
+export const SOURCE_ROWS = [
+  ['来源视频', '受控上游测试视频', '测试频道 · 时长 10:00'],
+  ['字幕', '英语 · 自动生成字幕', '整理后 142 字符'],
+  ['字幕来源', 'YouTube 实时获取'],
+];
+
+/** 默认视频的字幕原文片段：原样展示（不遮蔽残缺数字），带原始时间戳 */
+export const SOURCE_SNIPPETS = ['[00:00] welcome to the show Alex here', '[00:05] let us start with the first question', "[34:25] >> we're tracking on the order of,200 bills"];
+
+/** 来源面板各行的文字（每行：标签、内容…） */
+export async function sourceRows(page: Page): Promise<string[][]> {
+  return page.locator('#source .source-row').evaluateAll((rows) => rows.map((row) => Array.from(row.children, (cell) => cell.textContent ?? '')));
+}
 
 interface ArticleSample {
   t: number;

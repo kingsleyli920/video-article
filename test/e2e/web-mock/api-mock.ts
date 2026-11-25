@@ -4,7 +4,7 @@
  */
 import { expect, test as base, type Page, type Route } from '@playwright/test';
 import { encodeSse } from '../../../src/shared/sse';
-import type { ChapterSummary, NumberWarning, StreamEvents } from '../../../src/shared/types';
+import type { ChapterSummary, NumberWarning, StreamEvents, TranscriptPreviewSnippet } from '../../../src/shared/types';
 
 export type SseEvent = { [K in keyof StreamEvents]: [K, StreamEvents[K]] }[keyof StreamEvents];
 
@@ -93,11 +93,18 @@ export const WARNINGS: NumberWarning[] = [
   { time: null, fragment: '3,', written: ['3000', '3万'] },
 ];
 
+/** 字幕原文片段：和真实服务端一样，开头、约三分之一、约三分之二处各一段，每段不超过 200 字 */
+export const PREVIEW: TranscriptPreviewSnippet[] = [
+  { time: '00:00', text: "Welcome back to the a16z show. I'm here with Marc Andreessen, and today we're going to talk about the trillion-dollar question in AI." },
+  { time: '20:00', text: 'For eighty years computers were machines that followed instructions. Large models are the first time software can deal with ambiguity.' },
+  { time: '40:00', text: 'Open source means a small team can get frontier capability, so the competition moves to product and distribution.' },
+];
+
 export function meta(overrides: Partial<StreamEvents['meta']> = {}): StreamEvents['meta'] {
   return {
     generationId: 'gen-1',
     video: { id: 'xRh2sVcNXQ8', title: '对话安德森', channel: 'a16z', lengthSeconds: 3600 },
-    transcript: { source: 'live', language: 'en', kind: 'manual', chars: 52000 },
+    transcript: { source: 'live', language: 'en', kind: 'manual', chars: 52000, preview: PREVIEW },
     model: PRIMARY_MODEL,
     ...overrides,
   };
@@ -241,7 +248,37 @@ export const test = base.extend<{ api: ApiMock }>({
 
 export { expect };
 
-/** 状态条主文案（不含下方的来源说明） */
+/**
+ * 生成接口发完 stage、meta、stage(generating) 后连接保持打开、不再有数据，即"字幕已获取，等待模型输出"。
+ * page.route 只能一次性回复整个响应体，做不到发一半停住，所以在页面脚本运行前替换 window.fetch，
+ * 只接管 POST /api/generations（不经过 page.route，api.generations 里没有记录），其余请求照常走网络和路由替身。
+ * 页面中止请求（停止生成、超时）时，流以中止原因报错，和真实 fetch 一致。
+ */
+export async function holdGenerationAfterMeta(page: Page, data: StreamEvents['meta']): Promise<void> {
+  const text = [encodeSse('stage', { stage: 'transcript' }), encodeSse('meta', data), encodeSse('stage', { stage: 'generating' })].join('');
+  await page.addInitScript((sse) => {
+    const original = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (new URL(url, location.href).pathname !== '/api/generations' || init?.method !== 'POST') return original(input, init);
+      const signal = init.signal;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(sse));
+          signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } }));
+    };
+  }, text);
+}
+
+/** 来源面板每一行的标签和内容：[标签, 内容…] */
+export async function sourceRows(page: Page): Promise<string[][]> {
+  return page.locator('#source .source-row').evaluateAll((rows) => rows.map((row) => Array.from(row.children, (cell) => cell.textContent ?? '')));
+}
+
+/** 状态条主文案（不含下方的补充说明） */
 export async function statusMain(page: Page): Promise<string> {
   return page.locator('#status .status-text').evaluate((el) => el.firstChild?.textContent ?? '');
 }

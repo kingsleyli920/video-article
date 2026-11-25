@@ -4,7 +4,7 @@
  * - 用单独生成的配置和 .dev.vars（假 key），放在 test-results/ 下；工作目录也在那里，
  *   因此不会读到项目根目录的 .env 和 .dev.vars，真实凭据不会进入测试进程，也不会发给模拟上游。
  * - 子进程环境只保留 PATH、HOME 等必要变量，去掉 CLOUDFLARE_* 和 GEMINI_*。
- * - 超时按 TIMEOUT_SCALE 缩短（默认 0.05：5W1H 主模型 2.5 秒、主备合计 4.25 秒；文章首个分块 6 秒），
+ * - 超时按 TIMEOUT_SCALE 缩短（默认 0.05：5W1H 主模型 2.5 秒、主备合计 4.25 秒；文章首个分块 9 秒），
  *   这样失败、超时和备用切换都能在几秒内测完。
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';

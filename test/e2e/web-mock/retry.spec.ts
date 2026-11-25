@@ -25,6 +25,8 @@ test.beforeEach(async ({ page }) => {
 async function expectInitialState(page: Page): Promise<void> {
   await expect(page.locator('#status')).toBeHidden();
   await expect(page.locator('#status')).toBeEmpty();
+  await expect(page.locator('#source')).toBeHidden();
+  await expect(page.locator('#source')).toBeEmpty();
   await expect(page.locator('#article')).toBeEmpty();
   await expect(page.locator('#article')).not.toHaveAttribute('data-state');
   await expect(page.locator('#submit')).toBeEnabled();
@@ -67,14 +69,14 @@ test('失败后点"重新生成"：用同样的链接和要求重发，成功后
   expect(api.summaries.map((r) => r.path)).toEqual(['/api/generations/gen-retry/chapters/1/summary']);
 });
 
-// 抓：第二次生成时旧文章、旧数字提示、旧 5W1H 面板残留；新文章的 5W1H 仍用旧 generationId 或一次点击发两次请求
+// 抓：第二次生成时旧文章、旧数字提示、旧 5W1H 面板、旧来源面板残留；新文章的 5W1H 仍用旧 generationId 或一次点击发两次请求
 test('成功并展开 5W1H 后再生成一次：旧内容全部清掉，新 5W1H 请求带新的 generationId', async ({ page, api }) => {
   const secondGate = deferred();
   api.queueGeneration(
     sseReply(generationEvents({ meta: meta({ generationId: 'gen-1' }), end: ['done', done({ numberWarnings: WARNINGS })] })),
     sseReply(
       generationEvents({
-        meta: meta({ generationId: 'gen-2' }),
+        meta: meta({ generationId: 'gen-2', video: { id: 'xRh2sVcNXQ8', title: '开源模型专访', channel: 'a16z', lengthSeconds: 754 } }),
         markdown: SECOND_ARTICLE_MD,
         end: ['done', done({ chapters: [{ id: '1', title: '开源与闭源' }], chars: 321 })],
       }),
@@ -98,6 +100,8 @@ test('成功并展开 5W1H 后再生成一次：旧内容全部清掉，新 5W1H
   await expect(page.locator('#status')).toHaveAttribute('data-tone', 'busy');
   await expect(page.locator('#article')).toBeEmpty();
   await expect(page.locator('.article-notice, .summary-panel, .summary-table')).toHaveCount(0);
+  await expect(page.locator('#source')).toBeHidden();
+  await expect(page.locator('#source')).toBeEmpty();
 
   secondGate.resolve();
   await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok');
@@ -105,6 +109,8 @@ test('成功并展开 5W1H 后再生成一次：旧内容全部清掉，新 5W1H
   await expect(page.locator('#article h1')).toHaveText('第二篇：开源模型的商业逻辑');
   await expect(page.locator('#article h2')).toHaveText(['开源与闭源']);
   await expect(page.getByText('对话安德森：AI 革命的万亿美金之问')).toHaveCount(0);
+  await expect(page.locator('#source .source-title')).toHaveText('开源模型专访');
+  await expect(page.locator('#source')).toContainText('a16z · 时长 12:34');
   await expect(page.locator('.article-notice')).toHaveCount(0);
   await expect(page.locator('.summary-table')).toHaveCount(0);
   await expect(page.locator('.summary-panel:not([hidden])')).toHaveCount(0);

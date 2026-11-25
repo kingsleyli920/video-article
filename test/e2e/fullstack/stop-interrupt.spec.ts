@@ -4,7 +4,7 @@
  * 存储（这次生成没有保存，summary 接口返回 404）。
  */
 import { expect, test } from '@playwright/test';
-import { controlsIdle, fillAndGenerate, IDLE_CONTROLS, recordSse, sseGenerationIds, statusMessage, VIDEO_SOURCE, VIDEO_URL } from './page';
+import { controlsIdle, fillAndGenerate, IDLE_CONTROLS, recordSse, sseGenerationIds, statusMessage, SOURCE_ROWS, sourceRows, VIDEO_URL } from './page';
 import { modelsOf, requestsOf, resetUpstream, setScenario } from './upstream';
 
 /** 20 段、每段间隔 300 毫秒：从头到尾约 5.7 秒 */
@@ -34,7 +34,9 @@ test('停止生成：保留部分正文并恢复控件，服务端取消上游�
   const status = page.locator('#status');
   await expect(status).toHaveAttribute('data-tone', 'idle');
   expect(await statusMessage(page)).toBe('已停止生成，已生成的内容保留在下方。');
-  await expect(status.locator('.status-detail')).toHaveText(VIDEO_SOURCE);
+  // 来源信息在状态条下方的面板里，状态条不再附带来源；结束后面板保留
+  await expect(status.locator('.status-detail')).toHaveCount(0);
+  expect(await sourceRows(page)).toEqual(SOURCE_ROWS);
   await expect(status.getByRole('button', { name: '重新生成' })).toBeVisible();
   await expect(page.locator('#article .incomplete-note')).toHaveText('内容不完整：已停止生成');
   await expect(article).toHaveAttribute('data-state', 'failed');
@@ -83,7 +85,9 @@ test('流中途 503：保留部分内容并标"内容不完整"，5W1H 不可点
   const status = page.locator('#status');
   await expect(status).toHaveAttribute('data-tone', 'error', { timeout: 15_000 });
   expect(await statusMessage(page)).toBe('Gemini 模型繁忙，请稍后重试（HTTP 503）');
-  await expect(status.locator('.status-detail')).toHaveText(VIDEO_SOURCE);
+  // 来源信息在状态条下方的面板里，状态条不再附带来源；结束后面板保留
+  await expect(status.locator('.status-detail')).toHaveCount(0);
+  expect(await sourceRows(page)).toEqual(SOURCE_ROWS);
   await expect(status.getByRole('button', { name: '重新生成' })).toBeVisible();
 
   const article = page.locator('#article');

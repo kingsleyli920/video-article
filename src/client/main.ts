@@ -1,9 +1,9 @@
 import { ERROR_MESSAGES } from '../shared/errors';
 import { LIMITS } from '../shared/limits';
-import type { StreamEvents } from '../shared/types';
 import { parseVideoId } from '../shared/video-id';
 import { createArticleView, numberWarningText } from './article-view';
 import { runGeneration, type GenerationStage, type GenerationUi } from './generation';
+import { createSourcePanel } from './source-panel';
 import { bindSummaries } from './summary-panel';
 
 interface GenerationInput {
@@ -30,6 +30,7 @@ const statusBox = byId<HTMLDivElement>('status');
 const articleRoot = byId<HTMLElement>('article');
 
 const view = createArticleView(articleRoot);
+const sourcePanel = createSourcePanel(byId<HTMLElement>('source'));
 let unbindSummaries: (() => void) | null = null;
 let lastInput: GenerationInput | null = null;
 let running: AbortController | null = null;
@@ -64,14 +65,15 @@ async function generate(input: GenerationInput): Promise<void> {
   unbindSummaries?.();
   unbindSummaries = null;
   view.reset();
+  sourcePanel.clear();
 
   // 状态条每秒刷新：当前阶段 + 已用时间（不显示没有依据的进度百分比）
   const startedAt = Date.now();
   const seconds = () => Math.round((Date.now() - startedAt) / 1000);
   let stage: GenerationStage = 'transcript';
-  let source = '';
   let requestedModel = '';
-  const renderProgress = () => showStatus('busy', `${STAGE_TEXT[stage]} · 已用时 ${seconds()} 秒`, source);
+  // 视频和字幕的来源只写在来源面板里，状态条只管阶段、用时和结果
+  const renderProgress = () => showStatus('busy', `${STAGE_TEXT[stage]} · 已用时 ${seconds()} 秒`);
   const ticker = setInterval(renderProgress, 1_000);
   renderProgress();
 
@@ -81,9 +83,8 @@ async function generate(input: GenerationInput): Promise<void> {
       renderProgress();
     },
     meta(meta) {
-      source = describeSource(meta);
+      sourcePanel.show(meta);
       requestedModel = meta.model;
-      renderProgress();
     },
     delta(markdown) {
       view.update(markdown);
@@ -94,15 +95,15 @@ async function generate(input: GenerationInput): Promise<void> {
       view.finish(markdown, warnings.map(numberWarningText));
       unbindSummaries = bindSummaries(articleRoot, generationId);
       const warningText = warnings.length ? `文中有 ${warnings.length} 处疑似补全了残缺数字，见标题下方的提示。` : '';
-      const modelNote = result.model && result.model !== requestedModel ? ` · 主模型繁忙，本次由 ${result.model} 生成` : '';
-      showStatus('ok', `已完成，共 ${result.chapters.length} 章、${result.chars} 字，用时 ${seconds()} 秒。${warningText}点击章节标题旁的 5W1H 查看总结。`, source + modelNote);
+      const modelNote = result.model && result.model !== requestedModel ? `主模型繁忙，本次由 ${result.model} 生成` : '';
+      showStatus('ok', `已完成，共 ${result.chapters.length} 章、${result.chars} 字，用时 ${seconds()} 秒。${warningText}点击章节标题旁的 5W1H 查看总结。`, modelNote);
     },
     fail(error, markdown) {
       clearInterval(ticker);
       const cancelled = error.code === 'cancelled';
       view.fail(markdown, error.message);
       const stoppedText = markdown ? '已停止生成，已生成的内容保留在下方。' : '已停止生成。';
-      showStatus(cancelled ? 'idle' : 'error', cancelled ? stoppedText : error.message, source, true);
+      showStatus(cancelled ? 'idle' : 'error', cancelled ? stoppedText : error.message, '', true);
     },
   };
 
@@ -116,12 +117,6 @@ async function generate(input: GenerationInput): Promise<void> {
     setRunning(false);
     if (stopHadFocus) submitButton.focus();
   }
-}
-
-function describeSource({ video, transcript }: StreamEvents['meta']): string {
-  const kind = transcript.kind === 'asr' ? '自动生成字幕' : '人工字幕';
-  const origin = transcript.source === 'live' ? 'YouTube 实时获取' : `内置备份（实时获取失败：${transcript.liveError ?? '未知原因'}）`;
-  return `${video.title} · ${kind}（${transcript.language}）· 来源：${origin}`;
 }
 
 function showStatus(tone: Tone, text: string, detail = '', withRetry = false): void {

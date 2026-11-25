@@ -207,6 +207,9 @@ export const page = {
   get article() {
     return byId<HTMLElement>('article');
   },
+  get sourceBox() {
+    return byId<HTMLElement>('source');
+  },
 
   /** 状态条：主文案、补充说明、色调、是否显示"重新生成" */
   get status() {
@@ -218,6 +221,26 @@ export const page = {
       text: main?.firstChild?.nodeType === Node.TEXT_NODE ? main.firstChild.textContent : null,
       detail: box.querySelector('.status-detail')?.textContent ?? '',
       hasRetry: this.retryButton !== null,
+    };
+  },
+
+  /**
+   * 来源面板：是否隐藏；每一行的标签和内容（[标签, 内容…]）；字幕原文片段的折叠框（没有时为 null）。
+   * 读 DOM 结构而不是整段文字，行和内容的对应关系错了也能看出来。
+   */
+  get source() {
+    const box = this.sourceBox;
+    const details = box.querySelector('details');
+    return {
+      hidden: box.hidden,
+      rows: [...box.querySelectorAll('.source-row')].map((row) => [...row.children].map((cell) => cell.textContent ?? '')),
+      preview: details
+        ? {
+            open: details.open,
+            summary: details.querySelector('summary')?.textContent ?? '',
+            items: [...details.querySelectorAll('li')].map((li) => li.textContent ?? ''),
+          }
+        : null,
     };
   },
 
@@ -290,11 +313,18 @@ export async function submitWith(url: string, instructions = ''): Promise<void> 
 
 // —— 服务端事件的固定数据 ——
 
+/** 字幕原文片段：和真实服务端一样，开头、约三分之一、约三分之二处各一段 */
+export const PREVIEW = [
+  { time: '00:00', text: "Welcome back to the show. Today we're talking about how the company got started." },
+  { time: '20:00', text: 'We spent the first two years just talking to customers before we wrote any code.' },
+  { time: '40:00', text: 'The growth really came from word of mouth, not from paid ads.' },
+];
+
 export function meta(generationId = 'gen-1', overrides: Record<string, unknown> = {}) {
   return {
     generationId,
     video: { id: 'dQw4w9WgXcQ', title: '示例访谈', channel: '示例频道', lengthSeconds: 3600 },
-    transcript: { source: 'live', language: 'en', kind: 'asr', chars: 52000 },
+    transcript: { source: 'live', language: 'en', kind: 'asr', chars: 52000, preview: PREVIEW },
     model: 'gemini-main',
     ...overrides,
   };

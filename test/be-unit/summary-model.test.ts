@@ -50,7 +50,8 @@ describe('5W1H 主备模型的总预算', () => {
   it('主模型在上限内没有响应时，用剩余预算调用备用模型', async () => {
     const calls = upstream({ 'primary-model': 'hang', 'fallback-model': 'ok' });
     const { value, ms } = await timed(generateSummaryJson(OPTIONS, 'fallback-model', PROMPT, {}, { serverBudgetMs: 600, primaryMs: 200, minFallbackMs: 100 }));
-    expect(value).toEqual({ raw: SUMMARY, model: 'fallback-model' });
+    expect(value?.raw).toEqual(SUMMARY);
+    expect(value?.model).toBe('fallback-model');
     expect(calls).toEqual(['primary-model', 'fallback-model']);
     expect(ms).toBeGreaterThanOrEqual(195);
     expect(ms).toBeLessThan(600);
@@ -79,7 +80,8 @@ describe('5W1H 主备模型的总预算', () => {
   it('主模型 503（重试一次后仍是 503）时立即换备用模型', async () => {
     const calls = upstream({ 'primary-model': 503, 'fallback-model': 'ok' });
     const { value, ms } = await timed(generateSummaryJson(OPTIONS, 'fallback-model', PROMPT, {}, { serverBudgetMs: 10_000, primaryMs: 8_000, minFallbackMs: 1_000 }));
-    expect(value).toEqual({ raw: SUMMARY, model: 'fallback-model' });
+    expect(value?.raw).toEqual(SUMMARY);
+    expect(value?.model).toBe('fallback-model');
     expect(calls).toEqual(['primary-model', 'primary-model', 'fallback-model']);
     expect(ms).toBeLessThan(3_000);
   });

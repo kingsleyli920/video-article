@@ -241,6 +241,88 @@ button:disabled {
   }
 }
 
+/* 来源面板：视频和字幕的来源，收到 meta 就显示，生成结束后保留 */
+.source-panel {
+  margin: 12px 0 0;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  /* 视频标题、失败原因和字幕原文可能有很长的不带空格的串，在框内换行 */
+  overflow-wrap: anywhere;
+}
+
+.source-panel[hidden] {
+  display: none;
+}
+
+.source-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.source-row {
+  display: grid;
+  grid-template-columns: 4em minmax(0, 1fr);
+  column-gap: 12px;
+}
+
+.source-row dt {
+  grid-column: 1;
+  color: var(--muted);
+}
+
+.source-row dd {
+  grid-column: 2;
+  min-width: 0;
+  margin: 0;
+}
+
+.source-row dd + dd {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.source-title {
+  font-weight: 600;
+}
+
+.source-row-warn dd {
+  color: #8a4b00;
+}
+
+.source-preview {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.source-preview summary {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.source-snippets {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+}
+
+.source-snippets li + li {
+  margin-top: 8px;
+}
+
+.source-time {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 文章排版 */
 .article {
   margin-top: 8px;

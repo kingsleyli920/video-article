@@ -8,6 +8,7 @@ import {
   expect,
   generationEvents,
   jsonReply,
+  sourceRows,
   sseReply,
   statusMain,
   test,
@@ -46,8 +47,15 @@ test.describe('生成失败', () => {
     const status = page.locator('#status');
     await expect(status).toHaveAttribute('data-tone', 'error');
     expect(await statusMain(page)).toBe('Gemini 模型繁忙，请稍后重试');
-    await expect(status.locator('.status-detail')).toHaveText('对话安德森 · 人工字幕（en）· 来源：YouTube 实时获取');
+    await expect(status.locator('.status-detail')).toHaveCount(0);
     await expect(status.getByRole('button', { name: '重新生成' })).toBeVisible();
+    // 失败后已经取得的来源信息保留
+    await expect(page.locator('#source')).toBeVisible();
+    expect(await sourceRows(page)).toEqual([
+      ['来源视频', '对话安德森', 'a16z · 时长 1:00:00'],
+      ['字幕', '英语 · 人工字幕', '整理后 52,000 字符'],
+      ['字幕来源', 'YouTube 实时获取'],
+    ]);
 
     const article = page.locator('#article');
     await expect(article).toHaveAttribute('data-state', 'failed');
@@ -79,6 +87,8 @@ test.describe('生成失败', () => {
     expect(await statusMain(page)).toBe('这个视频没有可用的字幕');
     await expect(page.locator('#status .status-detail')).toHaveCount(0);
     await expect(page.locator('#status').getByRole('button', { name: '重新生成' })).toBeVisible();
+    // 没收到 meta，来源面板不出现
+    await expect(page.locator('#source')).toBeHidden();
     await expect(page.locator('#article')).toBeEmpty();
     await expect(page.locator('#article')).toBeHidden();
     await expectControlsRestored(page);

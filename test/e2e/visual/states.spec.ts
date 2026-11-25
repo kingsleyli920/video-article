@@ -10,6 +10,7 @@ import {
   FIXED_TIME,
   HANG,
   PARTIAL_MD,
+  PREVIEW,
   SAMPLE_URL,
   SUMMARY_1,
   WARNINGS,
@@ -17,6 +18,7 @@ import {
   done,
   expect,
   generationEvents,
+  holdGenerationAfterMeta,
   meta,
   sseReply,
   summaryReply,
@@ -153,7 +155,7 @@ test('输入校验错误', async ({ page }) => {
   await expect(page).toHaveScreenshot('10-invalid-url.png', { fullPage: true });
 });
 
-// 抓：备用模型说明和备份字幕原因在状态条里换行错乱或看不到
+// 抓：备用模型说明在状态条里换行错乱或看不到；备份字幕原因在来源面板里换行错乱或看不到
 test('备用模型提示', async ({ page, api }) => {
   await generate(
     page,
@@ -166,10 +168,13 @@ test('备用模型提示', async ({ page, api }) => {
     ),
   );
   await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok');
-  await expect(page.locator('#status .status-detail')).toContainText('主模型繁忙，本次由 gemini-3.6-flash 生成');
+  await expect(page.locator('#status .status-detail')).toHaveText('主模型繁忙，本次由 gemini-3.6-flash 生成');
   await expect(page.locator('#status .status-detail')).toBeVisible();
+  await expect(page.locator('#source .source-row-warn dd')).toHaveText('内置备份（实时获取失败：YouTube 拒绝了字幕请求，可能触发了人机验证）');
+  await expect(page.locator('#source .source-row-warn dd')).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await expect(page).toHaveScreenshot('11-fallback-model.png');
+  // 整页截图：手机视口放不下来源面板，备份原因那一行要拍进去
+  await expect(page).toHaveScreenshot('11-fallback-model.png', { fullPage: true });
 });
 
 const LONG_WORD = 'Pneumonoultramicroscopicsilicovolcanoconiosis'.repeat(2);
@@ -197,7 +202,7 @@ const LONG_MD = `# 对话安德森：AI 革命的万亿美金之问，以及开�
 
 **安德森:** 开源让小团队也能用上前沿能力。`;
 
-// 抓：长标题、长段落、长英文单词、长链接、长生成要求、长 5W1H 内容把页面撑出横向滚动或文字溢出容器
+// 抓：长标题、长段落、长英文单词、长链接、长生成要求、长 5W1H 内容、来源面板里的长视频标题、长失败原因和长字幕原文把页面撑出横向滚动或文字溢出容器
 test('长内容不溢出', async ({ page, api }) => {
   api.queueGeneration(
     sseReply(
@@ -208,6 +213,18 @@ test('长内容不溢出', async ({ page, api }) => {
             title: 'Marc Andreessen on the AI Revolution: The Trillion-Dollar Question, Open Source Models, Startups and What Comes Next | Full Interview',
             channel: 'a16z',
             lengthSeconds: 7200,
+          },
+          transcript: {
+            source: 'backup',
+            language: 'en',
+            kind: 'asr',
+            chars: 152000,
+            liveError: `YouTube 拒绝了字幕请求，可能触发了人机验证（${LONG_URL}）`,
+            preview: [
+              { time: '00:00', text: `Welcome back. ${LONG_WORD} ${LONG_URL}` },
+              { time: '40:00', text: 'For eighty years computers were machines that followed instructions, and large models are the first time software can deal with ambiguity at scale.' },
+              { time: '1:20:00', text: LONG_WORD },
+            ],
           },
         }),
         markdown: LONG_MD,
@@ -233,10 +250,29 @@ test('长内容不溢出', async ({ page, api }) => {
   await chapter(page, '1').locator('.summary-toggle').click();
   await expect(chapter(page, '1').locator('.summary-table tr')).toHaveCount(6);
 
+  await page.locator('#source summary').click();
+  await expect(page.locator('#source li')).toHaveCount(3);
+  await expect(page.locator('#source li').first()).toBeVisible();
+
   await expect(page.locator('#article h1')).toBeVisible();
-  await expect(page.locator('#status .status-detail')).toBeVisible();
+  await expect(page.locator('#source .source-title')).toBeVisible();
   await expect(chapter(page, '1').getByRole('button', { name: /5W1H/ })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expect(page).toHaveScreenshot('12-long-content.png', { fullPage: true });
+});
+
+// 抓：来源面板的行标签和内容对不齐、字幕原文片段展开后时间戳和原文挤在一起或溢出面板，等待中面板和状态条的间距错乱
+test('来源面板展开（等待模型输出）', async ({ page }) => {
+  await holdGenerationAfterMeta(page, meta({ transcript: { source: 'live', language: 'en', kind: 'asr', chars: 52000, preview: PREVIEW } }));
+  await page.goto('/');
+  await fillForm(page);
+  await page.getByRole('button', { name: '生成文章' }).click();
+  await expect(page.locator('#status')).toHaveText('字幕已获取，等待模型输出 · 已用时 0 秒');
+  await page.locator('#source summary').click();
+  await expect(page.locator('#source li')).toHaveCount(3);
+  await expect(page.locator('#source li').last()).toBeVisible();
+  await expect(page.locator('#article')).toBeEmpty();
+  await expectNoHorizontalOverflow(page);
+  await expect(page).toHaveScreenshot('13-source-expanded.png', { fullPage: true });
 });
 

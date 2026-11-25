@@ -17,7 +17,14 @@ describe('POST /api/generations', () => {
     expect(status).toBe(200);
     expect(events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'done']);
     const meta = eventOf(events, 'meta')!;
-    expect(meta.transcript).toEqual({ source: 'live', language: 'en', kind: 'asr', chars: '[00:00] live caption text'.length });
+    // 抓：等待时没有字幕来源信息，或者把整篇字幕发给页面
+    expect(meta.transcript).toEqual({
+      source: 'live',
+      language: 'en',
+      kind: 'asr',
+      chars: '[00:00] live caption text'.length,
+      preview: [{ time: '00:00', text: 'live caption text' }],
+    });
     expect(events.filter((e) => e.event === 'delta').map((e) => (e.data as { text: string }).text).join('')).toBe(ARTICLE_MARKDOWN);
     expect(eventOf(events, 'done')!.chapters).toEqual([
       { id: '1', title: '技术革命：八十年一遇' },
@@ -33,6 +40,8 @@ describe('POST /api/generations', () => {
       article: { title: '对话测试嘉宾：测试议题', markdown: ARTICLE_MARKDOWN },
     });
     expect(saved!.article.chapters.map((c) => c.id)).toEqual(['1', '2']);
+    // 预览只在 meta 里发给页面，不存进上下文
+    expect(saved!.transcript).not.toHaveProperty('preview');
 
     // 用户要求和字幕都进了 Gemini 请求
     const prompt = upstream.gemini()[0]!.body;
@@ -40,7 +49,7 @@ describe('POST /api/generations', () => {
     expect(prompt).toContain('live caption text');
   });
 
-  // 抓：模型还没开始输出（没有任何写入）时用户离开，服务端要等首个分块超时（线上 120 秒）才放手，之后还去调备用模型
+  // 抓：模型还没开始输出（没有任何写入）时用户离开，服务端要等首个分块超时（线上 180 秒）才放手，之后还去调备用模型
   it('模型还没输出时入站请求中止：立即中止上游请求，不调用备用模型，不保存', async () => {
     const geminiCalls: { model: string; signal: AbortSignal }[] = [];
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {

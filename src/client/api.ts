@@ -16,8 +16,9 @@ export type GenerationEvent = { [K in keyof StreamEvents]: { event: K; data: Str
 /**
  * 浏览器端的等待边界，按真实耗时留余量：
  * - 生成：服务端每 15 秒发一次心跳，45 秒没收到任何字节说明连接已不正常；
- *   整次生成上限 10 分钟（实测 25–75 秒，服务端首包超时 120 秒、输出空闲超时 60 秒）。
- * - 5W1H：服务端调用 Gemini 的上限是 90 秒，浏览器等 100 秒。
+ *   整次生成上限 10 分钟（低档思考实测 25–75 秒，gemini-4-hydrogen + high 实测 103–135 秒；
+ *   服务端首包超时 180 秒、输出空闲超时 60 秒，主模型首包超时后改用备用模型仍在 10 分钟内）。
+ * - 5W1H：服务端主备合计上限 85 秒（SUMMARY_TIMING），浏览器等 100 秒。
  */
 export const TIMEOUTS = { generationIdleMs: 45_000, generationTotalMs: 600_000, summaryMs: SUMMARY_TIMING.clientMs };
 

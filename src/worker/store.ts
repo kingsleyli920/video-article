@@ -85,7 +85,19 @@ export class GenerationStore extends DurableObject<Env> {
         chapter,
       });
       // 结构化输出一次返回，没有"已输出一半"的问题：主模型繁忙或超时就在剩余预算内整次改用备用模型
-      const { raw } = await generateSummaryJson(options, fallbackModel(this.env), prompt, SUMMARY_SCHEMA, summaryBudget(timeoutScale(this.env)));
+      const { raw, model, stats, ms } = await generateSummaryJson(options, fallbackModel(this.env), prompt, SUMMARY_SCHEMA, summaryBudget(timeoutScale(this.env)));
+      // 记录实际完成总结的模型、用量和服务档，供验收核对
+      console.log(
+        JSON.stringify({
+          event: 'summary',
+          chapterId,
+          model,
+          modelVersion: stats.modelVersion ?? null,
+          serviceTier: stats.serviceTierHeader ?? stats.usage?.serviceTier ?? null,
+          usage: stats.usage ?? null,
+          ms,
+        }),
+      );
       const summary = normalizeSummary(raw);
       // 上下文已过期被删时不再写入，避免留下没有 alarm 的孤立数据
       if (await this.ctx.storage.get(CONTEXT_KEY)) await this.ctx.storage.put(summaryKey(chapterId), summary);

@@ -7,6 +7,7 @@ import {
   expect,
   generationEvents,
   meta,
+  sourceRows,
   sseReply,
   statusMain,
   test,
@@ -61,8 +62,15 @@ test('输入链接和生成要求后提交：请求体带两者，文章、5W1H�
   ]);
 
   expect(await statusMain(page)).toBe('已完成，共 2 章、1234 字，用时 0 秒。文中有 2 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。');
-  await expect(status.locator('.status-detail')).toHaveText('对话安德森 · 人工字幕（en）· 来源：YouTube 实时获取');
+  // 来源只写在来源面板里，状态条不重复
+  await expect(status.locator('.status-detail')).toHaveCount(0);
   await expect(status.getByRole('button', { name: '重新生成' })).toHaveCount(0);
+  await expect(page.locator('#source')).toBeVisible();
+  expect(await sourceRows(page)).toEqual([
+    ['来源视频', '对话安德森', 'a16z · 时长 1:00:00'],
+    ['字幕', '英语 · 人工字幕', '整理后 52,000 字符'],
+    ['字幕来源', 'YouTube 实时获取'],
+  ]);
 
   // 控件恢复，输入保留
   await expect(page.getByRole('button', { name: '生成文章' })).toBeEnabled();
@@ -83,8 +91,8 @@ test('没有数字问题时不显示数字提示，状态条也不提', async ({
   expect(await statusMain(page)).toBe('已完成，共 2 章、1234 字，用时 0 秒。点击章节标题旁的 5W1H 查看总结。');
 });
 
-// 抓：done.model 与 meta.model 不同时没有告诉用户换了备用模型；字幕来自内置备份时没说明原因
-test('备用模型写出文章时，状态条注明主模型繁忙和实际模型；备份字幕注明实时获取失败的原因', async ({ page, api }) => {
+// 抓：done.model 与 meta.model 不同时没有告诉用户换了备用模型（备用模型提示随来源说明一起被删掉）；字幕来自内置备份时没说明原因
+test('备用模型写出文章时，状态条注明主模型繁忙和实际模型；来源面板注明备份字幕和实时获取失败的原因', async ({ page, api }) => {
   api.queueGeneration(
     sseReply(
       generationEvents({
@@ -99,9 +107,12 @@ test('备用模型写出文章时，状态条注明主模型繁忙和实际模�
 
   const status = page.locator('#status');
   await expect(status).toHaveAttribute('data-tone', 'ok');
-  await expect(status.locator('.status-detail')).toHaveText(
-    '对话安德森 · 自动生成字幕（en）· 来源：内置备份（实时获取失败：YouTube 拒绝了字幕请求，可能触发了人机验证） · 主模型繁忙，本次由 gemini-3.6-flash 生成',
-  );
+  await expect(status.locator('.status-detail')).toHaveText('主模型繁忙，本次由 gemini-3.6-flash 生成');
+  expect(await sourceRows(page)).toEqual([
+    ['来源视频', '对话安德森', 'a16z · 时长 1:00:00'],
+    ['字幕', '英语 · 自动生成字幕', '整理后 52,000 字符'],
+    ['字幕来源', '内置备份（实时获取失败：YouTube 拒绝了字幕请求，可能触发了人机验证）'],
+  ]);
   await expect(page.locator('#article h1')).toHaveText('对话安德森：AI 革命的万亿美金之问');
 });
 

@@ -10,6 +10,8 @@ export interface GeminiOptions {
   timeouts?: Partial<typeof DEFAULT_TIMEOUTS>;
   /** 模型地址前缀，只在测试时指向模拟上游 */
   apiBase?: string;
+  /** 输出上限（含思考 token），不填用默认值 */
+  maxOutputTokens?: number;
 }
 
 export interface Prompt {
@@ -22,22 +24,46 @@ interface GeminiPart {
   thought?: boolean;
 }
 
+/** 用量字段按 Gemini 返回原样记录，缺失的字段保持缺失（不当成 0） */
+export interface GeminiUsage {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
+  cachedContentTokenCount?: number;
+  totalTokenCount?: number;
+  serviceTier?: string;
+}
+
+/** 一次调用的统计：调用方传入空对象，调用过程中填写。只从已经收到的数据里取，不为它多等连接关闭 */
+export interface GeminiStats {
+  usage?: GeminiUsage;
+  modelVersion?: string;
+  /** 响应头 x-gemini-service-tier（Priority 降级时会显示 standard） */
+  serviceTierHeader?: string | null;
+}
+
 interface GeminiChunk {
   candidates?: { content?: { parts?: GeminiPart[] }; finishReason?: string }[];
+  usageMetadata?: GeminiUsage;
+  modelVersion?: string;
   promptFeedback?: { blockReason?: string };
   error?: { code?: number; status?: string; message?: string };
 }
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const ARTICLE_MAX_OUTPUT_TOKENS = 32_768;
-const SUMMARY_MAX_OUTPUT_TOKENS = 4_096;
+// 思考 token 也计入输出上限（官方文档），高档思考时过低的上限会截断；按官方建议至少 65,536
+const ARTICLE_MAX_OUTPUT_TOKENS = 65_536;
+const SUMMARY_MAX_OUTPUT_TOKENS = 65_536;
 const BUSY_RETRY_DELAY_MS = 1_500;
 
 /**
  * 上游卡住时，没有超时会让页面一直停在"等待模型输出"。
  * firstChunkMs：从发请求到收到第一个流式分块；idleMs：两个分块之间；requestMs：非流式请求整体。
+ * firstChunkMs 取 180 秒：高档思考时模型先想完再出字，第八轮实测 gemini-4-hydrogen + high 首个正文 51 秒、80 秒
+ * （gemini-4-neon + high 112 秒、143 秒），120 秒余量不够；主模型超时后备用模型约 50 秒写完，合计仍远低于前端 10 分钟总时限。
+ * 开始出字后分块间隔都在 1 秒以内，idleMs 不变。
  */
-const DEFAULT_TIMEOUTS = { firstChunkMs: 120_000, idleMs: 60_000, requestMs: 90_000 };
+const DEFAULT_TIMEOUTS = { firstChunkMs: 180_000, idleMs: 60_000, requestMs: 90_000 };
 
 /** 按倍率缩短的超时设置（倍率只在测试时小于 1） */
 export function geminiTimeouts(scale = 1): typeof DEFAULT_TIMEOUTS {
@@ -85,6 +111,7 @@ export async function streamText(
   prompt: Prompt,
   onText: (text: string) => Promise<void>,
   signal?: AbortSignal,
+  stats: GeminiStats = {},
 ): Promise<string | null> {
   if (signal?.aborted) throw signal.reason;
   const { firstChunkMs, idleMs } = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
@@ -93,12 +120,15 @@ export async function streamText(
   signal?.addEventListener('abort', onCancel, { once: true });
   watchdog.arm(firstChunkMs, () => new AppError('gemini_busy', `模型超过 ${firstChunkMs / 1000} 秒没有响应`));
   try {
-    const body = payload(options, prompt, { maxOutputTokens: ARTICLE_MAX_OUTPUT_TOKENS });
+    const body = payload(options, prompt, { maxOutputTokens: options.maxOutputTokens ?? ARTICLE_MAX_OUTPUT_TOKENS });
     const res = await post(options, 'streamGenerateContent?alt=sse', body, watchdog.signal);
+    stats.serviceTierHeader = res.headers.get('x-gemini-service-tier');
     let finishReason: string | null = null;
     for await (const message of readSse(res.body!)) {
       watchdog.clear(); // 等下游写完不算模型空闲
       const chunk = parseChunk(message.data);
+      if (chunk.usageMetadata) stats.usage = chunk.usageMetadata;
+      if (chunk.modelVersion) stats.modelVersion = chunk.modelVersion;
       const candidate = chunk.candidates?.[0];
       const text = candidate?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('') ?? '';
       if (text) await onText(text);
@@ -119,20 +149,28 @@ export async function streamText(
 }
 
 /** 结构化输出：按 JSON schema 生成并返回解析后的对象（结构校验由调用方负责）。 */
-export async function generateJson(options: GeminiOptions, prompt: Prompt, schema: object): Promise<unknown> {
+export async function generateJson(options: GeminiOptions, prompt: Prompt, schema: object, stats: GeminiStats = {}): Promise<unknown> {
   const { requestMs } = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
   const watchdog = new Watchdog();
   watchdog.arm(requestMs, () => new AppError('gemini_busy', `模型超过 ${requestMs / 1000} 秒没有响应`));
   let raw: string;
   try {
-    const body = payload(options, prompt, { maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS, responseMimeType: 'application/json', responseJsonSchema: schema });
-    raw = await (await post(options, 'generateContent', body, watchdog.signal)).text();
+    const body = payload(options, prompt, {
+      maxOutputTokens: options.maxOutputTokens ?? SUMMARY_MAX_OUTPUT_TOKENS,
+      responseMimeType: 'application/json',
+      responseJsonSchema: schema,
+    });
+    const res = await post(options, 'generateContent', body, watchdog.signal);
+    stats.serviceTierHeader = res.headers.get('x-gemini-service-tier');
+    raw = await res.text();
   } catch (err) {
     throw watchdog.reason ?? err;
   } finally {
     watchdog.clear();
   }
   const chunk = parseChunk(raw);
+  if (chunk.usageMetadata) stats.usage = chunk.usageMetadata;
+  if (chunk.modelVersion) stats.modelVersion = chunk.modelVersion;
   const candidate = chunk.candidates?.[0];
   if (candidate?.finishReason && candidate.finishReason !== 'STOP') throw new AppError('summary_invalid', candidate.finishReason);
   const text = candidate?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('') ?? '';

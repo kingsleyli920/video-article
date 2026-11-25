@@ -1,14 +1,15 @@
-import { countArticleChars, parseArticle, validateArticle } from '../shared/article';
+import { countArticleChars, hasReadableParagraph, parseArticle, validateArticle } from '../shared/article';
 import { LIMITS } from '../shared/limits';
 import { parseVideoId } from '../shared/video-id';
 import { AppError, isBusy, toAppError } from './app-error';
 import { fallbackModel, geminiOptions, transcriptOptions } from './config';
 import { ClientGone, EventStream } from './event-stream';
-import { streamText } from './gemini';
+import { streamText, type GeminiStats } from './gemini';
 import { checkDamagedNumbers } from './number-check';
 import { articlePrompt } from './prompts';
 import { createStore, type GenerationContext } from './store';
 import { loadTranscript } from './transcripts';
+import { transcriptPreview } from './transcript-preview';
 import { prepareTranscript } from './youtube';
 
 interface GenerationInput {
@@ -86,12 +87,14 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     await events.send('meta', {
       generationId,
       video: { id: transcript.video.id, title: transcript.video.title, channel: transcript.video.channel, lengthSeconds: transcript.video.lengthSeconds },
-      transcript: { ...info, chars: transcriptText.length },
+      transcript: { ...info, chars: transcriptText.length, preview: transcriptPreview(transcript.cues) },
       model: gemini.model,
     });
     await events.send('stage', { stage: 'generating' });
 
     let firstTokenMs: number | null = null;
+    let firstParagraphMs: number | null = null;
+    const stats: GeminiStats = {};
     const prompt = articlePrompt({ video: transcript.video, transcriptText, instructions: input.instructions });
     const write = (model: string) =>
       streamText(
@@ -102,8 +105,10 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
           markdown += text;
           if (markdown.length > LIMITS.articleChars) throw new AppError('article_too_long');
           await events.send('delta', { text });
+          if (firstParagraphMs === null && hasReadableParagraph(markdown)) firstParagraphMs = since();
         },
         events.signal,
+        stats,
       );
     let model = gemini.model;
     let finishReason: string | null;
@@ -119,7 +124,18 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     }
     const modelDoneMs = since();
     const chars = countArticleChars(markdown);
-    Object.assign(log, { model, finishReason, firstTokenMs, modelDoneMs, articleChars: chars });
+    // 用量、模型版本、服务档都来自已经收到的终止事件和响应头，不为它多等连接关闭
+    Object.assign(log, {
+      model,
+      modelVersion: stats.modelVersion ?? null,
+      serviceTier: stats.serviceTierHeader ?? stats.usage?.serviceTier ?? null,
+      usage: stats.usage ?? null,
+      finishReason,
+      firstTokenMs,
+      firstParagraphMs,
+      modelDoneMs,
+      articleChars: chars,
+    });
     assertFinished(finishReason);
 
     const article = parseArticle(markdown);
@@ -145,7 +161,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       throw new AppError('save_failed');
     }
 
-    const timing = { transcriptMs, firstTokenMs, modelDoneMs, savedMs: since() };
+    const timing = { transcriptMs, firstTokenMs, firstParagraphMs, modelDoneMs, savedMs: since() };
     Object.assign(log, { ok: true, chapters: article.chapters.length, savedMs: timing.savedMs, numberWarnings: numberWarnings.length });
     await events.send('done', { chapters: article.chapters.map(({ id, title }) => ({ id, title })), chars, timing, numberWarnings, model });
   } catch (err) {

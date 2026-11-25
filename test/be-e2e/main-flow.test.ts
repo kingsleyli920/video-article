@@ -46,7 +46,18 @@ describe('主流程：生成文章 → 5W1H', () => {
     expect(meta).toEqual({
       generationId: expect.stringMatching(/^[0-9a-f]{64}$/),
       video: { id: 'mockvideo01', title: '受控上游测试视频', channel: '测试频道', lengthSeconds: 600 },
-      transcript: { source: 'live', language: 'en', kind: 'asr', chars: TRANSCRIPT_CHARS },
+      transcript: {
+        source: 'live',
+        language: 'en',
+        kind: 'asr',
+        chars: TRANSCRIPT_CHARS,
+        // 等待时给读者核对的字幕原文：三条字幕各一段，原始时间戳，残缺数字原样（不是给模型的遮蔽版本）
+        preview: [
+          { time: '00:00', text: 'welcome to the show Alex here' },
+          { time: '00:05', text: 'let us start with the first question' },
+          { time: '34:25', text: ">> we're tracking on the order of,200 bills" },
+        ],
+      },
       model: 'mock-primary',
     });
     expect(deltaText(gen.events)).toBe(ARTICLE_MARKDOWN);
@@ -55,13 +66,21 @@ describe('主流程：生成文章 → 5W1H', () => {
     expect(done).toEqual({
       chapters: ARTICLE_CHAPTERS,
       chars: ARTICLE_CHARS,
-      timing: { transcriptMs: expect.any(Number), firstTokenMs: expect.any(Number), modelDoneMs: expect.any(Number), savedMs: expect.any(Number) },
+      timing: {
+        transcriptMs: expect.any(Number),
+        firstTokenMs: expect.any(Number),
+        firstParagraphMs: expect.any(Number),
+        modelDoneMs: expect.any(Number),
+        savedMs: expect.any(Number),
+      },
       numberWarnings: [{ time: '34:25', fragment: 'of,200', written: ['1200'] }],
       model: 'mock-primary',
     });
-    const { transcriptMs, firstTokenMs, modelDoneMs, savedMs } = done.timing;
+    const { transcriptMs, firstTokenMs, firstParagraphMs, modelDoneMs, savedMs } = done.timing;
     expect(transcriptMs).toBeLessThanOrEqual(firstTokenMs!);
-    expect(firstTokenMs!).toBeLessThanOrEqual(modelDoneMs);
+    // 模拟上游第一块只有标题，第二块（间隔 50 毫秒）才有第一段可读正文：首个可读段落晚于首个文本，不能把标题算成可读
+    expect(firstParagraphMs! - firstTokenMs!).toBeGreaterThanOrEqual(40);
+    expect(firstParagraphMs!).toBeLessThanOrEqual(modelDoneMs);
     expect(modelDoneMs).toBeLessThanOrEqual(savedMs);
 
     // 上游实际收到的：先播放器、再字幕、再一次主模型流式请求；请求里是整理后的字幕和去掉首尾空白的用户要求

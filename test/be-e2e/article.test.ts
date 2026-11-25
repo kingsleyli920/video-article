@@ -56,23 +56,23 @@ describe('主模型繁忙或不响应时改用备用模型', () => {
   });
 
   // 抓：主模型一直不给首个分块时永远等下去；超时后没有中止主模型请求；超时后直接报错而不换备用
-  it('主模型不响应（首个分块 6 秒超时）：中止主模型请求，改用 mock-fallback 写完', async () => {
+  it('主模型不响应（首个分块 9 秒超时，线上 180 秒按 0.05 缩短）：中止主模型请求，改用 mock-fallback 写完', async () => {
     await stack.scenario({ streams: { 'mock-primary': { kind: 'hang' }, 'mock-fallback': FALLBACK_OK } });
     const gen = await generate(stack, { url: MOCK_URL });
 
     expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'done']);
     expect(deltaText(gen.events)).toBe(FALLBACK_MARKDOWN);
     expect(eventOf(gen.events, 'done')!.model).toBe('mock-fallback');
-    expect(gen.elapsedMs).toBeGreaterThanOrEqual(5_950);
-    expect(gen.elapsedMs).toBeLessThan(8_000);
+    expect(gen.elapsedMs).toBeGreaterThanOrEqual(8_950);
+    expect(gen.elapsedMs).toBeLessThan(11_000);
 
     const streams = ofKind(await stack.requests(), 'stream');
     expect(streams.map((r) => [r.model, r.aborted])).toEqual([
       ['mock-primary', true],
       ['mock-fallback', false],
     ]);
-    expect(streams[0]!.durationMs!).toBeGreaterThanOrEqual(5_900);
-    expect(streams[0]!.durationMs!).toBeLessThan(7_000);
+    expect(streams[0]!.durationMs!).toBeGreaterThanOrEqual(8_900);
+    expect(streams[0]!.durationMs!).toBeLessThan(10_000);
   });
 
   // 抓：主模型、备用模型都繁忙时没有明确报繁忙，或者对备用模型无限重试

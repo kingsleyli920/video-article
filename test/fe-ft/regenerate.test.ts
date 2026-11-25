@@ -71,7 +71,7 @@ describe('重新生成', () => {
     await settle();
     expect(page.notices).toHaveLength(1);
     expect(page.chapter('1').panel.querySelectorAll('tr')).toHaveLength(6);
-    expect(page.status.detail).toBe('示例访谈 · 自动生成字幕（en）· 来源：YouTube 实时获取 · 主模型繁忙，本次由 gemini-fallback 生成');
+    expect(page.status.detail).toBe('主模型繁忙，本次由 gemini-fallback 生成');
 
     // 用户换一个视频再生成
     await submitWith(SAMPLE_URL);
@@ -86,7 +86,7 @@ describe('重新生成', () => {
       hidden: false,
       tone: 'ok',
       text: '已完成，共 2 章、36 字，用时 0 秒。点击章节标题旁的 5W1H 查看总结。',
-      detail: '示例访谈 · 自动生成字幕（en）· 来源：YouTube 实时获取',
+      detail: '',
       hasRetry: false,
     });
     expect(page.notices).toEqual([]);

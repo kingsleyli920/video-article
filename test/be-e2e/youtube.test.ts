@@ -66,7 +66,12 @@ describe('示例视频的内置备份', () => {
       channel: 'a16z',
       lengthSeconds: 4878,
     });
-    expect(meta.transcript).toEqual({ source: 'backup', language: 'en', kind: 'asr', chars: expect.any(Number), liveError });
+    expect(meta.transcript).toEqual({ source: 'backup', language: 'en', kind: 'asr', chars: expect.any(Number), liveError, preview: expect.any(Array) });
+    // 备份字幕同样带原文片段：开头、约三分之一、约三分之二处各一段（81 分钟视频），每段不超过 200 字符
+    const preview = meta.transcript.preview!;
+    expect(preview.map((s) => s.time)).toEqual(['00:00', '26:51', '53:43']);
+    expect(preview[0]!.text.startsWith('this new wave of AI companies is is growing revenue')).toBe(true);
+    expect(preview.every((s) => s.text.length > 0 && s.text.length <= 200)).toBe(true);
 
     const requests = await stack.requests();
     expect(requests.map((r) => [r.kind, r.videoId ?? r.model])).toEqual([

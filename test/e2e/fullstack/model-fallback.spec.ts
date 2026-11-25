@@ -13,7 +13,8 @@ import {
   statusMessage,
   summaryRows,
   summaryToggle,
-  VIDEO_SOURCE,
+  SOURCE_ROWS,
+  sourceRows,
   VIDEO_URL,
 } from './page';
 import { modelsOf, promptOf, requestsOf, resetUpstream, setScenario } from './upstream';
@@ -45,7 +46,8 @@ test('主模型繁忙：文章由备用模型完成并在状态条注明，5W1H 
   const status = page.locator('#status');
   await expect(status).toHaveAttribute('data-tone', 'ok', { timeout: 15_000 });
   expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、65 字，用时 \d+ 秒。点击章节标题旁的 5W1H 查看总结。$/);
-  await expect(status.locator('.status-detail')).toHaveText(`${VIDEO_SOURCE} · 主模型繁忙，本次由 mock-fallback 生成`);
+  await expect(status.locator('.status-detail')).toHaveText('主模型繁忙，本次由 mock-fallback 生成');
+  expect(await sourceRows(page)).toEqual(SOURCE_ROWS);
   await expect(page.locator('#article h1')).toHaveText('备用模型写的对话：受控上游');
   await expect(page.locator('#article h2')).toHaveText(['第一章：开场', '第二章：收尾']);
   // 主模型 503 → 重试一次仍 503 → 整篇改用备用模型
@@ -75,7 +77,9 @@ test('主备模型都繁忙：显示繁忙原因和"重新生成"，上游恢复
   const status = page.locator('#status');
   await expect(status).toHaveAttribute('data-tone', 'error', { timeout: 15_000 });
   expect(await statusMessage(page)).toBe(BUSY_MESSAGE);
-  await expect(status.locator('.status-detail')).toHaveText(VIDEO_SOURCE);
+  // 来源信息在状态条下方的面板里，状态条不再附带来源；结束后面板保留
+  await expect(status.locator('.status-detail')).toHaveCount(0);
+  expect(await sourceRows(page)).toEqual(SOURCE_ROWS);
   const retry = status.getByRole('button', { name: '重新生成' });
   await expect(retry).toBeVisible();
   await expect(page.locator('#article')).toBeEmpty();
@@ -88,7 +92,9 @@ test('主备模型都繁忙：显示繁忙原因和"重新生成"，上游恢复
   await retry.click();
   await expect(status).toHaveAttribute('data-tone', 'ok', { timeout: 15_000 });
   expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、68 字，用时 \d+ 秒。/);
-  await expect(status.locator('.status-detail')).toHaveText(VIDEO_SOURCE);
+  // 来源信息在状态条下方的面板里，状态条不再附带来源；结束后面板保留
+  await expect(status.locator('.status-detail')).toHaveCount(0);
+  expect(await sourceRows(page)).toEqual(SOURCE_ROWS);
   await expect(page.locator('#article h1')).toHaveText('对话测试嘉宾：受控上游');
   await expect(status.getByRole('button', { name: '重新生成' })).toHaveCount(0);
   await expect(summaryToggle(page, '第二章：数字')).toBeEnabled();

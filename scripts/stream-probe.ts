@@ -9,6 +9,7 @@
  */
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { hasReadableParagraph } from '../src/shared/article';
 import { SseParser } from '../src/shared/sse';
 import type { StreamEvents } from '../src/shared/types';
 
@@ -46,6 +47,9 @@ let headersAt: number | null = null;
 let responseHeaders: Record<string, string> = {};
 let markdown = '';
 let firstDeltaAt: number | null = null;
+/** 第一段写完、不是标题的正文到达探针的时间（不是浏览器可见时间） */
+let firstParagraphAt: number | null = null;
+let metaAt: number | null = null;
 let lastDeltaAt: number | null = null;
 let deltaEvents = 0;
 let meta: StreamEvents['meta'] | null = null;
@@ -80,7 +84,10 @@ try {
     timeline.push({ ms, bytes: value.byteLength, events: messages.map((m) => m.event) });
     for (const message of messages) {
       const data = JSON.parse(message.data);
-      if (message.event === 'meta') meta = data;
+      if (message.event === 'meta') {
+        meta = data;
+        metaAt ??= ms;
+      }
       if (message.event === 'done') done = data;
       if (message.event === 'error') failure = data;
       if (message.event === 'delta') {
@@ -88,6 +95,7 @@ try {
         deltaEvents++;
         firstDeltaAt ??= ms;
         lastDeltaAt = ms;
+        if (firstParagraphAt === null && hasReadableParagraph(markdown)) firstParagraphAt = ms;
       }
     }
     if (messages.some((m) => m.event === 'delta')) growth.push([ms, markdown.length]);
@@ -101,7 +109,7 @@ try {
 const endAt = at();
 console.log(`字幕来源：${meta?.transcript.source ?? '?'}（${meta?.transcript.kind ?? '?'}，${meta?.transcript.chars ?? '?'} 字符），模型：${meta?.model ?? '?'}`);
 console.log(`网络分块 ${timeline.length} 个，delta 事件 ${deltaEvents} 个，正文 ${markdown.length} 字符`);
-console.log(`客户端：第一段正文 ${firstDeltaAt} ms，最后一段正文 ${lastDeltaAt} ms，流结束 ${endAt} ms`);
+console.log(`探针：来源信息 ${metaAt} ms，首个正文文本 ${firstDeltaAt} ms，首个可读段落 ${firstParagraphAt} ms，最后一段正文 ${lastDeltaAt} ms，流结束 ${endAt} ms`);
 if (done) {
   const t = done.timing;
   console.log(`服务端：字幕就绪 ${t.transcriptMs} ms，模型首个 token ${t.firstTokenMs} ms，模型结束 ${t.modelDoneMs} ms，保存完成 ${t.savedMs} ms`);
@@ -117,7 +125,7 @@ if (outDir) {
   writeFileSync(join(outDir, 'article.md'), markdown);
   writeFileSync(
     join(outDir, 'timeline.json'),
-    JSON.stringify({ outcome: done ? 'done' : failure ? 'error' : 'incomplete', probeError, headersAt, responseHeaders, firstDeltaAt, lastDeltaAt, endAt, meta, done, failure, timeline }, null, 2),
+    JSON.stringify({ outcome: done ? 'done' : failure ? 'error' : 'incomplete', probeError, headersAt, responseHeaders, metaAt, firstDeltaAt, firstParagraphAt, lastDeltaAt, endAt, meta, done, failure, timeline }, null, 2),
   );
   console.log(`已写入 ${outDir}/（input.json、raw.sse、timeline.json、article.md）`);
 }

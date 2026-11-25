@@ -10,11 +10,12 @@
  * 直接调用 streamText，不经过 Worker，不会切换备用模型。
  */
 import { createHash } from 'node:crypto';
+import { Agent, setGlobalDispatcher } from 'undici';
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEnvFile } from './lib/env-file';
-import { countArticleChars, parseArticle, validateArticle } from '../src/shared/article';
-import { streamText } from '../src/worker/gemini';
+import { countArticleChars, hasReadableParagraph, parseArticle, validateArticle } from '../src/shared/article';
+import { streamText, type GeminiStats } from '../src/worker/gemini';
 import { articlePrompt } from '../src/worker/prompts';
 import sample from '../src/worker/transcripts/xRh2sVcNXQ8.json' with { type: 'json' };
 import { formatTranscript } from '../src/worker/youtube';
@@ -25,11 +26,17 @@ const flag = (name: string) => {
   return i >= 0 ? args.splice(i, 2)[1] : undefined;
 };
 const thinkingLevel = flag('--thinking') ?? 'low';
+const maxOutputTokens = Number(flag('--max-output') ?? 65_536);
+// 高档思考可能长时间没有正文：对照时放宽首个分块和空闲超时，测出真实耗时（生产超时另行设定）
+const timeouts = { firstChunkMs: Number(flag('--first-chunk-ms') ?? 600_000), idleMs: Number(flag('--idle-ms') ?? 300_000) };
 const [model, outDir, instructions = ''] = args;
 if (!model || !outDir) {
-  console.error('用法：tsx scripts/screen-model.ts <模型> <输出目录> [生成要求] [--thinking low]');
+  console.error('用法：tsx scripts/screen-model.ts <模型> <输出目录> [生成要求] [--thinking low] [--max-output 65536] [--first-chunk-ms 600000] [--idle-ms 300000]');
   process.exit(2);
 }
+// Node 内置 fetch 默认最多等 300 秒响应头；高档思考可能更久才返回首个分块，对照时放宽到 20 分钟（只影响本脚本）
+const headersTimeoutMs = Number(flag('--headers-timeout-ms') ?? 1_200_000);
+setGlobalDispatcher(new Agent({ headersTimeout: headersTimeoutMs, bodyTimeout: headersTimeoutMs }));
 const apiKey = readEnvFile('.env').GEMINI_API_KEY;
 if (!apiKey) throw new Error('.env 里没有 GEMINI_API_KEY');
 
@@ -77,27 +84,43 @@ let firstTextMs: number | null = null;
 let markdown = '';
 let finishReason: string | null = null;
 let error: string | null = null;
+const stats: GeminiStats = {};
+let firstParagraphMs: number | null = null;
+const chunkTimeline: { ms: number; chars: number }[] = [];
 try {
-  finishReason = await streamText({ apiKey, model, thinkingLevel }, prompt, async (text) => {
-    firstTextMs ??= Math.round(performance.now() - t0);
-    markdown += text;
-  });
+  finishReason = await streamText(
+    { apiKey, model, thinkingLevel, maxOutputTokens, timeouts },
+    prompt,
+    async (text) => {
+      const ms = Math.round(performance.now() - t0);
+      firstTextMs ??= ms;
+      markdown += text;
+      chunkTimeline.push({ ms, chars: markdown.length });
+      if (firstParagraphMs === null && hasReadableParagraph(markdown)) firstParagraphMs = ms;
+    },
+    undefined,
+    stats,
+  );
 } catch (err) {
   error = (err as Error).message;
 }
 const totalMs = Math.round(performance.now() - t0);
 const article = parseArticle(markdown);
 
-// token 用量取最后一个带 usageMetadata 的事件；按 2026-11 官方标准价估算（每百万 token 美元，思考 token 按输出价计）
-const PRICES: Record<string, { input: number; output: number }> = {
-  'gemini-3.8-flash': { input: 0.75, output: 3.75 },
-  'gemini-4-hydrogen': { input: 1.5, output: 7.5 },
+// 按 2026-11-25 官方 Standard 价估算（每百万 token 美元；思考 token 按输出价；命中隐式缓存的输入按缓存价）
+const PRICES: Record<string, { input: number; output: number; cached: number }> = {
+  'gemini-3.8-flash': { input: 0.75, output: 3.75, cached: 0.075 },
+  'gemini-4-hydrogen': { input: 1.5, output: 7.5, cached: 0.075 },
+  'gemini-4-carbon': { input: 2.0, output: 10.0, cached: 0.1 }, // 2026-11-30 前的优惠价
+  'gemini-4-neon': { input: 3.0, output: 15.0, cached: 0.15 },
 };
 interface Usage {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   thoughtsTokenCount?: number;
+  cachedContentTokenCount?: number;
   totalTokenCount?: number;
+  serviceTier?: string;
 }
 let usage = null as Usage | null;
 for (const line of readFileSync(join(outDir, 'raw.sse'), 'utf8').split('\n')) {
@@ -111,15 +134,24 @@ for (const line of readFileSync(join(outDir, 'raw.sse'), 'utf8').split('\n')) {
 }
 const price = PRICES[model];
 const outputTokens = (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0);
-const costUsd = price && usage ? Number((((usage.promptTokenCount ?? 0) * price.input + outputTokens * price.output) / 1e6).toFixed(4)) : null;
+const cachedTokens = usage?.cachedContentTokenCount ?? 0;
+const costUsd =
+  price && usage
+    ? Number(((((usage.promptTokenCount ?? 0) - cachedTokens) * price.input + cachedTokens * price.cached + outputTokens * price.output) / 1e6).toFixed(4))
+    : null;
 const requestBody = JSON.parse(readFileSync(join(outDir, 'request.json'), 'utf8')).body;
 const result = {
   model,
   thinkingLevel,
   instructions,
   transcript: { source: '内置备份（与实时字幕轨 a.en 逐条一致）', chars: transcriptText.length },
-  /** 首个正文到达本脚本的时间（不是浏览器可见时间） */
+  maxOutputTokens,
+  timeouts,
+  headersTimeoutMs,
+  /** 首个正文文本到达本脚本的时间（可能只是标题的几个字；不是浏览器可见时间） */
   firstTextMs,
+  /** 第一段写完、不是标题的正文到达本脚本的时间 */
+  firstParagraphMs,
   totalMs,
   attempts: attempts.length,
   finishReason,
@@ -129,10 +161,13 @@ const result = {
   chars: countArticleChars(markdown),
   usage,
   costUsd,
+  modelVersion: stats.modelVersion ?? null,
+  serviceTierHeader: stats.serviceTierHeader ?? null,
   /** 请求体（不含模型名，模型名在 URL 里）的 SHA-256，用来核对不同模型拿到的输入完全相同 */
   requestBodySha256: createHash('sha256').update(JSON.stringify(requestBody)).digest('hex'),
 };
 writeFileSync(join(outDir, 'attempts.json'), JSON.stringify(attempts, null, 2));
+writeFileSync(join(outDir, 'timeline.json'), JSON.stringify(chunkTimeline));
 writeFileSync(join(outDir, 'article.md'), markdown);
 writeFileSync(join(outDir, 'result.json'), JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result));

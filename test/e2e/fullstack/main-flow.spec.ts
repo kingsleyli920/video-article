@@ -16,7 +16,9 @@ import {
   statusMessage,
   summaryRows,
   summaryToggle,
-  VIDEO_SOURCE,
+  SOURCE_ROWS,
+  SOURCE_SNIPPETS,
+  sourceRows,
   VIDEO_URL,
 } from './page';
 import { promptOf, requestsOf, resetUpstream, setScenario, upstreamRequests } from './upstream';
@@ -81,7 +83,15 @@ test('主流程：正文逐步出现 → 完成状态、章节、数字提示 �
 
   // 完成：状态条、标题、章节、标题下方的数字提示，5W1H 可点，表单恢复
   expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、68 字，用时 \d+ 秒。文中有 1 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。$/);
-  await expect(status.locator('.status-detail')).toHaveText(VIDEO_SOURCE);
+  // 来源信息在状态条下方的面板里，状态条不再附带来源；结束后面板保留
+  await expect(status.locator('.status-detail')).toHaveCount(0);
+  expect(await sourceRows(page)).toEqual(SOURCE_ROWS);
+  // 字幕原文片段来自真实 Worker 的 meta：默认收起，展开后是原始字幕（残缺数字原样，不是给模型的遮蔽版本）
+  const preview = page.locator('#source details');
+  await expect(preview.locator('summary')).toHaveText('字幕原文片段（节选 3 段，自动生成字幕可能有识别错误）');
+  await expect(preview.locator('li').first()).toBeHidden();
+  await preview.locator('summary').click();
+  await expect(preview.locator('li')).toHaveText(SOURCE_SNIPPETS);
   await expect(page.locator('#article h1')).toHaveText('对话测试嘉宾：受控上游');
   await expect(page.locator('#article h2')).toHaveText(['第一章：开场', '第二章：数字']);
   await expect(page.locator('#article > h1 + .article-notice')).toHaveText(NUMBER_NOTICE);

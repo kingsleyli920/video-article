@@ -24,8 +24,6 @@ beforeEach(async () => {
 });
 afterEach(closePage);
 
-const LIVE_SOURCE = '示例访谈 · 自动生成字幕（en）· 来源：YouTube 实时获取';
-
 describe('读屏播报', () => {
   // 抓：生成中状态条每秒整体重写一次，读屏软件每秒播报一遍；或者结果出来后反而不播报
   it('生成中状态条不播报（aria-live off），完成后恢复播报（polite）', async () => {
@@ -69,7 +67,8 @@ describe('提交并生成', () => {
     backend.stream.event('meta', meta());
     backend.stream.event('stage', { stage: 'generating' });
     await settle();
-    expect(page.status).toEqual({ hidden: false, tone: 'busy', text: '字幕已获取，等待模型输出 · 已用时 2 秒', detail: LIVE_SOURCE, hasRetry: false });
+    // 视频和字幕的来源只在来源面板里写，状态条不重复
+    expect(page.status).toEqual({ hidden: false, tone: 'busy', text: '字幕已获取，等待模型输出 · 已用时 2 秒', detail: '', hasRetry: false });
 
     await advance(3_000);
     expect(page.status.text).toBe('字幕已获取，等待模型输出 · 已用时 5 秒');
@@ -126,7 +125,7 @@ describe('提交并生成', () => {
       hidden: false,
       tone: 'ok',
       text: '已完成，共 2 章、36 字，用时 4 秒。点击章节标题旁的 5W1H 查看总结。',
-      detail: LIVE_SOURCE,
+      detail: '',
       hasRetry: false,
     });
     expect(page.article.dataset.state).toBe('done');
@@ -178,7 +177,7 @@ describe('完成时的提示', () => {
     await streamFullArticle(backend.stream, 'gen-1', { model: 'gemini-fallback' });
 
     expect(page.status.tone).toBe('ok');
-    expect(page.status.detail).toBe('示例访谈 · 自动生成字幕（en）· 来源：YouTube 实时获取 · 主模型繁忙，本次由 gemini-fallback 生成');
+    expect(page.status.detail).toBe('主模型繁忙，本次由 gemini-fallback 生成');
   });
 
   // 抓：旧版服务端的 done 不带 numberWarnings 和 model 时页面崩溃，或者误报"由 undefined 生成"
@@ -189,20 +188,9 @@ describe('完成时的提示', () => {
     backend.stream.event('done', { chapters: [{ id: '1', title: '第一章 起步' }, { id: '2', title: '第二章 增长' }], chars: 36, timing: { transcriptMs: 1, firstTokenMs: 2, modelDoneMs: 3, savedMs: 4 } });
     await settle();
 
-    expect(page.status).toEqual({ hidden: false, tone: 'ok', text: '已完成，共 2 章、36 字，用时 0 秒。点击章节标题旁的 5W1H 查看总结。', detail: LIVE_SOURCE, hasRetry: false });
+    expect(page.status).toEqual({ hidden: false, tone: 'ok', text: '已完成，共 2 章、36 字，用时 0 秒。点击章节标题旁的 5W1H 查看总结。', detail: '', hasRetry: false });
     expect(page.notices).toEqual([]);
     expect(page.toggles.map((b) => b.disabled)).toEqual([false, false]);
-  });
-
-  // 抓：字幕来源写错（备份当成实时、人工字幕当成自动字幕），或备份原因缺失时显示 undefined
-  it.each([
-    ['YouTube 拒绝了字幕请求', '示例访谈 · 人工字幕（zh-Hans）· 来源：内置备份（实时获取失败：YouTube 拒绝了字幕请求）'],
-    [undefined, '示例访谈 · 人工字幕（zh-Hans）· 来源：内置备份（实时获取失败：未知原因）'],
-  ])('字幕来自内置备份（原因：%s）：状态条说明来源和实时获取失败的原因', async (liveError, expected) => {
-    await submitWith(VIDEO_URL);
-    backend.stream.event('meta', meta('gen-1', { transcript: { source: 'backup', language: 'zh-Hans', kind: 'manual', chars: 52000, liveError } }));
-    await settle();
-    expect(page.status.detail).toBe(expected);
   });
 });
 

@@ -9,8 +9,6 @@ beforeEach(async () => {
 });
 afterEach(closePage);
 
-const LIVE_SOURCE = '示例访谈 · 自动生成字幕（en）· 来源：YouTube 实时获取';
-
 /** 推 meta 和前两段正文（标题、导语、第一章），等页面画出来 */
 async function streamHalfArticle(): Promise<void> {
   backend.stream.event('stage', { stage: 'transcript' });
@@ -37,7 +35,7 @@ describe('生成失败', () => {
     backend.stream.event('error', { code: 'gemini_busy', message: 'Gemini 模型繁忙，请稍后重试', partial: true });
     await settle();
 
-    expect(page.status).toEqual({ hidden: false, tone: 'error', text: 'Gemini 模型繁忙，请稍后重试', detail: LIVE_SOURCE, hasRetry: true });
+    expect(page.status).toEqual({ hidden: false, tone: 'error', text: 'Gemini 模型繁忙，请稍后重试', detail: '', hasRetry: true });
     expect(page.article.dataset.state).toBe('failed');
     expect(page.article.querySelector('h1')?.textContent).toBe('示例文章标题');
     expect(page.chapterTitles).toEqual(['第一章 起步']);
@@ -120,7 +118,7 @@ describe('中断', () => {
     backend.stream.end();
     await settle();
 
-    expect(page.status).toEqual({ hidden: false, tone: 'error', text: '生成中断，文章不完整', detail: LIVE_SOURCE, hasRetry: true });
+    expect(page.status).toEqual({ hidden: false, tone: 'error', text: '生成中断，文章不完整', detail: '', hasRetry: true });
     expect(page.article.dataset.state).toBe('failed');
     expect(page.chapterTitles).toEqual(['第一章 起步']);
     expect(page.incompleteNote).toBe('内容不完整：生成中断，文章不完整');
@@ -141,7 +139,7 @@ describe('中断', () => {
     backend.stream.reset();
     await settle();
 
-    expect(page.status).toEqual({ hidden: false, tone: 'error', text: '网络连接中断', detail: LIVE_SOURCE, hasRetry: true });
+    expect(page.status).toEqual({ hidden: false, tone: 'error', text: '网络连接中断', detail: '', hasRetry: true });
     expect(page.chapterTitles).toEqual(['第一章 起步']);
     expect(page.incompleteNote).toBe('内容不完整：网络连接中断');
     expectFormIdle();
@@ -160,7 +158,7 @@ describe('停止生成', () => {
     await settle();
 
     expect(signal.aborted).toBe(true);
-    expect(page.status).toEqual({ hidden: false, tone: 'idle', text: '已停止生成，已生成的内容保留在下方。', detail: LIVE_SOURCE, hasRetry: true });
+    expect(page.status).toEqual({ hidden: false, tone: 'idle', text: '已停止生成，已生成的内容保留在下方。', detail: '', hasRetry: true });
     expect(page.chapterTitles).toEqual(['第一章 起步']);
     expect(page.incompleteNote).toBe('内容不完整：已停止生成');
     expect(page.toggles.map((b) => b.disabled)).toEqual([true]);
@@ -218,7 +216,7 @@ describe('超时', () => {
     expect(signal.aborted).toBe(false);
 
     await advance(1);
-    expect(page.status).toEqual({ hidden: false, tone: 'error', text: '长时间没有收到服务器的数据，已停止等待', detail: LIVE_SOURCE, hasRetry: true });
+    expect(page.status).toEqual({ hidden: false, tone: 'error', text: '长时间没有收到服务器的数据，已停止等待', detail: '', hasRetry: true });
     expect(signal.aborted).toBe(true);
     expectFormIdle();
   });
@@ -237,7 +235,7 @@ describe('超时', () => {
     }
     // 第 90 秒收到最后一次心跳；第 134 秒（距开始已远超 45 秒）仍在正常等待
     await advance(44_000);
-    expect(page.status).toEqual({ hidden: false, tone: 'busy', text: '字幕已获取，等待模型输出 · 已用时 134 秒', detail: LIVE_SOURCE, hasRetry: false });
+    expect(page.status).toEqual({ hidden: false, tone: 'busy', text: '字幕已获取，等待模型输出 · 已用时 134 秒', detail: '', hasRetry: false });
 
     await advance(999);
     expect(page.status.tone).toBe('busy');
@@ -263,7 +261,7 @@ describe('超时', () => {
     expect(page.status.text).toBe('字幕已获取，等待模型输出 · 已用时 599 秒');
 
     await advance(1);
-    expect(page.status).toEqual({ hidden: false, tone: 'error', text: '长时间没有收到服务器的数据，已停止等待', detail: LIVE_SOURCE, hasRetry: true });
+    expect(page.status).toEqual({ hidden: false, tone: 'error', text: '长时间没有收到服务器的数据，已停止等待', detail: '', hasRetry: true });
     expect(backend.generations[0]!.request.signal.aborted).toBe(true);
   });
 });
