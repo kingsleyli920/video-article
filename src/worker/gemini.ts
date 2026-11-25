@@ -32,7 +32,7 @@ const SUMMARY_MAX_OUTPUT_TOKENS = 4_096;
 const BUSY_RETRY_DELAY_MS = 1_500;
 
 /**
- * 上游没有超时会让页面一直停在"等待模型输出"（线上实测出现过 5 分钟零字节）。
+ * 上游卡住时，没有超时会让页面一直停在"等待模型输出"。
  * firstChunkMs：从发请求到收到第一个流式分块；idleMs：两个分块之间；requestMs：非流式请求整体。
  */
 const DEFAULT_TIMEOUTS = { firstChunkMs: 120_000, idleMs: 60_000, requestMs: 90_000 };
@@ -70,7 +70,8 @@ class Watchdog {
 /**
  * 流式生成：每收到一段正文就交给 onText（会等它完成，保证下游背压），返回模型给出的 finishReason。
  * 只在还没有任何输出之前对 503 重试一次；开始输出后不重试、不换模型。
- * 流被截断时 finishReason 为 null。signal 中止（客户端断开）时立即取消请求并抛出中止原因。
+ * 收到带 finishReason 的终止事件后，先处理其中的最后一段正文，再停止读取并释放连接，不等 HTTP EOF；
+ * 没有终止事件就断流时返回 null（由调用方判为中断）。signal 中止（客户端断开）时立即取消请求并抛出中止原因。
  */
 export async function streamText(
   options: GeminiOptions,
@@ -94,7 +95,10 @@ export async function streamText(
       const candidate = chunk.candidates?.[0];
       const text = candidate?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('') ?? '';
       if (text) await onText(text);
-      if (candidate?.finishReason) finishReason = candidate.finishReason;
+      if (candidate?.finishReason) {
+        finishReason = candidate.finishReason;
+        break; // 退出循环会取消响应体读取，连接随之释放
+      }
       watchdog.arm(idleMs, () => new AppError('interrupted', `模型超过 ${idleMs / 1000} 秒没有新输出`));
     }
     return finishReason;

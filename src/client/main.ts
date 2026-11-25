@@ -90,7 +90,7 @@ async function generate(input: GenerationInput): Promise<void> {
       clearInterval(ticker);
       view.finish(markdown);
       unbindSummaries = bindSummaries(articleRoot, generationId);
-      showStatus('ok', `已完成，共 ${result.chapters.length} 章，用时 ${seconds()} 秒。点击章节标题旁的 5W1H 查看总结。`, source);
+      showStatus('ok', `已完成，共 ${result.chapters.length} 章、${result.chars} 字，用时 ${seconds()} 秒。点击章节标题旁的 5W1H 查看总结。`, source);
     },
     fail(error, markdown) {
       clearInterval(ticker);

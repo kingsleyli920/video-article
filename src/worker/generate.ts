@@ -1,4 +1,4 @@
-import { parseArticle, validateArticle } from '../shared/article';
+import { countArticleChars, parseArticle, validateArticle } from '../shared/article';
 import { LIMITS } from '../shared/limits';
 import { parseVideoId } from '../shared/video-id';
 import { AppError, toAppError } from './app-error';
@@ -52,8 +52,8 @@ export async function handleGenerate(request: Request, env: Env, ctx: ExecutionC
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
 /**
- * 客户端断开、写入失败或写入受阻时 events.signal 中止：字幕请求和 Gemini 请求随之取消，
- * 后续 send 抛 ClientGone，流程不再保存上下文。
+ * 客户端断开、输出流关闭或出错、写入受阻时 events.signal 中止：进行中的字幕请求和 Gemini 请求随之取消，
+ * 之后不再启动新的生成或保存（保存前会再检查一次）。已经发出的保存请求可能仍会完成，取消与保存不是原子的。
  */
 async function runGeneration(input: GenerationInput, env: Env, events: EventStream): Promise<void> {
   const startedAt = Date.now();
@@ -61,6 +61,8 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
   const log: Record<string, unknown> = { event: 'generation', videoId: input.videoId };
   let markdown = '';
   const stopHeartbeat = events.heartbeat(HEARTBEAT_INTERVAL_MS);
+  // 记录服务端发现客户端离开的时点，用于和客户端停止时间、上游终止时间对照
+  events.signal.addEventListener('abort', () => (log.clientGoneMs = since()), { once: true });
 
   try {
     await events.send('stage', { stage: 'transcript' });
@@ -96,12 +98,14 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       events.signal,
     );
     const modelDoneMs = since();
-    Object.assign(log, { finishReason, firstTokenMs, modelDoneMs, articleChars: markdown.length });
+    const chars = countArticleChars(markdown);
+    Object.assign(log, { finishReason, firstTokenMs, modelDoneMs, articleChars: chars });
     assertFinished(finishReason);
 
     const article = parseArticle(markdown);
     const problem = validateArticle(article);
     if (problem) throw new AppError('invalid_structure', problem);
+    events.throwIfGone(); // 模型结束到保存之间客户端已经离开：不再保存
 
     const context: GenerationContext = {
       version: 1,
@@ -122,10 +126,11 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
 
     const timing = { transcriptMs, firstTokenMs, modelDoneMs, savedMs: since() };
     Object.assign(log, { ok: true, chapters: article.chapters.length, savedMs: timing.savedMs });
-    await events.send('done', { chapters: article.chapters.map(({ id, title }) => ({ id, title })), timing });
+    await events.send('done', { chapters: article.chapters.map(({ id, title }) => ({ id, title })), chars, timing });
   } catch (err) {
     if (err instanceof ClientGone) {
-      Object.assign(log, { ok: false, code: `client_${err.reason}` });
+      // stoppedMs：上游请求已经被取消、本流程停止的时点
+      Object.assign(log, { ok: false, code: `client_${err.reason}`, stoppedMs: since() });
       return;
     }
     const error = toAppError(err);

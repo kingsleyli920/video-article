@@ -19,7 +19,7 @@ export interface EventStreamOptions {
 const DEFAULT_WRITE_TIMEOUT_MS = 30_000;
 
 /**
- * 往客户端写 SSE 的唯一出口。任何一次写入失败（包括心跳）或写入超时，都会：
+ * 往客户端写 SSE 的唯一出口。输出流出错或被关闭、任何一次写入失败（包括心跳）或写入超时，都会：
  * 1. 让 signal 进入中止状态，生成流程把它传给 YouTube 和 Gemini 请求，及时取消上游；
  * 2. 之后所有 send 直接抛 ClientGone。
  */
@@ -35,11 +35,23 @@ export class EventStream {
   constructor(writer: WritableStreamDefaultWriter<Uint8Array>, options: EventStreamOptions = {}) {
     this.#writer = writer;
     this.#writeTimeoutMs = options.writeTimeoutMs ?? DEFAULT_WRITE_TIMEOUT_MS;
+    // 客户端断开时响应体被取消，输出流随即出错：不用等下一次写入或心跳就能发现
+    writer.closed.then(
+      () => {
+        if (!this.#closed) this.#fail('disconnected');
+      },
+      () => this.#fail('disconnected'),
+    );
   }
 
   /** 客户端断开或写入受阻时中止 */
   get signal(): AbortSignal {
     return this.#controller.signal;
+  }
+
+  /** 客户端已经离开时抛出 ClientGone；用于在开始新的工作（如保存）之前检查 */
+  throwIfGone(): void {
+    if (this.#gone) throw this.#gone;
   }
 
   send<K extends keyof StreamEvents>(event: K, data: StreamEvents[K]): Promise<void> {

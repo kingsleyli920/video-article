@@ -97,7 +97,7 @@ describe('超时', () => {
     });
   }
 
-  // 抓：Gemini 迟迟不给首个分块时页面永远停在"等待模型输出"（线上实测出现过 5 分钟零字节）
+  // 抓：Gemini 迟迟不给首个分块时页面永远停在"等待模型输出"
   it('首个分块迟迟不到时报 gemini_busy', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => new Response(stalledBody(init!.signal!)));
     await expect(streamText(FAST, PROMPT, async () => {})).rejects.toMatchObject({ code: 'gemini_busy', message: 'Gemini 模型繁忙，请稍后重试（模型超过 0.06 秒没有响应）' });
@@ -138,6 +138,54 @@ describe('超时', () => {
       (_url, init) => new Promise((_, reject) => init!.signal!.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))),
     );
     await expect(generateJson(FAST, PROMPT, {})).rejects.toMatchObject({ code: 'gemini_busy' });
+  });
+});
+
+describe('终止事件', () => {
+  /** 发完给定事件后连接一直不关（和真实 fetch 一样，中止信号触发时响应体报错）；记录上游响应体是否被取消 */
+  function hangingAfter(sse: string) {
+    const state = { cancelled: false };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(sse));
+            init!.signal!.addEventListener('abort', () => controller.error(init!.signal!.reason));
+          },
+          cancel() {
+            state.cancelled = true;
+          },
+        }),
+      ),
+    );
+    return state;
+  }
+
+  // 抓：完整正文和 STOP 都到了，连接不关闭，最后被空闲超时判成 interrupted
+  it('收到 STOP 后连接不关：立即返回 STOP，终止事件里的最后一段正文也被处理，并释放上游连接', async () => {
+    const upstream = hangingAfter(geminiSse(['第一段', '最后一段'], 'STOP'));
+    const texts: string[] = [];
+    const fast = { ...OPTIONS, timeouts: { firstChunkMs: 1_000, idleMs: 200 } };
+    await expect(
+      streamText(fast, PROMPT, async (t) => {
+        texts.push(t);
+      }),
+    ).resolves.toBe('STOP');
+    expect(texts).toEqual(['第一段', '最后一段']);
+    await Promise.resolve();
+    expect(upstream.cancelled).toBe(true);
+  });
+
+  it('收到 MAX_TOKENS 后同样立即返回原因，由调用方判为截断', async () => {
+    hangingAfter(geminiSse(['很长'], 'MAX_TOKENS'));
+    const fast = { ...OPTIONS, timeouts: { firstChunkMs: 1_000, idleMs: 200 } };
+    await expect(streamText(fast, PROMPT, async () => {})).resolves.toBe('MAX_TOKENS');
+  });
+
+  it('没有终止事件、连接也不关时按空闲超时判为中断，不当成成功', async () => {
+    hangingAfter(geminiSse(['写到一半'], null));
+    const fast = { ...OPTIONS, timeouts: { firstChunkMs: 1_000, idleMs: 100 } };
+    await expect(streamText(fast, PROMPT, async () => {})).rejects.toMatchObject({ code: 'interrupted' });
   });
 });
 

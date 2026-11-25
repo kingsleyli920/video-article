@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseArticle, validateArticle } from '../../src/shared/article';
+import { countArticleChars, parseArticle, validateArticle } from '../../src/shared/article';
 
 describe('parseArticle', () => {
   // 抓：只按 "## " 字符串切分，把代码块、引用、列表里的 ## 也当成章节
@@ -46,6 +46,15 @@ describe('parseArticle', () => {
   it('第一个章节之前的非标题内容放进 intro', () => {
     const article = parseArticle('# 标题\n\n导语一段。\n\n## 第一章\n\n正文');
     expect(article.intro).toBe('导语一段。');
+  });
+});
+
+describe('countArticleChars', () => {
+  // 抓：提示词、计数和验收各用一套口径，同一篇文章算出不同字数
+  it('标题和正文的非空白字符都计入（中英文、数字、标点），Markdown 标记和空白不计入', () => {
+    const markdown = '# 标题 A\n\n## 第一章\n\n**主持人:** 你好，world 123。\n\n1. 要点：说明\n2. [链接](https://example.com)\n\n> 引用';
+    // 标题A 第一章 主持人: 你好，world123。 要点：说明 链接 引用
+    expect(countArticleChars(markdown)).toBe(31);
   });
 });
 

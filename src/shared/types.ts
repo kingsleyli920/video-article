@@ -36,7 +36,8 @@ export interface StreamEvents {
   stage: { stage: 'transcript' | 'generating' };
   meta: { generationId: string; video: VideoInfo; transcript: TranscriptInfo; model: string };
   delta: { text: string };
-  done: { chapters: ChapterRef[]; timing: GenerationTiming };
+  /** chars：按统一口径计算的文章字数（标题和正文的非空白字符，不含 Markdown 标记） */
+  done: { chapters: ChapterRef[]; chars: number; timing: GenerationTiming };
   error: { code: ErrorCode; message: string; partial: boolean };
 }
 

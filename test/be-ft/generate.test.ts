@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GenerationStore, openStore } from '../../src/worker/store';
-import { ARTICLE_MARKDOWN, ARTICLE_TEXTS, OTHER_VIDEO_ID, SAMPLE_VIDEO_ID } from '../fixtures/upstream';
+import { ARTICLE_MARKDOWN, ARTICLE_TEXTS, OTHER_VIDEO_ID, playerResponse, SAMPLE_VIDEO_ID, srv1 } from '../fixtures/upstream';
 import { eventOf, generate, geminiSse, mockUpstream } from './helpers';
 
 afterEach(() => vi.restoreAllMocks());
@@ -92,6 +92,48 @@ describe('POST /api/generations', () => {
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
     expect(events.at(-1)).toEqual({ event: 'error', data: { code: 'save_failed', message: '保存生成上下文失败，章节总结不可用', partial: true } });
     expect(eventOf(events, 'done')).toBeUndefined();
+  });
+
+  // 抓：模型还没结束客户端就走了，服务端照样跑完并保存，白白消耗额度和存储
+  it('客户端在模型结束前断开：服务端停止读取模型输出，不保存上下文', async () => {
+    const save = vi.spyOn(GenerationStore.prototype, 'save');
+    const encoder = new TextEncoder();
+    let upstreamCancelled = false;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes('/youtubei/v1/player')) return Response.json(playerResponse());
+      if (url.includes('/api/timedtext')) return new Response(srv1([[0, 'live caption text']]));
+      // 先给出全部正文，200 毫秒后才给 STOP；客户端在这之间断开
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            controller.enqueue(encoder.encode(geminiSse(ARTICLE_TEXTS, null)));
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            try {
+              controller.enqueue(encoder.encode(geminiSse([''], 'STOP')));
+            } catch {
+              // 上游已被取消
+            }
+          },
+          cancel() {
+            upstreamCancelled = true;
+          },
+        }),
+      );
+    });
+
+    const res = await exports.default.fetch('https://app.test/api/generations', { method: 'POST', body: JSON.stringify({ url: url(OTHER_VIDEO_ID) }) });
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let received = '';
+    while (!received.includes('智能经济')) received += decoder.decode((await reader.read()).value, { stream: true });
+    const generationId = /"generationId":"([0-9a-f]{64})"/.exec(received)![1]!;
+    await reader.cancel('user closed the tab');
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(upstreamCancelled).toBe(true);
+    expect(save).not.toHaveBeenCalled();
+    expect(await openStore(env, generationId).load()).toBeNull();
   });
 
   it('字幕超过上限时报 transcript_too_long，不调用 Gemini', async () => {

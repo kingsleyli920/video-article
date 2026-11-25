@@ -40,6 +40,27 @@ describe('EventStream', () => {
     await expect(events.send('delta', { text: 'y' })).rejects.toMatchObject({ reason: 'stalled' });
   });
 
+  // 抓：只有下一次写入或心跳时才发现断开，期间上游还在白白生成
+  it('客户端断开后不需要再写入，输出流一出错就中止上游信号', async () => {
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+    const events = new EventStream(writable.getWriter());
+    expect(events.signal.aborted).toBe(false);
+    await readable.cancel('client closed');
+    await Promise.resolve();
+    expect(events.signal.aborted).toBe(true);
+    expect(() => events.throwIfGone()).toThrow(ClientGone);
+  });
+
+  it('自己正常关闭输出流不算客户端断开', async () => {
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+    const events = new EventStream(writable.getWriter());
+    const drained = new Response(readable).text();
+    await events.close();
+    await drained;
+    expect(events.signal.aborted).toBe(false);
+    expect(() => events.throwIfGone()).not.toThrow();
+  });
+
   it('客户端已断开时写入报 disconnected，并中止上游信号', async () => {
     const events = new EventStream(await cancelledStream());
     await expect(events.send('stage', { stage: 'transcript' })).rejects.toMatchObject({ reason: 'disconnected' });
