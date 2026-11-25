@@ -109,6 +109,8 @@ try {
 const endAt = at();
 console.log(`字幕来源：${meta?.transcript.source ?? '?'}（${meta?.transcript.kind ?? '?'}，${meta?.transcript.chars ?? '?'} 字符），模型：${meta?.model ?? '?'}`);
 console.log(`网络分块 ${timeline.length} 个，delta 事件 ${deltaEvents} 个，正文 ${markdown.length} 字符`);
+// 文章只有一段正文时，要到最后一段正文到达才算读到完整段落
+if (firstParagraphAt === null && done && hasReadableParagraph(markdown, true)) firstParagraphAt = lastDeltaAt;
 console.log(`探针：来源信息 ${metaAt} ms，首个正文文本 ${firstDeltaAt} ms，首个可读段落 ${firstParagraphAt} ms，最后一段正文 ${lastDeltaAt} ms，流结束 ${endAt} ms`);
 if (done) {
   const t = done.timing;

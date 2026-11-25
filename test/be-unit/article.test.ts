@@ -91,4 +91,13 @@ describe('hasReadableParagraph', () => {
     expect(hasReadableParagraph('# 对话标题\n\n## 第一章\n\n**主持人:** 我们从哪')).toBe(false);
     expect(hasReadableParagraph('# 对话标题\n\n## 第一章\n\n**主持人:** 我们从哪里开始？\n\n')).toBe(true);
   });
+
+  // 补充验收 R04、R09、R10 抓：很短的文章只有一段正文，正好是最后一块，结束后仍记为"没有可读段落"
+  it('全文结束时最后一块也算完整段落；只有标题时仍然不算', async () => {
+    const { hasReadableParagraph } = await import('../../src/shared/article');
+    const short = '# 营收与成本\n\n## 数据说明\n\n营收为1.2亿美元，成本为1200亿美元。';
+    expect(hasReadableParagraph(short)).toBe(false);
+    expect(hasReadableParagraph(short, true)).toBe(true);
+    expect(hasReadableParagraph('# 标题\n\n## 第一章', true)).toBe(false);
+  });
 });

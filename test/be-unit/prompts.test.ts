@@ -40,3 +40,14 @@ describe('5W1H 提示词', () => {
     expect(summary.system).toContain('当前章节里即使给出了这里的具体数字，也以字幕为准');
   });
 });
+
+describe('文章提示词的篇幅规则', () => {
+  // 补充验收 V08 抓：目标仍是"上限的九成"，术语和数字多的文章按统一口径超出上限（1,695 / 1,500）；或者计字口径从提示词里丢了
+  it('给了上限时按八成分配篇幅、绝不超过上限，并说明英文、数字和标点同样计字', () => {
+    const { system } = articlePrompt({ video, transcriptText: '[00:00] hi', instructions: '最多1500字' });
+    expect(system).toContain('文章标题和正文的所有非空白字符都算一个字，中文、英文、数字、标点都计入');
+    expect(system).toContain('用户给了字数上限时，绝不能超过上限：动笔前先按上限的八成左右给各章分配篇幅');
+    expect(system).toContain('英文术语、数字和标点同样计字');
+    expect(system).not.toContain('九成');
+  });
+});

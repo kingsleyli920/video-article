@@ -183,6 +183,16 @@ describe('POST /api/generations', () => {
   });
 
   // 抓：模型没写二级标题时也保存并开放 5W1H，前端点开后找不到章节
+  // 补充验收 R04、R09、R10 抓：文章只有一段正文（正好是最后一块），done 里的首个可读段落时间是 null
+  it('只有一段正文的短文：首个可读段落记为最后一段正文发出的时间，不是 null', async () => {
+    mockUpstream({ geminiStream: geminiSse(['# 营收与成本\n\n## 数据说明\n\n', '营收为1.2亿美元。']) });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    const timing = eventOf(events, 'done')!.timing;
+    expect(timing.firstParagraphMs).not.toBeNull();
+    expect(timing.firstParagraphMs!).toBeGreaterThanOrEqual(timing.firstTokenMs!);
+    expect(timing.firstParagraphMs!).toBeLessThanOrEqual(timing.modelDoneMs);
+  });
+
   it('文章没有章节结构时发 invalid_structure，不保存', async () => {
     mockUpstream({ geminiStream: geminiSse(['# 标题\n\n只有一段正文。']) });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });

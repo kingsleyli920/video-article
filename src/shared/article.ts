@@ -88,11 +88,12 @@ export function countArticleChars(markdown: string): number {
 /**
  * 流式输出里是否已经出现第一段可以开始阅读的正文：一个已经写完（后面跟着空行）的段落，
  * 不是标题（# 开头）。只用来测量"可读正文"的时间，标题、心跳和来源信息都不算。
+ * 输出过程中最后一块可能还没写完，不算；complete 为 true 表示全文已经结束，最后一块也是完整段落
+ * （很短的文章只有一段正文时，要到结束才能判出来）。
  */
-export function hasReadableParagraph(markdown: string): boolean {
+export function hasReadableParagraph(markdown: string, complete = false): boolean {
   const blocks = markdown.split(/\n\s*\n/);
-  // 最后一块可能还没写完，不算
-  return blocks.slice(0, -1).some((block) => {
+  return (complete ? blocks : blocks.slice(0, -1)).some((block) => {
     const text = block.trim();
     return text.length > 0 && !text.startsWith('#');
   });

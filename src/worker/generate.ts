@@ -94,6 +94,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
 
     let firstTokenMs: number | null = null;
     let firstParagraphMs: number | null = null;
+    let lastDeltaMs: number | null = null;
     const stats: GeminiStats = {};
     const prompt = articlePrompt({ video: transcript.video, transcriptText, instructions: input.instructions });
     const write = (model: string) =>
@@ -105,7 +106,8 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
           markdown += text;
           if (markdown.length > LIMITS.articleChars) throw new AppError('article_too_long');
           await events.send('delta', { text });
-          if (firstParagraphMs === null && hasReadableParagraph(markdown)) firstParagraphMs = since();
+          lastDeltaMs = since();
+          if (firstParagraphMs === null && hasReadableParagraph(markdown)) firstParagraphMs = lastDeltaMs;
         },
         events.signal,
         stats,
@@ -123,6 +125,8 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
       finishReason = await write(model);
     }
     const modelDoneMs = since();
+    // 文章只有一段正文时，要到最后一段发出才算读到完整段落
+    if (firstParagraphMs === null && finishReason === 'STOP' && hasReadableParagraph(markdown, true)) firstParagraphMs = lastDeltaMs;
     const chars = countArticleChars(markdown);
     // 用量、模型版本、服务档都来自已经收到的终止事件和响应头，不为它多等连接关闭
     Object.assign(log, {
