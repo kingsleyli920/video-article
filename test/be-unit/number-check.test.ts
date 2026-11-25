@@ -17,6 +17,12 @@ describe('checkDamagedNumbers', () => {
     expect(checkDamagedNumbers(DAMAGED, TRANSCRIPT, markdown)).toEqual([{ time: '34:25', fragment: 'of,200', written: ['1200', '1,200'] }]);
   });
 
+  // 抓：补出来的数字写在表格里时查不到（可读文本以前不含表格单元格）
+  it('残缺数字被补全后写在表格单元格里时同样报出', () => {
+    const markdown = '# 标题\n\n## 监管\n\n| 项目 | 数量 |\n| --- | --- |\n| 相关法案 | 1,200 |';
+    expect(checkDamagedNumbers(DAMAGED, TRANSCRIPT, markdown)).toEqual([{ time: '34:25', fragment: 'of,200', written: ['1,200'] }]);
+  });
+
   // 抓：保留不确定写法、出现同样三位数的其他金额时被误报
   it('保留不确定写法、出现同样三位数的其他金额时不报', () => {
     const markdown = '# 标题\n\n## 监管\n\n各州正在审议大量法案（字幕此处数字不清）。\n\n## 定价\n\n每月 200 或 300 美元的订阅层级。';
