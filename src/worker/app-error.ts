@@ -14,15 +14,18 @@ const STATUS: Partial<Record<ErrorCode, number>> = {
   gemini_quota: 429,
   internal: 500,
   gemini_busy: 503,
+  youtube_timeout: 504,
 };
 
 /** 带错误码的业务错误。detail 会拼进给用户看的说明，不能放密钥或内部细节。 */
 export class AppError extends Error {
   readonly code: ErrorCode;
+  readonly detail: string | undefined;
 
   constructor(code: ErrorCode, detail?: string) {
     super(detail ? `${ERROR_MESSAGES[code]}（${detail}）` : ERROR_MESSAGES[code]);
     this.code = code;
+    this.detail = detail;
   }
 
   get status(): number {

@@ -47,6 +47,12 @@ class Watchdog {
     return this.#controller.signal;
   }
 
+  /** 外部取消（客户端断开）：中止请求，但不记成超时 */
+  cancel(reason: unknown): void {
+    this.clear();
+    this.#controller.abort(reason);
+  }
+
   arm(ms: number, error: () => AppError): void {
     this.clear();
     this.#timer = setTimeout(() => {
@@ -64,15 +70,19 @@ class Watchdog {
 /**
  * 流式生成：每收到一段正文就交给 onText（会等它完成，保证下游背压），返回模型给出的 finishReason。
  * 只在还没有任何输出之前对 503 重试一次；开始输出后不重试、不换模型。
- * 流被截断时 finishReason 为 null。
+ * 流被截断时 finishReason 为 null。signal 中止（客户端断开）时立即取消请求并抛出中止原因。
  */
 export async function streamText(
   options: GeminiOptions,
   prompt: Prompt,
   onText: (text: string) => Promise<void>,
+  signal?: AbortSignal,
 ): Promise<string | null> {
+  if (signal?.aborted) throw signal.reason;
   const { firstChunkMs, idleMs } = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
   const watchdog = new Watchdog();
+  const onCancel = () => watchdog.cancel(signal!.reason);
+  signal?.addEventListener('abort', onCancel, { once: true });
   watchdog.arm(firstChunkMs, () => new AppError('gemini_busy', `模型超过 ${firstChunkMs / 1000} 秒没有响应`));
   try {
     const body = payload(options, prompt, { maxOutputTokens: ARTICLE_MAX_OUTPUT_TOKENS });
@@ -89,9 +99,11 @@ export async function streamText(
     }
     return finishReason;
   } catch (err) {
+    if (signal?.aborted) throw signal.reason;
     throw watchdog.reason ?? err;
   } finally {
     watchdog.clear();
+    signal?.removeEventListener('abort', onCancel);
   }
 }
 

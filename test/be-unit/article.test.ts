@@ -56,7 +56,16 @@ describe('validateArticle', () => {
 
   // 抓：模型在最后一个章节标题后就停了，空章节仍被保存并开放 5W1H
   it('存在空章节时判为无效', () => {
-    expect(validateArticle(parseArticle('## 第一章\n\n正文\n\n## 第二章\n'))).toBe('第 2 章缺少标题或正文');
+    expect(validateArticle(parseArticle('# 标题\n\n## 第一章\n\n正文\n\n## 第二章\n'))).toBe('第 2 章缺少标题或正文');
+  });
+
+  // 抓：提示词要求一级标题，代码却不检查，没有标题的文章也被保存
+  it('缺少一级标题时判为无效', () => {
+    expect(validateArticle(parseArticle('## 第一章\n\n正文'))).toBe('缺少一级标题');
+  });
+
+  it('出现多个一级标题时判为无效', () => {
+    expect(validateArticle(parseArticle('# 标题\n\n## 第一章\n\n正文\n\n# 又一个标题\n\n正文'))).toBe('出现 2 个一级标题');
   });
 
   it('结构完整时返回 null', () => {

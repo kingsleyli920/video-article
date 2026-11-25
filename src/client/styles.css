@@ -64,6 +64,22 @@ body {
   font-weight: 600;
 }
 
+.field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-head .link-button {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.link-button:disabled {
+  color: var(--faint);
+}
+
 .optional {
   margin-left: 4px;
   color: var(--faint);
@@ -102,6 +118,20 @@ textarea:disabled {
 .actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
+}
+
+.secondary {
+  padding: 9px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.secondary[hidden] {
+  display: none;
 }
 
 button {
@@ -158,6 +188,10 @@ button:disabled {
 
 .status[data-tone="ok"]::before {
   background: var(--ok);
+}
+
+.status[data-tone="idle"]::before {
+  background: var(--faint);
 }
 
 .status[data-tone="error"] {

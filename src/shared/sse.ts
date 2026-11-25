@@ -70,8 +70,12 @@ export class SseParser {
   }
 }
 
-/** 逐条读取字节流里的 SSE 消息。多字节字符被切在两个分块之间时由 TextDecoder 的 stream 模式拼回。 */
-export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<SseMessage> {
+/**
+ * 逐条读取字节流里的 SSE 消息。多字节字符被切在两个分块之间时由 TextDecoder 的 stream 模式拼回。
+ * onChunk 在每个网络分块到达时调用（包括只含注释的心跳），供调用方判断连接是否还活着。
+ * 调用方提前结束迭代时只发起取消、不等待取消完成，避免卡在一个不再需要的连接上。
+ */
+export async function* readSse(body: ReadableStream<Uint8Array>, onChunk?: () => void): AsyncGenerator<SseMessage> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const parser = new SseParser();
@@ -80,13 +84,18 @@ export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      onChunk?.();
       yield* parser.push(decoder.decode(value, { stream: true }));
     }
     finished = true;
     yield* parser.push(decoder.decode());
     yield* parser.end();
   } finally {
-    if (!finished) await reader.cancel().catch(() => {});
-    reader.releaseLock();
+    if (!finished) reader.cancel().catch(() => {});
+    try {
+      reader.releaseLock();
+    } catch {
+      // 读请求仍挂起时释放锁会失败，取消已经发出，忽略即可
+    }
   }
 }

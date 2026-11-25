@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchTranscript, formatTranscript, parseSrv1, pickTrack, type CaptionTrack } from '../../src/worker/youtube';
+import { fetchTranscript, formatTranscript, markDamagedNumbers, parseSrv1, pickTrack, type CaptionTrack } from '../../src/worker/youtube';
 import { playerResponse, srv1 } from '../fixtures/upstream';
 
 afterEach(() => vi.restoreAllMocks());
@@ -103,6 +103,13 @@ describe('parseSrv1 / formatTranscript', () => {
       { start: 3_725_000, text: 'more answer' },
     ]);
     expect(text).toBe('[00:00] host intro question still host\n\n[00:05] >> guest answer more answer');
+  });
+
+  // 抓：自动字幕吞掉数字开头（"of,200"）后，模型把它当成确定的数字补全
+  it('标注前面没有数字的千分位片段，正常数字不受影响', () => {
+    expect(markDamagedNumbers('tracking on the order of,200 bills')).toBe('tracking on the order of,200〔字幕数字残缺〕 bills');
+    expect(markDamagedNumbers('1,200 bills, $200 or $300, 12,345,678, a, 200 b')).toBe('1,200 bills, $200 or $300, 12,345,678, a, 200 b');
+    expect(formatTranscript([{ start: 0, text: 'we track of,200 bills' }])).toBe('[00:00] we track of,200〔字幕数字残缺〕 bills');
   });
 
   it('同一人说话过长时在片段边界分段，超过一小时用 h:mm:ss', () => {

@@ -2,8 +2,8 @@ import { ERROR_MESSAGES } from '../shared/errors';
 import { LIMITS } from '../shared/limits';
 import type { StreamEvents } from '../shared/types';
 import { parseVideoId } from '../shared/video-id';
-import { ApiError, streamGeneration } from './api';
 import { createArticleView } from './article-view';
+import { runGeneration, type GenerationStage, type GenerationUi } from './generation';
 import { bindSummaries } from './summary-panel';
 
 interface GenerationInput {
@@ -11,24 +11,39 @@ interface GenerationInput {
   instructions: string;
 }
 
-type Tone = 'busy' | 'ok' | 'error';
+type Tone = 'busy' | 'ok' | 'error' | 'idle';
+
+const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
+const STAGE_TEXT: Record<GenerationStage, string> = {
+  transcript: '正在获取字幕',
+  waiting: '字幕已获取，等待模型输出',
+  writing: '正在生成文章',
+};
 
 const form = byId<HTMLFormElement>('generate-form');
 const urlInput = byId<HTMLInputElement>('video-url');
 const instructionsInput = byId<HTMLTextAreaElement>('instructions');
+const sampleButton = byId<HTMLButtonElement>('fill-sample');
 const submitButton = byId<HTMLButtonElement>('submit');
+const stopButton = byId<HTMLButtonElement>('stop');
 const statusBox = byId<HTMLDivElement>('status');
 const articleRoot = byId<HTMLElement>('article');
 
 const view = createArticleView(articleRoot);
 let unbindSummaries: (() => void) | null = null;
 let lastInput: GenerationInput | null = null;
-let running = false;
+let running: AbortController | null = null;
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   void generate({ url: urlInput.value.trim(), instructions: instructionsInput.value.trim() });
 });
+// 只填链接，不自动生成
+sampleButton.addEventListener('click', () => {
+  urlInput.value = SAMPLE_URL;
+  urlInput.focus();
+});
+stopButton.addEventListener('click', () => running?.abort());
 
 async function generate(input: GenerationInput): Promise<void> {
   if (running) return;
@@ -42,56 +57,55 @@ async function generate(input: GenerationInput): Promise<void> {
     return;
   }
 
-  running = true;
+  const controller = new AbortController();
+  running = controller;
   lastInput = input;
-  setFormDisabled(true);
+  setRunning(true);
   unbindSummaries?.();
   unbindSummaries = null;
   view.reset();
-  showStatus('busy', '正在获取字幕…');
 
-  let markdown = '';
-  let generationId = '';
+  // 状态条每秒刷新：当前阶段 + 已用时间（不显示没有依据的进度百分比）
+  const startedAt = Date.now();
+  const seconds = () => Math.round((Date.now() - startedAt) / 1000);
+  let stage: GenerationStage = 'transcript';
   let source = '';
-  let settled = false;
-  const fail = (message: string) => {
-    settled = true;
-    view.fail(markdown, message);
-    showStatus('error', message, source, true);
+  const renderProgress = () => showStatus('busy', `${STAGE_TEXT[stage]} · 已用时 ${seconds()} 秒`, source);
+  const ticker = setInterval(renderProgress, 1_000);
+  renderProgress();
+
+  const ui: GenerationUi = {
+    stage(next) {
+      stage = next;
+      renderProgress();
+    },
+    meta(meta) {
+      source = describeSource(meta);
+      renderProgress();
+    },
+    delta(markdown) {
+      view.update(markdown);
+    },
+    done(result, markdown, generationId) {
+      clearInterval(ticker);
+      view.finish(markdown);
+      unbindSummaries = bindSummaries(articleRoot, generationId);
+      showStatus('ok', `已完成，共 ${result.chapters.length} 章，用时 ${seconds()} 秒。点击章节标题旁的 5W1H 查看总结。`, source);
+    },
+    fail(error, markdown) {
+      clearInterval(ticker);
+      const cancelled = error.code === 'cancelled';
+      view.fail(markdown, error.message);
+      showStatus(cancelled ? 'idle' : 'error', cancelled ? `已停止生成，已生成的内容保留在下方。` : error.message, source, true);
+    },
   };
 
   try {
-    for await (const message of streamGeneration(input)) {
-      switch (message.event) {
-        case 'stage':
-          if (message.data.stage === 'generating') showStatus('busy', '正在生成文章…', source);
-          break;
-        case 'meta':
-          generationId = message.data.generationId;
-          source = describeSource(message.data);
-          showStatus('busy', '字幕已获取，等待模型输出…', source);
-          break;
-        case 'delta':
-          markdown += message.data.text;
-          view.update(markdown);
-          break;
-        case 'done':
-          settled = true;
-          view.finish(markdown);
-          unbindSummaries = bindSummaries(articleRoot, generationId);
-          showStatus('ok', `已完成，共 ${message.data.chapters.length} 章。点击章节标题旁的 5W1H 查看总结。`, source);
-          break;
-        case 'error':
-          fail(message.data.message);
-          break;
-      }
-    }
-    if (!settled) fail(ERROR_MESSAGES.interrupted);
-  } catch (err) {
-    fail(err instanceof ApiError ? err.message : ERROR_MESSAGES.network);
+    await runGeneration(input, ui, { signal: controller.signal });
   } finally {
-    running = false;
-    setFormDisabled(false);
+    clearInterval(ticker);
+    running = null;
+    setRunning(false);
   }
 }
 
@@ -116,7 +130,7 @@ function showStatus(tone: Tone, text: string, detail = '', withRetry = false): v
     const retry = document.createElement('button');
     retry.type = 'button';
     retry.className = 'link-button';
-    retry.textContent = '重试';
+    retry.textContent = '重新生成';
     const input = lastInput;
     retry.addEventListener('click', () => void generate(input));
     children.push(retry);
@@ -126,9 +140,10 @@ function showStatus(tone: Tone, text: string, detail = '', withRetry = false): v
   statusBox.hidden = false;
 }
 
-function setFormDisabled(disabled: boolean): void {
-  for (const control of [urlInput, instructionsInput, submitButton]) control.disabled = disabled;
-  submitButton.textContent = disabled ? '生成中…' : '生成文章';
+function setRunning(isRunning: boolean): void {
+  for (const control of [urlInput, instructionsInput, submitButton, sampleButton]) control.disabled = isRunning;
+  submitButton.textContent = isRunning ? '生成中…' : '生成文章';
+  stopButton.hidden = !isRunning;
 }
 
 function byId<T extends HTMLElement>(id: string): T {

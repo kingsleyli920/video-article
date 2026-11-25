@@ -1,7 +1,7 @@
 import type { TranscriptInfo } from '../shared/types';
 import { toAppError } from './app-error';
 import sampleBackup from './transcripts/xRh2sVcNXQ8.json';
-import { fetchTranscript, type Transcript } from './youtube';
+import { fetchTranscript, type Transcript, type TranscriptOptions } from './youtube';
 
 /** 内置备份文件的格式：cues 存成 [开始毫秒, 文本]，source 记录来源，便于复核。 */
 export interface BackupFile {
@@ -20,12 +20,16 @@ export interface LoadedTranscript {
   info: Omit<TranscriptInfo, 'chars'>;
 }
 
-/** 先直连 YouTube；失败且该视频有内置备份时改用备份，并带上实时获取失败的原因。 */
-export async function loadTranscript(videoId: string): Promise<LoadedTranscript> {
+/**
+ * 先直连 YouTube；失败（含超时）且该视频有内置备份时改用备份，并带上实时获取失败的原因。
+ * 客户端已经断开导致的取消不兜底，直接把取消原因抛出去。
+ */
+export async function loadTranscript(videoId: string, options: TranscriptOptions = {}): Promise<LoadedTranscript> {
   try {
-    const transcript = await fetchTranscript(videoId);
+    const transcript = await fetchTranscript(videoId, options);
     return { transcript, info: { source: 'live', language: transcript.language, kind: transcript.kind } };
   } catch (err) {
+    if (options.signal?.aborted) throw options.signal.reason;
     const backup = BACKUPS.get(videoId);
     if (!backup) throw err;
     const reason = toAppError(err).message;

@@ -8,6 +8,8 @@ export interface Chapter extends ChapterRef {
 
 export interface ParsedArticle {
   title: string;
+  /** 顶层一级标题的个数，结构要求是恰好一个 */
+  headingOneCount: number;
   /** 第一个章节之前、标题之外的内容 */
   intro: string;
   chapters: Chapter[];
@@ -20,9 +22,11 @@ export interface ParsedArticle {
 export function parseArticle(markdown: string): ParsedArticle {
   let title = '';
   let intro = '';
+  let headingOneCount = 0;
   const chapters: Chapter[] = [];
 
   for (const token of Lexer.lex(markdown)) {
+    if (token.type === 'heading' && token.depth === 1) headingOneCount++;
     if (token.type === 'heading' && token.depth === 2) {
       chapters.push({ id: String(chapters.length + 1), title: inlineText(token), markdown: '' });
     } else if (token.type === 'heading' && token.depth === 1 && !title && chapters.length === 0) {
@@ -35,11 +39,16 @@ export function parseArticle(markdown: string): ParsedArticle {
   }
 
   for (const chapter of chapters) chapter.markdown = chapter.markdown.trim();
-  return { title, intro: intro.trim(), chapters };
+  return { title, headingOneCount, intro: intro.trim(), chapters };
 }
 
-/** 结构有效时返回 null，否则返回问题说明。 */
+/**
+ * 与提示词里"程序会检查"的结构要求一一对应：一个非空的一级标题、至少一个章节、每章标题和正文非空。
+ * 章节 id 按顺序生成，前后端用同一份解析代码，所以同一篇文章的 id 稳定一致。结构有效时返回 null。
+ */
 export function validateArticle(article: ParsedArticle): string | null {
+  if (!article.title) return '缺少一级标题';
+  if (article.headingOneCount > 1) return `出现 ${article.headingOneCount} 个一级标题`;
   if (article.chapters.length === 0) return '没有二级标题章节';
   const empty = article.chapters.find((c) => !c.title || !c.markdown);
   if (empty) return `第 ${empty.id} 章缺少标题或正文`;

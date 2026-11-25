@@ -70,6 +70,29 @@ describe('POST /api/generations/:id/chapters/:chapterId/summary', () => {
     expect(upstream.gemini()).toHaveLength(1);
   });
 
+  // 抓：同一章并发请求各自缓存未命中，重复调用 Gemini
+  it('同一章节的并发请求合并成一次 Gemini 调用', async () => {
+    const { generationId } = await savedGeneration();
+    const gemini = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return Response.json(geminiJson(SUMMARY));
+    });
+    const responses = await Promise.all([summarize(generationId, '1'), summarize(generationId, '1'), summarize(generationId, '1')]);
+    const bodies = (await Promise.all(responses.map((r) => r.json()))) as SummaryResponse[];
+    expect(responses.map((r) => r.status)).toEqual([200, 200, 200]);
+    // 都是 cached:false，说明是共用同一次生成，而不是后来的请求命中缓存
+    expect(bodies.map((b) => b.cached)).toEqual([false, false, false]);
+    expect(new Set(bodies.map((b) => JSON.stringify(b.summary))).size).toBe(1);
+    expect(gemini).toHaveBeenCalledOnce();
+  });
+
+  it('不同章节的并发请求互不合并', async () => {
+    const { generationId } = await savedGeneration();
+    const gemini = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(geminiJson(SUMMARY)));
+    await Promise.all([summarize(generationId, '1'), summarize(generationId, '2')]);
+    expect(gemini).toHaveBeenCalledTimes(2);
+  });
+
   // 抓：格式不合法的总结被缓存，之后再点也一直是坏结果
   it('模型返回的字段不全时报 summary_invalid，不缓存，下次重新生成', async () => {
     const { generationId, store } = await savedGeneration();

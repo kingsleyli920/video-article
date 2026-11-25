@@ -32,12 +32,17 @@ test('示例视频：实时字幕 → 流式文章 → 保存 → 章节 5W1H', 
   });
 
   await page.goto('/');
-  await page.getByLabel('YouTube 链接').fill(SAMPLE_URL);
+  // "填入示例视频"只填链接，不发起生成
+  await page.getByRole('button', { name: '填入示例视频' }).click();
+  await expect(page.getByLabel('YouTube 链接')).toHaveValue(SAMPLE_URL);
+  await expect(page.locator('#status')).toBeHidden();
   const clickAt = await page.evaluate(() => performance.now());
   await page.getByRole('button', { name: '生成文章' }).click();
 
-  // 生成中：表单锁定，章节出现但 5W1H 不可点
+  // 生成中：表单锁定，可以停止，状态条显示阶段和已用时间；章节出现但 5W1H 不可点
   const status = page.locator('#status');
+  await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
+  await expect(status).toContainText(/已用时 \d+ 秒/);
   const firstChapter = page.locator('section.chapter').first();
   await expect(firstChapter).toBeVisible({ timeout: 120_000 });
   await expect(page.locator('#submit')).toBeDisabled();
@@ -59,6 +64,8 @@ test('示例视频：实时字幕 → 流式文章 → 保存 → 章节 5W1H', 
   }
   await expect(status).toHaveAttribute('data-tone', 'ok');
   await expect(status).toContainText('已完成');
+  await expect(page.getByRole('button', { name: '停止生成' })).toBeHidden();
+  await expect(page.locator('#submit')).toBeEnabled();
 
   // 从浏览器收到的分块还原事件：第一段正文到达时间 vs 服务端回报的模型结束时间
   const chunks = await page.evaluate(() => window.__sseChunks);
@@ -115,7 +122,7 @@ test('示例视频：实时字幕 → 流式文章 → 保存 → 章节 5W1H', 
   writeFileSync(testInfo.outputPath('article.md'), markdown);
   writeFileSync(
     testInfo.outputPath('evidence.json'),
-    JSON.stringify({ transcript: meta?.transcript, model: meta?.model, firstDeltaAt, serverTiming: done!.timing, chapters: done!.chapters, samples, summary: rows, chunkCount: chunks.length }, null, 2),
+    JSON.stringify({ transcript: meta?.transcript, model: meta?.model, firstDeltaAt, serverTiming: done!.timing, chapters: done!.chapters, samples, summaryChapterId: '2', summary: rows, chunkCount: chunks.length }, null, 2),
   );
   console.log(`第一段正文到达浏览器 ${firstDeltaAt} ms；服务端模型结束 ${done!.timing.modelDoneMs} ms；共 ${chunks.length} 个分块，${chapterCount} 章`);
 });

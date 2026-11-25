@@ -141,6 +141,42 @@ describe('超时', () => {
   });
 });
 
+describe('外部取消', () => {
+  // 抓：客户端已断开，Gemini 请求仍在继续生成，白白消耗额度
+  it('客户端断开时立即中止 Gemini 请求，并抛出取消原因而不是超时', async () => {
+    let upstreamSignal: AbortSignal | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      upstreamSignal = init!.signal!;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(geminiSse(['第一段'], null)));
+            init!.signal!.addEventListener('abort', () => controller.error(init!.signal!.reason));
+          },
+        }),
+      );
+    });
+    const client = new AbortController();
+    const gone = new Error('client gone');
+    const texts: string[] = [];
+    const pending = streamText(OPTIONS, PROMPT, async (t) => {
+      texts.push(t);
+      client.abort(gone);
+    }, client.signal);
+    await expect(pending).rejects.toBe(gone);
+    expect(upstreamSignal?.aborted).toBe(true);
+    expect(texts).toEqual(['第一段']);
+  });
+
+  it('开始前已经取消时不发请求', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const client = new AbortController();
+    client.abort(new Error('already gone'));
+    await expect(streamText(OPTIONS, PROMPT, async () => {}, client.signal)).rejects.toThrow('already gone');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe('classifyHttpError', () => {
   it.each([
     [429, '{"error":{"message":"Resource has been exhausted"}}', 'gemini_quota'],

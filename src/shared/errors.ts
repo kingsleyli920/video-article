@@ -11,6 +11,7 @@ export const ERROR_MESSAGES = {
   no_captions: '这个视频没有可用的字幕',
   youtube_blocked: 'YouTube 拒绝了字幕请求，可能触发了人机验证',
   youtube_error: '获取字幕失败',
+  youtube_timeout: '获取字幕超时，请稍后重试',
   transcript_too_long: '字幕过长，超过支持的上限',
   gemini_quota: 'Gemini 免费额度已用完或请求过于频繁，请稍后再试',
   gemini_busy: 'Gemini 模型繁忙，请稍后重试',
@@ -27,6 +28,8 @@ export const ERROR_MESSAGES = {
   body_not_allowed: '总结请求不接受请求体',
   summary_invalid: '模型返回的总结格式无效，请重试',
   network: '网络连接中断',
+  client_timeout: '长时间没有收到服务器的数据，已停止等待',
+  cancelled: '已停止生成',
   internal: '服务器内部错误',
 } as const;
 

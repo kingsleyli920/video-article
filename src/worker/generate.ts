@@ -1,10 +1,9 @@
 import { parseArticle, validateArticle } from '../shared/article';
 import { LIMITS } from '../shared/limits';
-import { encodeSse } from '../shared/sse';
-import type { StreamEvents } from '../shared/types';
 import { parseVideoId } from '../shared/video-id';
 import { AppError, toAppError } from './app-error';
 import { geminiOptions } from './config';
+import { ClientGone, EventStream } from './event-stream';
 import { streamText } from './gemini';
 import { articlePrompt } from './prompts';
 import { createStore, type GenerationContext } from './store';
@@ -38,7 +37,7 @@ export async function readGenerationInput(request: Request): Promise<GenerationI
 export async function handleGenerate(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const input = await readGenerationInput(request);
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const events = new EventWriter(writable.getWriter());
+  const events = new EventStream(writable.getWriter());
   ctx.waitUntil(runGeneration(input, env, events));
   return new Response(readable, {
     headers: {
@@ -49,47 +48,14 @@ export async function handleGenerate(request: Request, env: Env, ctx: ExecutionC
   });
 }
 
-class ClientGone extends Error {}
-
 /** 模型首个 token 在线上可能要等几十秒；期间定时发 SSE 注释，让连接保持活跃（客户端按规范忽略注释）。 */
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
-class EventWriter {
-  readonly #writer: WritableStreamDefaultWriter<Uint8Array>;
-  readonly #encoder = new TextEncoder();
-  #closed = false;
-
-  constructor(writer: WritableStreamDefaultWriter<Uint8Array>) {
-    this.#writer = writer;
-  }
-
-  async send<K extends keyof StreamEvents>(event: K, data: StreamEvents[K]): Promise<void> {
-    if (this.#closed) throw new ClientGone();
-    try {
-      await this.#writer.write(this.#encoder.encode(encodeSse(event, data)));
-    } catch {
-      this.#closed = true;
-      throw new ClientGone();
-    }
-  }
-
-  /** 定时写入注释行，返回停止函数。写失败说明客户端已断开，直接停止。 */
-  heartbeat(intervalMs: number): () => void {
-    const timer = setInterval(() => {
-      if (this.#closed) return clearInterval(timer);
-      this.#writer.write(this.#encoder.encode(': keep-alive\n\n')).catch(() => clearInterval(timer));
-    }, intervalMs);
-    return () => clearInterval(timer);
-  }
-
-  async close(): Promise<void> {
-    if (this.#closed) return;
-    this.#closed = true;
-    await this.#writer.close().catch(() => {});
-  }
-}
-
-async function runGeneration(input: GenerationInput, env: Env, events: EventWriter): Promise<void> {
+/**
+ * 客户端断开、写入失败或写入受阻时 events.signal 中止：字幕请求和 Gemini 请求随之取消，
+ * 后续 send 抛 ClientGone，流程不再保存上下文。
+ */
+async function runGeneration(input: GenerationInput, env: Env, events: EventStream): Promise<void> {
   const startedAt = Date.now();
   const since = () => Date.now() - startedAt;
   const log: Record<string, unknown> = { event: 'generation', videoId: input.videoId };
@@ -98,7 +64,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventWrit
 
   try {
     await events.send('stage', { stage: 'transcript' });
-    const { transcript, info } = await loadTranscript(input.videoId);
+    const { transcript, info } = await loadTranscript(input.videoId, { signal: events.signal });
     const transcriptText = formatTranscript(transcript.cues);
     if (transcriptText.length > LIMITS.transcriptChars) {
       throw new AppError('transcript_too_long', `${transcriptText.length} 字符，上限 ${LIMITS.transcriptChars}`);
@@ -118,12 +84,17 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventWrit
 
     let firstTokenMs: number | null = null;
     const prompt = articlePrompt({ video: transcript.video, transcriptText, instructions: input.instructions });
-    const finishReason = await streamText(gemini, prompt, async (text) => {
-      firstTokenMs ??= since();
-      markdown += text;
-      if (markdown.length > LIMITS.articleChars) throw new AppError('article_too_long');
-      await events.send('delta', { text });
-    });
+    const finishReason = await streamText(
+      gemini,
+      prompt,
+      async (text) => {
+        firstTokenMs ??= since();
+        markdown += text;
+        if (markdown.length > LIMITS.articleChars) throw new AppError('article_too_long');
+        await events.send('delta', { text });
+      },
+      events.signal,
+    );
     const modelDoneMs = since();
     Object.assign(log, { finishReason, firstTokenMs, modelDoneMs, articleChars: markdown.length });
     assertFinished(finishReason);
@@ -154,7 +125,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventWrit
     await events.send('done', { chapters: article.chapters.map(({ id, title }) => ({ id, title })), timing });
   } catch (err) {
     if (err instanceof ClientGone) {
-      Object.assign(log, { ok: false, code: 'client_gone' });
+      Object.assign(log, { ok: false, code: `client_${err.reason}` });
       return;
     }
     const error = toAppError(err);

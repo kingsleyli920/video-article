@@ -14,15 +14,19 @@
       </header>
 
       <form id="generate-form" class="composer" novalidate>
-        <label class="field">
-          <span class="field-label">YouTube 链接</span>
+        <div class="field">
+          <div class="field-head">
+            <label class="field-label" for="video-url">YouTube 链接</label>
+            <button id="fill-sample" type="button" class="link-button">填入示例视频</button>
+          </div>
           <input id="video-url" name="url" type="url" required autocomplete="off" placeholder="https://www.youtube.com/watch?v=…" />
-        </label>
+        </div>
         <label class="field">
           <span class="field-label">生成要求 <span class="optional">可选</span></span>
           <textarea id="instructions" name="instructions" rows="3" maxlength="1000" placeholder="例如：写给不懂技术的投资人，只保留商业相关的内容，语言简洁。"></textarea>
         </label>
         <div class="actions">
+          <button id="stop" type="button" class="secondary" hidden>停止生成</button>
           <button id="submit" type="submit" class="primary">生成文章</button>
         </div>
       </form>
