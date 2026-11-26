@@ -9,6 +9,29 @@
 - **在线地址**：https://video-article.kingsleyli920.workers.dev
 - **技术栈**：TypeScript、Cloudflare Workers、Durable Object（SQLite）、原生前端、marked + DOMPurify，前端用 esbuild 构建。
 
+## 演示
+
+线上应用真实运行的录屏，录在版本 `ed446a6c` 上，字幕都是从 YouTube 实时取到的。画面只有应用页面，没有模拟打字，没有回放预先生成的文章。纯等待的片段做了加速，画面顶部的黄色横幅写明了倍速和实际耗时；输入、正文出现和增长、最终结果、核对记录、5W1H 和手机宽度都是原速。
+
+| | 内容 | 实际耗时 |
+|---|---|---|
+| [默认生成（2 分 16 秒）](docs/demo/demo-default.mp4) | 示例视频，不填要求：来源面板 → 正文流式出现 → 核对 → 保存 → 核对记录 → 通读 → 第 2 章 5W1H → 手机宽度 | 63 秒出第一段正文，279 秒保存完成；6 章，11,295 字 |
+| [自定义要求（1 分 46 秒）](docs/demo/demo-requirements.mp4) | 乔布斯斯坦福演讲，要求"给高中生看的学习笔记，不要问答体，正好 3 章，每章三个指定小节"：输入要求 → 生成 → 结果满足要求 → 第 1 章 5W1H → 手机宽度 | 59 秒出第一段正文，183 秒保存完成；3 章，3,601 字 |
+
+正文边生成边显示：
+
+![正文流式出现](docs/demo/shot-1-streaming.jpg)
+
+填写要求后的结果，状态条下方是来源信息，标题下方有"生成要求核对"一行：
+
+![自定义要求的结果](docs/demo/shot-2-requirements.jpg)
+
+章节标题旁的 5W1H：
+
+![章节 5W1H](docs/demo/shot-3-summary.jpg)
+
+录屏时遇到的问题和每段的细节记在 [最终验收记录](docs/FINAL_ACCEPTANCE.md) 第零节第 10 小节。
+
 ## 快速开始
 
 ### 本地运行
