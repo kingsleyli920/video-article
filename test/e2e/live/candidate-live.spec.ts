@@ -1,6 +1,6 @@
 import { expect, test, type Response } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
-import { hasReadableParagraph } from '../../../src/shared/article';
+import { countArticleChars, hasReadableParagraph } from '../../../src/shared/article';
 import { SseParser } from '../../../src/shared/sse';
 import type { StreamEvents } from '../../../src/shared/types';
 import { TIMEOUTS } from '../../../src/client/api';
@@ -101,6 +101,10 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   const chunks = await page.evaluate(() => window.__sseChunks);
   const parser = new SseParser();
   let markdown = '';
+  /** 流式初稿（最终文章和它不同时才有）、核对采用的修订、各阶段事件到达的时间 */
+  let draft: string | null = null;
+  let revisions: StreamEvents['revised']['revisions'] = [];
+  const stages: [number, string][] = [];
   const deltaTimes = new Set<number>();
   let firstDeltaAt: number | null = null;
   let firstParagraphAt: number | null = null;
@@ -111,6 +115,14 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   for (const chunk of chunks) {
     for (const message of parser.push(chunk.text)) {
       if (message.event === 'meta') meta = JSON.parse(message.data);
+      if (message.event === 'stage') stages.push([Math.round(chunk.t - clickAt), (JSON.parse(message.data) as StreamEvents['stage']).stage]);
+      if (message.event === 'revised') {
+        // 核对后的最终文章：之后页面、保存的上下文和 5W1H 都以它为准
+        const data = JSON.parse(message.data) as StreamEvents['revised'];
+        draft = markdown;
+        markdown = data.markdown;
+        revisions = data.revisions;
+      }
       if (message.event === 'done') {
         done = JSON.parse(message.data);
         doneAt = Math.round(chunk.t - clickAt);
@@ -148,6 +160,25 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   const growth = bodyGrowth(samples, doneAt!);
   expect(growth.ok, growth.reason).toBe(true);
   writeFileSync(testInfo.outputPath('article.md'), markdown);
+  if (draft !== null) writeFileSync(testInfo.outputPath('draft.md'), draft);
+  // 核对阶段：保存前一定经过"对照字幕核对"；页面显示的是核对后的最终文章，不是流式初稿
+  expect(stages.map(([, s]) => s)).toContain('reviewing');
+  expect(done!.review.revisions).toBe(revisions.length);
+  expect(done!.chars).toBe(countArticleChars(markdown));
+  const pageText = (await page.locator('#article').innerText()).replace(/\s+/g, '');
+  const plain = (text: string) => text.replace(/\s+/g, '');
+  const noMarkup = (text: string) => !/[*_`#>\[\]|]/.test(text) && text.trim().length >= 8;
+  for (const r of revisions) {
+    if (r.after && noMarkup(r.after)) expect(pageText, `页面应显示修订后的句子：${r.after}`).toContain(plain(r.after));
+  }
+  if (revisions.length > 0) {
+    const record = page.locator('.article-review details');
+    await expect(record.locator('summary')).toContainText(`修订了 ${revisions.length} 处`);
+    await record.locator('summary').click();
+    await expect(record.locator('li')).toHaveCount(revisions.length);
+    await page.screenshot({ path: testInfo.outputPath('2-review-record.png'), fullPage: true });
+    await record.locator('summary').click();
+  }
   await page.screenshot({ path: testInfo.outputPath('2-done.png') });
 
   // 两个不同章节的 5W1H：第 2 章和第 4 章；不足 4 章时取第一章和最后一章；只有一章时只取这一章
@@ -192,6 +223,9 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
       {
         model: meta!.model,
         doneModel: done!.model,
+        stages,
+        review: done!.review,
+        revisions,
         transcript: meta!.transcript,
         sourceAt,
         articleLengthAtSource,
