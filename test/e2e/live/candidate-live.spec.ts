@@ -165,6 +165,8 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   const draftEndAt = stages.find(([, stage]) => stage === 'revising' || stage === 'reviewing')?.[0] ?? doneAt!;
   const growth = bodyGrowth(samples, draftEndAt);
   expect(growth.ok, growth.reason).toBe(true);
+  // 浏览器实际收到的原始事件流，按到达顺序拼接
+  writeFileSync(testInfo.outputPath('raw.sse'), chunks.map((c) => c.text).join(''));
   writeFileSync(testInfo.outputPath('article.md'), markdown);
   if (draft !== null) writeFileSync(testInfo.outputPath('draft.md'), draft);
   // 核对阶段：保存前一定经过"对照字幕核对"；页面显示的是核对后的最终文章，不是流式初稿
