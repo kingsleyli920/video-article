@@ -66,6 +66,26 @@ export interface Revision {
   evidence: string;
 }
 
+/** 修订建议来自哪一步：逐章核对、整篇复核，或两路建议重叠后的合并处理 */
+export type SuggestionStage = 'chapter' | 'article' | 'reconcile';
+
+/**
+ * 没有采用的修订建议和处置结果，供核验。disposition：
+ * covered（问题已被另一条修订改正）、unfounded（合并处理时判定建议不成立）、superseded（已转入合并处理，结果见 reconcile 条目），
+ * 其余是程序校验拒绝的原因（定位不到、定位不唯一、字幕里找不到依据、会破坏结构等）。
+ */
+export interface UnappliedSuggestion {
+  stage: SuggestionStage;
+  disposition: string;
+  type: RevisionType;
+  quote: string;
+  replacement: string;
+  problem: string;
+  evidence: string;
+  /** 合并处理时模型给出的理由 */
+  note?: string;
+}
+
 /** 文章写完之后的核对结果，随 done 发给页面，也存进生成上下文 */
 export interface ArticleReview {
   /** 并行对照字幕核对的单元数（按章） */
@@ -76,6 +96,8 @@ export interface ArticleReview {
   rewritten: { unmet: string[]; charsBefore: number; charsAfter: number } | null;
   /** 可计算约束的核对结果，每条一句，如"全文 1,025 字，上限 1,200 字"；用户没提这类要求时为空 */
   checks: string[];
+  /** 没有采用的修订建议（格式不对、无法解析的不在内），旧版本没有这个字段 */
+  unapplied?: UnappliedSuggestion[];
 }
 
 /** 生成接口的 SSE 事件：事件名 → data 的 JSON 结构 */

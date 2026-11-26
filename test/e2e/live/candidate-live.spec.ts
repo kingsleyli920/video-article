@@ -4,7 +4,7 @@ import { countArticleChars, hasReadableParagraph } from '../../../src/shared/art
 import { SseParser } from '../../../src/shared/sse';
 import type { StreamEvents } from '../../../src/shared/types';
 import { TIMEOUTS } from '../../../src/client/api';
-import { bodyGrowth, worthKeeping, type Sample } from './body-growth';
+import { BODY_SELECTOR, bodyGrowth, worthKeeping, type Sample } from './body-growth';
 
 const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
 /** 期望写文章的模型（候选配置验收时设置，例如 EXPECT_MODEL=gemini-4-hydrogen）；不设时不检查 */
@@ -87,7 +87,11 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   const status = page.locator('#status');
   const samples: Sample[] = [];
   for (;;) {
-    const [t, length, tone] = await page.evaluate(() => [performance.now(), document.getElementById('article')!.textContent!.length, document.getElementById('status')!.dataset.tone] as const);
+    // 只量文章正文：核对记录、提示和按钮文字不算，否则完成时多出的核对记录会被当成正文增长
+    const [t, length, tone] = await page.evaluate(
+      (selector) => [performance.now(), [...document.querySelectorAll(selector)].reduce((n, el) => n + (el.textContent?.length ?? 0), 0), document.getElementById('status')!.dataset.tone] as const,
+      BODY_SELECTOR,
+    );
     const sample: Sample = [Math.round(t - clickAt), length];
     if (tone !== 'busy' || worthKeeping(samples.at(-1), sample)) samples.push(sample);
     if (tone !== 'busy') break;
@@ -156,8 +160,10 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   // 真流式：正文分块在不同时刻陆续到达，首个分块早于模型结束。高档思考下短文的正文几秒就发完，不能要求"早 5 秒"
   expect(deltaTimes.size).toBeGreaterThanOrEqual(3);
   expect(firstDeltaAt!).toBeLessThan(done!.timing.modelDoneMs);
-  // 页面上的正文也在完成前就开始增长：完成前至少有一次采样看到的是中间长度，不是分块到了却攒到完成才一次贴出来
-  const growth = bodyGrowth(samples, doneAt!);
+  // 页面上的正文在初稿生成阶段就陆续增长：进入修订/核对之前至少有一次采样看到的是中间长度，
+  // 不是分块到了却攒到写完才一次贴出来。核对后的替换和核对记录不算增长
+  const draftEndAt = stages.find(([, stage]) => stage === 'revising' || stage === 'reviewing')?.[0] ?? doneAt!;
+  const growth = bodyGrowth(samples, draftEndAt);
   expect(growth.ok, growth.reason).toBe(true);
   writeFileSync(testInfo.outputPath('article.md'), markdown);
   if (draft !== null) writeFileSync(testInfo.outputPath('draft.md'), draft);
@@ -234,6 +240,7 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
         firstDeltaAt,
         firstParagraphAt,
         doneAt,
+        draftEndAt,
         bodyGrowth: growth,
         serverTiming: done!.timing,
         chars: done!.chars,

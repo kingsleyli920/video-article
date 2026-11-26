@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyRevisions, fidelityReviewPrompt, normalizeEvidence, parseIssues, reviewPrompt, splitForReview, type ReviewIssue } from '../../src/worker/review';
+import { applyRevisions, fidelityReviewPrompt, normalizeEvidence, parseIssues, parseReconcile, reconcilePrompt, RECONCILE_SCHEMA, reviewPrompt, splitForReview, type ReviewIssue } from '../../src/worker/review';
 import { geminiPurpose } from '../fixtures/upstream';
 
 /** 整理后的字幕（和 prepareTranscript 的输出同一种形状：段首时间戳、换人标记 >>、弯引号原样） */
@@ -304,3 +304,96 @@ describe('normalizeEvidence', () => {
     expect(normalizeEvidence('[Music] [applause] AI')).toBe('[music] [applause] ai');
   });
 });
+
+describe('reconcilePrompt', () => {
+  const video = { id: 'mockvideo01', title: 'Pilot cost', channel: '测试频道', description: '本期主持人 Alex Chen', lengthSeconds: 600 };
+  const EVIDENCE = "Host: Our pilot cost about 20 dollars. This is my estimate, not the guest's statement.";
+  const ARTICLE = '# 试点\n\n## 费用\n\n嘉宾表示，试点费用约为20美元。';
+  const prompt = reconcilePrompt({
+    video,
+    article: ARTICLE,
+    applied: [{ type: 'quantity', before: '试点费用为200美元。', after: '试点费用约为20美元。', reason: '金额是约 20 美元', evidence: EVIDENCE }],
+    pending: [
+      { type: 'attribution', quote: '嘉宾表示，试点费用为200美元。', replacement: '主持人估计，试点费用约为20美元。', problem: '这是主持人的估计', evidence: EVIDENCE },
+      { type: 'unsupported', quote: '费用为200美元', replacement: '费用约为20美元', problem: '金额不对', evidence: 'Our pilot cost about 20 dollars' },
+    ],
+  });
+
+  // 抓：合并请求里缺当前文章（模型只能按初稿判断，又定位不到）、缺已采用的修订（模型不知道哪些已经改过，可能改回去）、
+  // pending 没带 index（结论对不上号）或 evidence（模型没有事实依据）
+  it('带当前文章、已采用修订的 before/after、每条 pending 的 index 和 evidence', () => {
+    expect(prompt.user).toContain(`<article>\n${ARTICLE}\n</article>`);
+    expect(prompt.user).toContain(
+      '<applied note="已经采用的修订：before 是初稿原文，after 是当前文章里的写法">\n[\n {\n  "before": "试点费用为200美元。",\n  "after": "试点费用约为20美元。",\n  "reason": "金额是约 20 美元"\n }\n]\n</applied>',
+    );
+    expect(prompt.user).toContain(
+      '[\n {\n  "index": 0,\n  "type": "attribution",\n  "quote": "嘉宾表示，试点费用为200美元。",\n  "replacement": "主持人估计，试点费用约为20美元。",\n  "problem": "这是主持人的估计",\n  "evidence": "Host: Our pilot cost about 20 dollars. This is my estimate, not the guest\'s statement."\n },\n {\n  "index": 1,\n  "type": "unsupported",\n  "quote": "费用为200美元",\n  "replacement": "费用约为20美元",\n  "problem": "金额不对",\n  "evidence": "Our pilot cost about 20 dollars"\n }\n]\n</pending>',
+    );
+    expect(prompt.user).toContain('本期主持人 Alex Chen');
+  });
+
+  // 抓：把整段字幕又发一遍（长视频的合并请求白白多出几万 token；依据应只来自程序核对过的 evidence）
+  it('不带整段字幕', () => {
+    expect(prompt.user).not.toContain('<transcript>');
+    expect(prompt.system).not.toContain('<transcript>');
+  });
+
+  // 抓：替身把合并请求当成核对请求（两者的系统提示词都以"你是事实核对编辑"开头），各层场景没法单独给它返回结果
+  it('模拟上游把它分到 reconcile，两种核对仍是 review；schema 要求每条都有 index 和 status', () => {
+    expect(geminiPurpose('/gemini/mock:generateContent', { systemInstruction: { parts: [{ text: prompt.system }] } })).toBe('reconcile');
+    const input = { video, transcriptText: TRANSCRIPT, instructions: '', outline: ['费用'], section: ARTICLE };
+    for (const p of [reviewPrompt(input), fidelityReviewPrompt(input)]) {
+      expect(geminiPurpose('/gemini/mock:generateContent', { systemInstruction: { parts: [{ text: p.system }] } })).toBe('review');
+    }
+    expect(RECONCILE_SCHEMA.properties.items.items.required).toEqual(['index', 'status', 'note', 'quote', 'replacement', 'evidence']);
+    expect(RECONCILE_SCHEMA.properties.items.items.properties.status.enum).toEqual(['covered', 'revise', 'unfounded']);
+  });
+});
+
+describe('parseReconcile', () => {
+  const item = (patch: Record<string, unknown>) => ({ index: 0, status: 'covered', note: '已改正', quote: '', replacement: '', evidence: '', ...patch });
+
+  // 抓：结论按数组顺序而不是 index 对号；note 首尾空白没去掉；有效结论被拒
+  it('每条一个有效结论：按 index 排好返回，note 去掉首尾空白', () => {
+    const raw = {
+      items: [
+        item({ index: 1, status: 'unfounded', note: '  依据不支持  ' }),
+        item({ index: 0, status: 'revise', note: '归属仍错', quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。', evidence: 'Our pilot cost about 20 dollars' }),
+        item({ index: 2 }),
+      ],
+    };
+    expect(parseReconcile(raw, 3)).toEqual([
+      { status: 'revise', note: '归属仍错', quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。', evidence: 'Our pilot cost about 20 dollars' },
+      { status: 'unfounded', note: '依据不支持', quote: '', replacement: '', evidence: '' },
+      { status: 'covered', note: '已改正', quote: '', replacement: '', evidence: '' },
+    ]);
+  });
+
+  // 抓：revise 的 evidence 为空时整条被拒（调用方会改用原建议的 evidence）
+  it('revise 的 evidence 为空：有效', () => {
+    expect(parseReconcile({ items: [item({ status: 'revise', quote: '甲', replacement: '乙', evidence: '' })] }, 1)).toEqual([{ status: 'revise', note: '已改正', quote: '甲', replacement: '乙', evidence: '' }]);
+  });
+
+  // 抓：漏给、多给、重复、越界、格式不对的结论被当成"处理过"，没处理的建议悄悄消失
+  it.each<[string, unknown, number]>([
+    ['null', null, 1],
+    ['不是对象', '都已改正', 1],
+    ['缺 items', {}, 1],
+    ['items 不是数组', { items: { 0: item({}) } }, 1],
+    ['少一条', { items: [item({})] }, 2],
+    ['多一条', { items: [item({}), item({ index: 1 })] }, 1],
+    ['index 重复', { items: [item({}), item({})] }, 2],
+    ['index 越界', { items: [item({ index: 1 })] }, 1],
+    ['index 为负', { items: [item({ index: -1 })] }, 1],
+    ['index 是小数', { items: [item({ index: 0.5 })] }, 1],
+    ['index 是字符串', { items: [item({ index: '0' })] }, 1],
+    ['status 不在三种里', { items: [item({ status: 'fixed' })] }, 1],
+    ['缺 note', { items: [{ index: 0, status: 'covered', quote: '', replacement: '', evidence: '' }] }, 1],
+    ['quote 不是字符串', { items: [item({ quote: null })] }, 1],
+    ['revise 的 quote 为空白', { items: [item({ status: 'revise', quote: '  ', replacement: '乙' })] }, 1],
+    ['条目是 null', { items: [null] }, 1],
+  ])('%s：整体无效，返回 null', (_label, raw, count) => {
+    expect(parseReconcile(raw, count)).toBeNull();
+  });
+});
+

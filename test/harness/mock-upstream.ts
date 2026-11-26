@@ -40,13 +40,27 @@ export type SummaryScenario =
 export type ReviewScenario =
   /** 可解析的 JSON，但核对协议形状可能无效；用于经 HTTP 验证 fail-closed */
   | { kind: 'response'; result: unknown }
-  | { kind: 'ok'; issues: { type: string; quote: string; evidence: string; problem: string; replacement: string }[]; delayMs?: number }
+  | {
+      kind: 'ok';
+      issues: ReviewIssueFixture[];
+      /** 整篇复核单独返回的问题（同样只返回 quote 在 <section> 里的）；不给时整篇复核也用 issues */
+      fidelityIssues?: ReviewIssueFixture[];
+      delayMs?: number;
+    }
   | { kind: 'busy' }
   | { kind: 'hang' }
   | { kind: 'invalid' };
 
-/** 约束提取（generateContent）的行为。ok：返回给定的提取结果 */
-export type RequirementsScenario = { kind: 'ok'; result: Record<string, unknown> } | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' };
+type ReviewIssueFixture = { type: string; quote: string; evidence: string; problem: string; replacement: string };
+
+/** 重叠修订建议合并处理（generateContent）的行为。response：原样返回给定的 JSON（形状可以无效） */
+export type ReconcileScenario = { kind: 'response'; result: unknown } | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' };
+
+/**
+ * 约束提取（generateContent）的行为。ok：返回给定的提取结果；
+ * sequence：第 N 次约束提取请求（不分模型，从 0 开始，场景重置时清零）返回 results[N]，超出部分用最后一个
+ */
+export type RequirementsScenario = { kind: 'ok'; result: Record<string, unknown> } | { kind: 'sequence'; results: Record<string, unknown>[] } | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' };
 
 export interface Scenario {
   videos: Record<string, VideoScenario>;
@@ -56,6 +70,8 @@ export interface Scenario {
   summaries: Record<string, SummaryScenario>;
   /** 按模型名，对照字幕核对的行为；没列出的模型返回"没有问题" */
   reviews?: Record<string, ReviewScenario>;
+  /** 按模型名，重叠修订建议合并处理的行为；没列出的模型返回 503 */
+  reconciles?: Record<string, ReconcileScenario>;
   /** 按模型名，约束提取的行为；没列出的模型返回"没有可计算的约束" */
   requirements?: Record<string, RequirementsScenario>;
   /** 按模型名，按要求修订（streamGenerateContent）的行为；没列出的模型返回 503 */
@@ -66,8 +82,8 @@ export interface RecordedRequest {
   at: string;
   method: string;
   path: string;
-  /** stream：写文章；rewrite：按要求修订；review：对照字幕核对；requirements：约束提取；summary：5W1H */
-  kind: 'player' | 'captions' | 'stream' | 'rewrite' | 'review' | 'requirements' | 'summary' | 'other';
+  /** stream：写文章；rewrite：按要求修订；review：对照字幕核对；reconcile：重叠修订建议的合并处理；requirements：约束提取；summary：5W1H */
+  kind: 'player' | 'captions' | 'stream' | 'rewrite' | 'review' | 'reconcile' | 'requirements' | 'summary' | 'other';
   model?: string;
   videoId?: string;
   body: unknown;
@@ -119,6 +135,8 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
   let log: RecordedRequest[] = [];
   /** blocked-first 场景下各视频已收到的播放器请求数 */
   let playerCounts = new Map<string, number>();
+  /** sequence 场景下已收到的约束提取请求数 */
+  let requirementsCount = 0;
   const base = `http://127.0.0.1:${port}`;
 
   const server = createServer((req, res) => {
@@ -135,12 +153,14 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
     if (url.pathname === '/__scenario' && req.method === 'PUT') {
       scenario = { ...defaultScenario(), ...(JSON.parse(text) as Partial<Scenario>) };
       playerCounts = new Map();
+      requirementsCount = 0;
       return json(res, 200, { ok: true });
     }
     if (url.pathname === '/__reset' && req.method === 'POST') {
       scenario = defaultScenario();
       log = [];
       playerCounts = new Map();
+      requirementsCount = 0;
       return json(res, 200, { ok: true });
     }
     if (url.pathname === '/__requests') return json(res, 200, log);
@@ -227,11 +247,20 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
         const user = String((body as { contents?: { parts?: { text?: string }[] }[] } | null)?.contents?.[0]?.parts?.[0]?.text ?? '');
         // 用户消息末尾的"请核对 <section>，输出问题列表。"里也有 <section>，要找的是 "<section>\n" 开头的那一块
         const section = user.slice(user.indexOf('<section>\n'), user.lastIndexOf('\n</section>'));
-        return structured(res, { issues: behavior.issues.filter((i) => section.includes(i.quote)) }, behavior.delayMs);
+        const system = String((body as { systemInstruction?: { parts?: { text?: string }[] } } | null)?.systemInstruction?.parts?.[0]?.text ?? '');
+        const issues = system.includes('负责整篇文章的语义限定复核') && behavior.fidelityIssues ? behavior.fidelityIssues : behavior.issues;
+        return structured(res, { issues: issues.filter((i) => section.includes(i.quote)) }, behavior.delayMs);
+      }
+      if (purpose === 'reconcile') {
+        entry.kind = 'reconcile';
+        const behavior = scenario.reconciles?.[model] ?? { kind: 'busy' };
+        return behavior.kind === 'response' ? structured(res, behavior.result) : summary(res, behavior);
       }
       if (purpose === 'requirements') {
         entry.kind = 'requirements';
         const behavior = scenario.requirements?.[model] ?? { kind: 'ok', result: NO_REQUIREMENTS_JSON };
+        const attempt = requirementsCount++;
+        if (behavior.kind === 'sequence') return structured(res, behavior.results[Math.min(attempt, behavior.results.length - 1)]);
         return behavior.kind === 'ok' ? structured(res, behavior.result) : summary(res, behavior);
       }
       entry.kind = 'summary';

@@ -14,8 +14,10 @@ export interface UpstreamOptions {
   geminiJson?: object;
   /** 对照字幕核对的 JSON 响应；不设时返回"没有问题"。函数形式按请求体决定（各章的请求体不同） */
   reviewJson?: object | ((body: string) => object);
-  /** 约束提取的 JSON 响应；不设时返回"没有可计算的约束" */
-  requirementsJson?: object;
+  /** 约束提取的 JSON 响应；不设时返回"没有可计算的约束"。函数形式按这是第几次约束提取请求（从 0 开始）决定，用来模拟"第 N 次返回不同结果" */
+  requirementsJson?: object | ((attempt: number) => object);
+  /** 重叠修订建议合并处理的 JSON 响应；不设时这种请求会报"未预设"（用例因此能证明没有调用合并处理） */
+  reconcileJson?: object | ((body: string) => object);
   /** 按要求修订（流式）的响应体；不设时这种请求会报"未预设" */
   rewriteStream?: string;
   /** 这些模型的 Gemini 请求一律返回 503（模拟持续繁忙） */
@@ -47,6 +49,7 @@ export interface UpstreamCall {
 /** 拦截 Worker 的全部出站请求，按地址返回预设响应，并记录请求体。没有预设的地址直接报错。 */
 export function mockUpstream(options: UpstreamOptions) {
   const calls: UpstreamCall[] = [];
+  let requirementsAttempts = 0;
   const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = input instanceof Request ? input.url : String(input);
     const body = typeof init?.body === 'string' ? init.body : '';
@@ -71,7 +74,14 @@ export function mockUpstream(options: UpstreamOptions) {
       const review = typeof options.reviewJson === 'function' ? options.reviewJson(body) : options.reviewJson;
       return Response.json(review ?? geminiJson({ issues: [] }));
     }
-    if (purpose === 'requirements') return Response.json(options.requirementsJson ?? geminiJson(NO_REQUIREMENTS_JSON));
+    if (purpose === 'reconcile' && options.reconcileJson !== undefined) {
+      return Response.json(typeof options.reconcileJson === 'function' ? options.reconcileJson(body) : options.reconcileJson);
+    }
+    if (purpose === 'requirements') {
+      const attempt = requirementsAttempts++;
+      const requirements = typeof options.requirementsJson === 'function' ? options.requirementsJson(attempt) : options.requirementsJson;
+      return Response.json(requirements ?? geminiJson(NO_REQUIREMENTS_JSON));
+    }
     if (purpose === 'summary' && options.geminiJson) return Response.json(options.geminiJson);
     throw new Error(`测试未预设的出站请求：${url}`);
   });

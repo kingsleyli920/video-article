@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseArticle } from '../../src/shared/article';
-import { articlePrompt, summaryPrompt } from '../../src/worker/prompts';
+import { articlePrompt, SAME_OBJECT_RULE, STATE_RULE, summaryPrompt } from '../../src/worker/prompts';
+import { fidelityReviewPrompt, reviewPrompt } from '../../src/worker/review';
 
 const video = { id: 'abc', title: '标题', channel: '频道', description: '本期主持人 Alex Chen', lengthSeconds: 600 };
 
@@ -49,5 +50,32 @@ describe('文章提示词的篇幅规则', () => {
     expect(system).toContain('用户给了字数上限时，绝不能超过上限：动笔前先按上限的七成左右给各章分配篇幅，为核对补回来源和条件留空间');
     expect(system).toContain('英文术语、数字和标点同样计字');
     expect(system).not.toContain('九成');
+  });
+});
+
+describe('计数对象与完成程度的共用规则', () => {
+  // 抓：两条规则只写进了一处提示词（例如只改了文章，核对时又把不同对象的两个数报成"口径不一致"，或放过"正在花"写成"已花光"）；
+  // 规则常量被改成空串后提示词照样"包含"它
+  it('写文章、逐章核对、整篇复核三处系统提示词都包含 SAME_OBJECT_RULE 和 STATE_RULE 全文', () => {
+    expect(SAME_OBJECT_RULE).toContain('被计数的对象相同');
+    expect(STATE_RULE).toContain('完成程度');
+    const reviewInput = { video, transcriptText: '[00:00] hi', instructions: '', outline: ['第一章'], section: '# 标题\n\n## 第一章\n\n正文' };
+    const systems = {
+      article: articlePrompt({ video, transcriptText: '[00:00] hi', instructions: '' }).system,
+      chapter: reviewPrompt(reviewInput).system,
+      fidelity: fidelityReviewPrompt(reviewInput).system,
+    };
+    for (const [name, system] of Object.entries(systems)) {
+      expect({ name, same: system.includes(SAME_OBJECT_RULE), state: system.includes(STATE_RULE) }).toEqual({ name, same: true, state: true });
+    }
+  });
+
+  // 抓：加了规则却没改条数，模型按旧的"四件事""四类"只查前几项
+  it('逐章核对写"六件事"，整篇复核写"五类"', () => {
+    const reviewInput = { video, transcriptText: '[00:00] hi', instructions: '', outline: ['第一章'], section: '# 标题\n\n## 第一章\n\n正文' };
+    expect(reviewPrompt(reviewInput).system).toContain('必须检查六件事');
+    expect(reviewPrompt(reviewInput).system).not.toContain('四件事');
+    expect(fidelityReviewPrompt(reviewInput).system).toContain('只查下面五类会改变事实的问题');
+    expect(fidelityReviewPrompt(reviewInput).system).toContain('5. 状态与完成程度：');
   });
 });

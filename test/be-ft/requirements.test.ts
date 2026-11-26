@@ -197,18 +197,88 @@ describe('约束提取请求', () => {
     expect(upstream.gemini('requirements')).toHaveLength(0);
   });
 
-  // 抓：模型编出用户没写过的约束（quote 不在原话里）也被强制执行，好好的初稿被要求压缩
-  it('模型给的 quote 不在用户原话里：不强制执行，照常 done，checks 为空', async () => {
+  // 抓：模型编出用户没写过的约束（quote 不在原话里）也被强制执行，好好的初稿被要求压缩；
+  // 或者反过来把这次提取当成"没有约束"照常保存（提取结果对不上原话，说明这次没认对，要重新提取，仍不行就失败）
+  it('模型给的 quote 三次都不在用户原话里：不强制执行，重提三次后 requirements_unconfirmed，不保存', async () => {
+    const save = vi.spyOn(GenerationStore.prototype, 'save');
     const upstream = mockUpstream({
       captions: CAPTIONS,
       geminiStream: DRAFT_STREAM,
       requirementsJson: geminiJson({ ...NONE, maxChars: 30, charsQuote: '不超过 30 字' }),
     });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID), instructions: '写得简短一些' });
-    expect(events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'stage', 'done']);
-    expect(eventOf(events, 'done')!.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: [] });
+    expect(events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'error']);
+    expect(events.at(-1)!.data).toEqual({ code: 'requirements_unconfirmed', message: '没能确认生成要求里的字数、章节等硬性约束，这次生成没有保存，请换一种说法重试（提取了 3 次，字数要求仍和原话对不上）', partial: true });
+    expect(upstream.gemini('requirements')).toHaveLength(3);
     expect(upstream.gemini('rewrite')).toHaveLength(0);
+    expect(upstream.gemini('review')).toHaveLength(0);
+    expect(save).not.toHaveBeenCalled();
+    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
+  });
+});
+
+describe('约束提取确认不了（审查方反例，用户要求"不超过1500字"）', () => {
+  const INSTRUCTIONS = '不超过1500字';
+  /** 1604 字：标题"标题"2 + 章节标题"第一章"3 + 正文 1599 */
+  const LONG = `# 标题\n\n## 第一章\n\n${'字'.repeat(1599)}`;
+  /** 修订稿 1200 字：2 + 3 + 1195 */
+  const FIT = `# 标题\n\n## 第一章\n\n${'字'.repeat(1195)}`;
+  const WRONG_VALUE = { ...NONE, maxChars: 1600, charsQuote: '不超过1500字' };
+  const GOOD = { ...NONE, maxChars: 1500, charsQuote: '不超过1500字' };
+
+  // 抓（修复前的行为）：提取返回 {} 或 maxChars 和出处对不上时，字数上限被悄悄丢掉，1604 字的文章当成满足要求保存并发 done
+  it.each([
+    ['{}', {}, '模型返回的格式都无效'],
+    ['maxChars=1600、出处仍是"不超过1500字"', WRONG_VALUE, '字数要求仍和原话对不上'],
+  ])('三次都返回 %s：error requirements_unconfirmed，没有 done，不保存，约束提取恰好 3 次', async (_label, raw, kind) => {
+    const save = vi.spyOn(GenerationStore.prototype, 'save');
+    const upstream = mockUpstream({ captions: CAPTIONS, geminiStream: geminiSse([LONG]), requirementsJson: geminiJson(raw) });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID), instructions: INSTRUCTIONS });
+    expect(events.at(-1)).toEqual({
+      event: 'error',
+      data: { code: 'requirements_unconfirmed', message: `没能确认生成要求里的字数、章节等硬性约束，这次生成没有保存，请换一种说法重试（提取了 3 次，${kind}）`, partial: true },
+    });
+    expect(eventOf(events, 'done')).toBeUndefined();
+    expect(eventOf(events, 'revised')).toBeUndefined();
+    const requests = upstream.gemini('requirements');
+    expect(requests).toHaveLength(3);
+    for (const r of requests) expect(promptOf(r.body).user).toBe('<user_requirements>\n不超过1500字\n</user_requirements>\n\n请提取硬性约束。');
+    expect(upstream.gemini('review')).toHaveLength(0);
+    expect(save).not.toHaveBeenCalled();
+    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
+  });
+
+  // 抓：重新提取后仍用第一次的坏结果（没有上限），或者没有按第二次得到的正确上限修订
+  it.each([
+    ['{}', {}],
+    ['maxChars=1600', WRONG_VALUE],
+  ])('第一次 %s、第二次正确：按 1500 字上限修订后保存', async (_label, raw) => {
+    const upstream = mockUpstream({
+      captions: CAPTIONS,
+      geminiStream: geminiSse([LONG]),
+      requirementsJson: (attempt) => geminiJson(attempt === 0 ? raw : GOOD),
+      rewriteStream: rewriteOf(FIT),
+    });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID), instructions: INSTRUCTIONS });
+    expect(upstream.gemini('requirements')).toHaveLength(2);
+    expect(promptOf(upstream.gemini('rewrite')[0]!.body).user).toContain('<unmet_requirements note="程序按统一口径算出来的，以它为准">\n- 全文 1,604 字，要求不超过 1,500 字\n</unmet_requirements>');
+    const done = eventOf(events, 'done')!;
+    expect(done.chars).toBe(1200);
+    expect(done.review.rewritten).toEqual({ unmet: ['全文 1,604 字，要求不超过 1,500 字'], charsBefore: 1604, charsAfter: 1200 });
+    expect(done.review.checks).toEqual(['全文 1,200 字，上限 1,500 字']);
     const saved = await openStore(env, eventOf(events, 'meta')!.generationId).load();
-    expect(saved!.article.markdown).toBe(DRAFT);
+    expect(saved!.article.markdown).toBe(FIT);
+    expect(saved!.review!.requirements).toEqual({ maxChars: 1500, minChars: null, chaptersMin: null, chaptersMax: null, sectionsPerChapter: null, sectionTitles: [] });
+  });
+
+  // 抓：结构完整、全 0 全空的合法"没有可计算约束"被当成确认不了，纯风格要求的生成全部失败或白白重提
+  it('纯风格要求（"写得口语一点，面向初学者"）：提取一次，正常 done，checks 为空', async () => {
+    const upstream = mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM, requirementsJson: geminiJson(NONE) });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID), instructions: '写得口语一点，面向初学者' });
+    expect(events.at(-1)!.event).toBe('done');
+    expect(eventOf(events, 'done')!.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: [] });
+    expect(upstream.gemini('requirements')).toHaveLength(1);
+    expect(upstream.gemini('rewrite')).toHaveLength(0);
+    expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(DRAFT);
   });
 });

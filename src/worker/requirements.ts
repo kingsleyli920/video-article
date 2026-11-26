@@ -1,5 +1,6 @@
 import { Lexer } from 'marked';
 import { articleText, countArticleChars, parseArticle } from '../shared/article';
+import { AppError } from './app-error';
 import type { Prompt } from './gemini';
 import { ARTICLE_RULES, videoBlock } from './prompts';
 import type { VideoMeta } from './youtube';
@@ -54,20 +55,42 @@ export function requirementsPrompt(instructions: string): Prompt {
   return { system: REQUIREMENTS_SYSTEM, user: `<user_requirements>\n${instructions.trim()}\n</user_requirements>\n\n请提取硬性约束。` };
 }
 
+/** 提取结果的字段是否齐全、类型是否正确（与 REQUIREMENTS_SCHEMA 一致）。返回第一个不合格的字段名，合格返回 null */
+function malformedField(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '整体';
+  const r = raw as Record<string, unknown>;
+  for (const key of ['maxChars', 'minChars', 'chaptersMin', 'chaptersMax', 'sectionsPerChapter']) {
+    const v = r[key];
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) return key;
+  }
+  for (const key of ['charsQuote', 'chaptersQuote', 'sectionsQuote']) if (typeof r[key] !== 'string') return key;
+  if (!Array.isArray(r.sectionTitles) || !r.sectionTitles.every((t) => typeof t === 'string')) return 'sectionTitles';
+  return null;
+}
+
 /**
- * 模型的提取结果 → 约束。每一类约束都要过两关，否则丢弃并记进 dropped：
+ * 模型的提取结果 → 约束。先核对结构：字段不全或类型不对时整体无效（dropped 记 format），不能当成"用户没提约束"。
+ * 每一类约束再过两关，否则丢弃并记进 dropped：
  * quote 逐字出现在用户要求里（忽略空白）；数值出现在 quote 的数字里（阿拉伯数字或中文数字）。
+ * 给了 quote 却没有任何数值也记 dropped：模型认出了这类要求，但没有给出能用的约束。
+ * dropped 非空表示这次提取没法确认，调用方要重新提取，不能直接采用（见 confirmRequirements）。
+ * 合法的"没有可计算约束"是：结构完整、数值全为 0、quote 全为空、sectionTitles 为空。
  */
 export function parseRequirements(raw: unknown, instructions: string): { requirements: Requirements; dropped: string[] } {
-  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const bad = malformedField(raw);
+  if (bad) return { requirements: { ...NO_REQUIREMENTS, sectionTitles: [] }, dropped: [`format:${bad}`] };
+  const r = raw as Record<string, unknown>;
   const source = squeeze(instructions);
   const dropped: string[] = [];
   const requirements: Requirements = { ...NO_REQUIREMENTS, sectionTitles: [] };
   const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null);
   const quoted = (name: string, quote: unknown, values: (number | null)[]): boolean => {
     const present = values.filter((v): v is number => v !== null);
-    if (present.length === 0) return false;
     const text = typeof quote === 'string' ? squeeze(quote) : '';
+    if (present.length === 0) {
+      if (text !== '') dropped.push(name);
+      return false;
+    }
     const numbers = numbersIn(text);
     const ok = text !== '' && source.includes(text) && present.every((v) => numbers.includes(v));
     if (!ok) dropped.push(name);
@@ -88,8 +111,8 @@ export function parseRequirements(raw: unknown, instructions: string): { require
     else Object.assign(requirements, { chaptersMin, chaptersMax });
   }
   const sectionsPerChapter = int(r.sectionsPerChapter);
-  const titles = Array.isArray(r.sectionTitles) ? r.sectionTitles.filter((t): t is string => typeof t === 'string' && t.trim() !== '').map((t) => t.trim()) : [];
-  const sectionsQuote = typeof r.sectionsQuote === 'string' ? squeeze(r.sectionsQuote) : '';
+  const titles = (r.sectionTitles as string[]).filter((t) => t.trim() !== '').map((t) => t.trim());
+  const sectionsQuote = squeeze(r.sectionsQuote as string);
   if (sectionsPerChapter !== null || titles.length > 0) {
     const quoteOk = sectionsQuote !== '' && source.includes(sectionsQuote);
     const countOk = sectionsPerChapter === null || numbersIn(sectionsQuote).includes(sectionsPerChapter);
@@ -98,8 +121,35 @@ export function parseRequirements(raw: unknown, instructions: string): { require
       requirements.sectionsPerChapter = sectionsPerChapter;
       requirements.sectionTitles = titles;
     } else dropped.push('sections');
-  }
+  } else if (sectionsQuote !== '') dropped.push('sections');
   return { requirements, dropped };
+}
+
+/** 约束提取最多做这么多次 */
+export const REQUIREMENTS_ATTEMPTS = 3;
+
+const DROPPED_LABEL: Record<string, string> = { chars: '字数', chapters: '章节数', sections: '小节' };
+
+/**
+ * 有限次提取，直到拿到一份能逐项确认的结果。提取结果格式无效、数值和出处对不上、上下限矛盾时重新提取；
+ * 用完次数仍不能确认就抛错，这次生成失败。不能把确认不了的约束悄悄去掉，再把文章当成满足要求保存。
+ */
+export async function confirmRequirements(
+  instructions: string,
+  extract: () => Promise<unknown>,
+  attempts = REQUIREMENTS_ATTEMPTS,
+  /** 每次提取被丢弃的项，调用方传入数组时失败后也能拿到（写日志用） */
+  tries: string[][] = [],
+): Promise<{ requirements: Requirements; tries: string[][] }> {
+  if (!instructions.trim()) return { requirements: NO_REQUIREMENTS, tries };
+  for (let i = 0; i < attempts; i++) {
+    const { requirements, dropped } = parseRequirements(await extract(), instructions);
+    tries.push(dropped);
+    if (dropped.length === 0) return { requirements, tries };
+  }
+  const last = tries.at(-1)!;
+  const kinds = [...new Set(last.filter((d) => !d.startsWith('format')).map((d) => DROPPED_LABEL[d] ?? d))];
+  throw new AppError('requirements_unconfirmed', kinds.length ? `提取了 ${attempts} 次，${kinds.join('、')}要求仍和原话对不上` : `提取了 ${attempts} 次，模型返回的格式都无效`);
 }
 
 /** 约束没有满足的地方，message 直接给用户看 */

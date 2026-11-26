@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { checkRequirements, describeRequirements, NO_REQUIREMENTS, numbersIn, parseChineseNumber, parseRequirements, rewritePrompt, type Requirements } from '../../src/worker/requirements';
+import { describe, expect, it, vi } from 'vitest';
+import { AppError } from '../../src/worker/app-error';
+import { checkRequirements, confirmRequirements, describeRequirements, NO_REQUIREMENTS, numbersIn, parseChineseNumber, parseRequirements, rewritePrompt, type Requirements } from '../../src/worker/requirements';
 
 const req = (patch: Partial<Requirements>): Requirements => ({ ...NO_REQUIREMENTS, sectionTitles: [], ...patch });
 
@@ -155,15 +156,46 @@ describe('parseRequirements', () => {
     expect(parseRequirements(NONE, INSTRUCTIONS)).toEqual({ requirements: NO_REQUIREMENTS, dropped: [] });
   });
 
-  // 抓：模型返回的不是对象时抛异常，整次生成失败
-  it.each([[null], ['不超过 1500 字'], [[1500]], [42]])('返回的不是对象（%j）：没有约束', (raw) => {
-    expect(parseRequirements(raw, INSTRUCTIONS)).toEqual({ requirements: NO_REQUIREMENTS, dropped: [] });
+  // 抓：模型返回的不是对象时抛异常；或者当成"用户没提约束"（dropped 为空），调用方不再重新提取，字数上限悄悄消失
+  it.each([[null], ['不超过 1500 字'], [[1500]], [42]])('返回的不是对象（%j）：没有约束，dropped 记 format:整体', (raw) => {
+    expect(parseRequirements(raw, INSTRUCTIONS)).toEqual({ requirements: NO_REQUIREMENTS, dropped: ['format:整体'] });
   });
 
-  // 抓：负数、小数、字符串形式的数字被当成约束
-  it('数值不是正整数：当成没有', () => {
+  // 抓：负数、小数、字符串形式的数字被当成约束；或者被当成"没有约束"而不要求重新提取
+  it('数值不是非负整数：没有约束，dropped 记第一个不合格的字段', () => {
     const raw = { ...NONE, maxChars: -1500, minChars: 1500.5, charsQuote: '全文不超过 1500 字', chaptersMin: '3', chaptersMax: '3', chaptersQuote: '分三章' };
-    expect(parseRequirements(raw, INSTRUCTIONS)).toEqual({ requirements: NO_REQUIREMENTS, dropped: [] });
+    expect(parseRequirements(raw, INSTRUCTIONS)).toEqual({ requirements: NO_REQUIREMENTS, dropped: ['format:maxChars'] });
+  });
+
+  // 审查方反例一。抓：提取返回 {}（字段全缺）被当成"用户没提约束"，"不超过1500字"的要求被悄悄去掉
+  // 其余各条抓：结构核对漏查某个字段或某种类型错误
+  it.each<[string, unknown, string]>([
+    ['{}', {}, 'format:maxChars'],
+    ['缺 charsQuote', { maxChars: 0, minChars: 0, chaptersMin: 0, chaptersMax: 0, chaptersQuote: '', sectionsPerChapter: 0, sectionTitles: [], sectionsQuote: '' }, 'format:charsQuote'],
+    ['缺 sectionTitles', { maxChars: 0, minChars: 0, charsQuote: '', chaptersMin: 0, chaptersMax: 0, chaptersQuote: '', sectionsPerChapter: 0, sectionsQuote: '' }, 'format:sectionTitles'],
+    ['chaptersMin 是字符串', { ...NONE, chaptersMin: '3' }, 'format:chaptersMin'],
+    ['maxChars 是负数', { ...NONE, maxChars: -1 }, 'format:maxChars'],
+    ['minChars 是小数', { ...NONE, minChars: 1500.5 }, 'format:minChars'],
+    ['sectionsPerChapter 是 null', { ...NONE, sectionsPerChapter: null }, 'format:sectionsPerChapter'],
+    ['charsQuote 是数字', { ...NONE, charsQuote: 1500 }, 'format:charsQuote'],
+    ['sectionTitles 不是数组', { ...NONE, sectionTitles: '核心观点' }, 'format:sectionTitles'],
+    ['sectionTitles 里有非字符串', { ...NONE, sectionTitles: ['核心观点', 2] }, 'format:sectionTitles'],
+  ])('结构不合格（%s）：没有约束，dropped 只记这个字段的 format 项', (_label, raw, dropped) => {
+    expect(parseRequirements(raw, '不超过1500字')).toEqual({ requirements: NO_REQUIREMENTS, dropped: [dropped] });
+  });
+
+  // 抓：模型认出了这类要求（给了 quote）却没给数值，被当成"没有这类约束"放过
+  it.each<[string, string, object, string]>([
+    ['字数', '不超过1500字', { charsQuote: '不超过1500字' }, 'chars'],
+    ['章节', '分三章', { chaptersQuote: '分三章' }, 'chapters'],
+    ['小节', '每章两个小节', { sectionsQuote: '每章两个小节' }, 'sections'],
+  ])('%s给了 quote、数值全是 0：dropped 记 %s', (_label, instructions, patch, name) => {
+    expect(parseRequirements({ ...NONE, ...patch }, instructions)).toEqual({ requirements: NO_REQUIREMENTS, dropped: [name] });
+  });
+
+  // 审查方反例二。抓：maxChars=1600 和出处"不超过1500字"对不上时只丢掉约束、不报 dropped，1604 字的文章被当成满足要求
+  it('maxChars=1600、charsQuote 是"不超过1500字"：不采用上限，dropped 记 chars', () => {
+    expect(parseRequirements({ ...NONE, maxChars: 1600, charsQuote: '不超过1500字' }, '不超过1500字')).toEqual({ requirements: NO_REQUIREMENTS, dropped: ['chars'] });
   });
 
   // 抓："1.5k""一千五"这类写法在 quote 里认不出来，真实约束被丢掉；只有下限时上限被误填
@@ -344,5 +376,76 @@ describe('rewritePrompt：原约束与内部预留', () => {
     expect(prompt.user).toContain('<unmet_requirements note="程序按统一口径算出来的，以它为准">\n无\n</unmet_requirements>');
     expect(prompt.system).not.toContain('没有满足用户提出的硬性要求');
     expect(rewritePrompt({ ...base, violations }).user).not.toContain('<review_headroom');
+  });
+});
+
+describe('confirmRequirements', () => {
+  const INSTRUCTIONS = '不超过1500字';
+  const NONE = { maxChars: 0, minChars: 0, charsQuote: '', chaptersMin: 0, chaptersMax: 0, chaptersQuote: '', sectionsPerChapter: 0, sectionTitles: [], sectionsQuote: '' };
+  const GOOD = { ...NONE, maxChars: 1500, charsQuote: '不超过1500字' };
+  const WRONG_VALUE = { ...NONE, maxChars: 1600, charsQuote: '不超过1500字' };
+
+  /** 按顺序返回给定结果的提取替身，记下调用次数 */
+  const extractor = (...results: unknown[]) => {
+    const extract = vi.fn(async () => results[Math.min(extract.mock.calls.length - 1, results.length - 1)]);
+    return extract;
+  };
+
+  // 抓：第一次就能确认时还多提取几次（白白多花两次模型调用）
+  it('第一次就能确认：只提取一次，采用这次的结果', async () => {
+    const extract = extractor(GOOD);
+    expect(await confirmRequirements(INSTRUCTIONS, extract)).toEqual({ requirements: { ...NO_REQUIREMENTS, sectionTitles: [], maxChars: 1500 }, tries: [[]] });
+    expect(extract).toHaveBeenCalledTimes(1);
+  });
+
+  // 抓：第一次坏了就直接失败（不重试），或者重试之后仍采用第一次的坏结果
+  it.each<[string, unknown, string]>([
+    ['{}', {}, 'format:maxChars'],
+    ['maxChars=1600', WRONG_VALUE, 'chars'],
+  ])('第一次 %s、第二次正确：提取两次，采用第二次的上限 1500', async (_label, bad, firstDropped) => {
+    const extract = extractor(bad, GOOD);
+    const { requirements, tries } = await confirmRequirements(INSTRUCTIONS, extract);
+    expect(requirements.maxChars).toBe(1500);
+    expect(tries).toEqual([[firstDropped], []]);
+    expect(extract).toHaveBeenCalledTimes(2);
+  });
+
+  // 抓：确认不了时悄悄返回"没有约束"（修复前的行为），或者重试次数不是 3
+  it.each<[string, unknown, string]>([
+    ['{}', {}, '没能确认生成要求里的字数、章节等硬性约束，这次生成没有保存，请换一种说法重试（提取了 3 次，模型返回的格式都无效）'],
+    ['maxChars=1600', WRONG_VALUE, '没能确认生成要求里的字数、章节等硬性约束，这次生成没有保存，请换一种说法重试（提取了 3 次，字数要求仍和原话对不上）'],
+  ])('三次都是 %s：恰好提取三次，抛 requirements_unconfirmed', async (_label, bad, message) => {
+    const extract = extractor(bad);
+    const err = await confirmRequirements(INSTRUCTIONS, extract).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(AppError);
+    expect({ code: (err as AppError).code, message: (err as AppError).message }).toEqual({ code: 'requirements_unconfirmed', message });
+    expect(extract).toHaveBeenCalledTimes(3);
+  });
+
+  // 抓：没有要求时也调用模型；或者空要求被当成"确认不了"
+  it.each([[''], ['   \n ']])('要求为空（%j）：不提取，没有约束', async (instructions) => {
+    const extract = extractor(GOOD);
+    expect(await confirmRequirements(instructions, extract)).toEqual({ requirements: NO_REQUIREMENTS, tries: [] });
+    expect(extract).not.toHaveBeenCalled();
+  });
+
+  // 抓：结构完整、全 0 全空的合法"没有可计算约束"被当成确认不了，纯风格要求的生成全部失败
+  it('纯风格要求（全 0 全空）：一次通过，没有约束', async () => {
+    const extract = extractor(NONE);
+    expect(await confirmRequirements('写得口语一点，面向初学者', extract)).toEqual({ requirements: NO_REQUIREMENTS, tries: [[]] });
+    expect(extract).toHaveBeenCalledTimes(1);
+  });
+
+  // 抓：提取请求本身失败（繁忙、账单）被吞掉后重试，或者被改成 requirements_unconfirmed，用户看不出真实原因
+  it('提取调用自身抛错：原样抛出，不再重试', async () => {
+    const original = new AppError('gemini_billing');
+    const extract = vi.fn(async () => {
+      throw original;
+    });
+    await expect(confirmRequirements(INSTRUCTIONS, extract)).rejects.toBe(original);
+    expect(extract).toHaveBeenCalledTimes(1);
   });
 });

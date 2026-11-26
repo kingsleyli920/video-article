@@ -319,6 +319,24 @@ describe('核对没通过', () => {
     expect(page.incompleteNote).toBeNull();
   });
 
+  // 抓：约束提取确认不了（初稿写完、还没进入修订/核对阶段时到达）被说成"内容不完整"，用户以为是网络断了；或者 5W1H 可点
+  it('error requirements_unconfirmed 在初稿写完后到达：下方说明以"未通过核对："开头，5W1H 不可用，有"重新生成"', async () => {
+    const message = '没能确认生成要求里的字数、章节等硬性约束，这次生成没有保存，请换一种说法重试（提取了 3 次，字数要求仍和原话对不上）';
+    await submitWith(VIDEO_URL, '不超过1500字');
+    await streamDraft();
+    backend.stream.event('error', { code: 'requirements_unconfirmed', message, partial: true });
+    await settle();
+
+    expect(page.status).toEqual({ hidden: false, tone: 'error', text: message, detail: '', hasRetry: true });
+    expect(page.article.dataset.state).toBe('failed');
+    expect(chapterBody('1')).toBe('安德森: 2003 年那家基金投资了三家芯片公司。');
+    expect(page.incompleteNote).toBe(`未通过核对：${message}`);
+    expect(page.toggles.map((b) => [b.disabled, b.title])).toEqual([
+      [true, '生成未完成，章节总结不可用'],
+      [true, '生成未完成，章节总结不可用'],
+    ]);
+  });
+
   // 抓：把所有失败都改成"未通过核对"，网络或模型的问题被说成核对没通过
   it.each([
     ['interrupted', '生成中断，文章不完整'],

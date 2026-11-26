@@ -5,7 +5,7 @@ import { ClientGone } from '../../src/worker/event-stream';
 import { finalizeArticle, groupSections, type FinalizeInput, type FinalizeModel } from '../../src/worker/finalize';
 import type { Prompt } from '../../src/worker/gemini';
 import { NO_REQUIREMENTS, type Requirements } from '../../src/worker/requirements';
-import { fidelityReviewPrompt, REVIEW_SCHEMA } from '../../src/worker/review';
+import { fidelityReviewPrompt, reconcilePrompt, RECONCILE_SCHEMA, REVIEW_SCHEMA } from '../../src/worker/review';
 
 const VIDEO = { id: 'mockvideo01', title: 'Maria Lopez on Berlin and the fund', channel: '测试频道', description: '', lengthSeconds: 600 };
 
@@ -45,19 +45,29 @@ const req = (patch: Partial<Requirements>): Requirements => ({ ...NO_REQUIREMENT
 const sectionOf = (prompt: Prompt) => /<section>\n([\s\S]*)\n<\/section>/.exec(prompt.user)![1]!;
 const FIDELITY_SYSTEM = fidelityReviewPrompt({ video: VIDEO, transcriptText: TRANSCRIPT, instructions: '', outline: [], section: DRAFT }).system;
 const isFidelity = (prompt: Prompt) => prompt.system === FIDELITY_SYSTEM;
+const RECONCILE_SYSTEM = reconcilePrompt({ video: VIDEO, article: '', applied: [], pending: [] }).system;
+const isReconcile = (prompt: Prompt) => prompt.system === RECONCILE_SYSTEM;
 
 /**
  * 手写的模型替身：json（核对）按这一单元的原文返回结果，没给 review 时返回"没有问题"；
- * rewrite 没给时被调用就报错（用例因此能证明"不该修订时没有修订"）。
+ * rewrite、reconcile（重叠修订的合并处理）没给时被调用就报错（用例因此能证明"不该修订时没有修订""不该合并时没有调用"）。
  */
-function fakeModel(options: { review?: (section: string) => unknown; fidelity?: (section: string) => unknown; rewrite?: (prompt: Prompt) => Promise<string> } = {}) {
+function fakeModel(
+  options: { review?: (section: string) => unknown; fidelity?: (section: string) => unknown; reconcile?: (prompt: Prompt) => unknown; rewrite?: (prompt: Prompt) => Promise<string> } = {},
+) {
   const reviewPrompts: Prompt[] = [];
   const fidelityPrompts: Prompt[] = [];
+  const reconcilePrompts: Prompt[] = [];
   const schemas: object[] = [];
   const rewritePrompts: Prompt[] = [];
   const model: FinalizeModel = {
     async json(prompt, schema) {
       schemas.push(schema);
+      if (isReconcile(prompt)) {
+        reconcilePrompts.push(prompt);
+        if (!options.reconcile) throw new Error('这个用例不该调用合并处理');
+        return options.reconcile(prompt);
+      }
       if (isFidelity(prompt)) {
         fidelityPrompts.push(prompt);
         return options.fidelity ? options.fidelity(sectionOf(prompt)) : { issues: [] };
@@ -71,7 +81,7 @@ function fakeModel(options: { review?: (section: string) => unknown; fidelity?: 
       return options.rewrite(prompt);
     },
   };
-  return { model, reviewPrompts, fidelityPrompts, schemas, rewritePrompts };
+  return { model, reviewPrompts, fidelityPrompts, reconcilePrompts, schemas, rewritePrompts };
 }
 
 function input(patch: Partial<FinalizeInput> = {}): FinalizeInput {
@@ -148,7 +158,24 @@ describe('finalizeArticle：正常路径', () => {
       { type: 'quantity', before: QUANTITY_ISSUE.quote, after: QUANTITY_ISSUE.replacement, reason: QUANTITY_ISSUE.problem, evidence: QUANTITY_ISSUE.evidence },
     ]);
     expect(result.rejected).toEqual({ malformed: 1, evidence_not_in_transcript: 1 });
-    expect(result.review).toEqual({ sections: 2, revisions: 2, rewritten: null, checks: [] });
+    // 程序校验拒绝的建议连同来源阶段留痕；格式不对的不在内
+    expect(result.review).toEqual({
+      sections: 2,
+      revisions: 2,
+      rewritten: null,
+      checks: [],
+      unapplied: [
+        {
+          stage: 'chapter',
+          disposition: 'evidence_not_in_transcript',
+          type: 'quantity',
+          quote: '现在有五到六家',
+          replacement: '现在大约有五家被投公司，预计会增加到五到六家。',
+          problem: '现在大约五家，五到六家是预期',
+          evidence: 'the fund now owns six companies',
+        },
+      ],
+    });
   });
 
   // 抓：初稿超字数时直接报错或截断，而不是让模型修订一次；修订后核对的还是初稿；阶段顺序错
@@ -266,16 +293,35 @@ describe('finalizeArticle：并行', () => {
 });
 
 describe('finalizeArticle：整篇语义限定复核', () => {
-  it('先保留逐章修订，再应用仍可定位的整篇建议，过时引文拒绝并留痕', async () => {
-    const { model } = fakeModel({
+  // 抓：整篇复核给出与逐章相同的建议时，被当成"定位不到"丢掉而不留痕，或者白白再调一次合并处理
+  it('先保留逐章修订，再应用仍可定位的整篇建议；与逐章重复的建议记为 covered，不调合并处理', async () => {
+    const { model, reconcilePrompts } = fakeModel({
       review: (section) => ({ issues: section.includes('柏林岁月') ? [TIME_ISSUE] : [] }),
       fidelity: () => ({ issues: [TIME_ISSUE, QUANTITY_ISSUE, { type: 'opinion' }] }),
     });
     const result = await finalizeArticle(input(), model, stages().onStage);
     expect(result.markdown).toBe(DRAFT.replace(TIME_ISSUE.quote, TIME_ISSUE.replacement).replace(QUANTITY_ISSUE.quote, QUANTITY_ISSUE.replacement));
     expect(result.revisions.map((r) => r.before)).toEqual([TIME_ISSUE.quote, QUANTITY_ISSUE.quote]);
-    expect(result.rejected).toEqual({ quote_not_found: 1, malformed: 1 });
-    expect(result.review).toEqual({ sections: 2, revisions: 2, rewritten: null, checks: [] });
+    expect(result.rejected).toEqual({ malformed: 1 });
+    expect(result.review).toEqual({
+      sections: 2,
+      revisions: 2,
+      rewritten: null,
+      checks: [],
+      unapplied: [
+        {
+          stage: 'article',
+          disposition: 'covered',
+          type: 'time',
+          quote: '2003 年那家基金投资了 Alpha、Beta 和 Gamma。',
+          replacement: '我 2003 年搬到柏林，之后十年里那家基金先后投资了 Alpha、Beta 和 Gamma。',
+          problem: '2003 年是嘉宾搬到柏林的时间，不是基金投资的时间',
+          evidence: 'I moved to Berlin in 2003. Over the next ten years the fund backed Alpha, Beta and Gamma',
+          note: '另一条修订已写入相同的替换文字',
+        },
+      ],
+    });
+    expect(reconcilePrompts).toHaveLength(0);
   });
 
   it('整篇建议仍受唯一定位、字幕依据与局部结构校验，不会改动别处', async () => {
@@ -315,6 +361,176 @@ describe('finalizeArticle：整篇语义限定复核', () => {
     const save = vi.fn();
     expect((await rejection(finalizeArticle(input(), model, stages().onStage).then(save))).code).toBe('review_failed');
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe('finalizeArticle：重叠修订的合并处理', () => {
+  // 审查方反例：主持人的估计被写成嘉宾的说法，金额也错了一个数量级
+  const PILOT_TRANSCRIPT = "[00:00] Host: Our pilot cost about 20 dollars. This is my estimate, not the guest's statement.";
+  const PILOT_DRAFT = '# 试点\n\n## 费用\n\n嘉宾表示，试点费用为200美元。';
+  const EVIDENCE = "Host: Our pilot cost about 20 dollars. This is my estimate, not the guest's statement.";
+  /** 逐章核对只改数字 */
+  const CHAPTER_FIX = { type: 'quantity', quote: '试点费用为200美元。', evidence: EVIDENCE, problem: '金额是约 20 美元', replacement: '试点费用约为20美元。' };
+  /** 整篇复核同时改归属和数字，quote 是初稿的整句 */
+  const ARTICLE_FIX = { type: 'attribution', quote: '嘉宾表示，试点费用为200美元。', evidence: EVIDENCE, problem: '这是主持人的估计，不是嘉宾的说法', replacement: '主持人估计，试点费用约为20美元。' };
+  /** 只采用逐章修订后的文章 */
+  const AFTER_CHAPTER = '# 试点\n\n## 费用\n\n嘉宾表示，试点费用约为20美元。';
+  const CHAPTER_REVISION = { type: 'quantity', before: '试点费用为200美元。', after: '试点费用约为20美元。', reason: '金额是约 20 美元', evidence: EVIDENCE };
+  /** ARTICLE_FIX 转入合并处理后留下的记录 */
+  const superseded = (note: string) => ({
+    stage: 'article',
+    disposition: 'superseded',
+    type: 'attribution',
+    quote: '嘉宾表示，试点费用为200美元。',
+    replacement: '主持人估计，试点费用约为20美元。',
+    problem: '这是主持人的估计，不是嘉宾的说法',
+    evidence: EVIDENCE,
+    note,
+  });
+  const verdict = (patch: Record<string, unknown>) => ({ index: 0, status: 'revise', note: '数字已改对，归属仍错', quote: '', replacement: '', evidence: '', ...patch });
+
+  const pilot = (options: { fidelity?: unknown[]; reconcile?: (prompt: Prompt) => unknown }) =>
+    fakeModel({ review: () => ({ issues: [CHAPTER_FIX] }), fidelity: () => ({ issues: options.fidelity ?? [ARTICLE_FIX] }), reconcile: options.reconcile });
+  const pilotInput = (patch: Partial<FinalizeInput> = {}) => input({ draft: PILOT_DRAFT, transcriptText: PILOT_TRANSCRIPT, ...patch });
+
+  // 抓（审查方反例）：整篇建议因为句子已被逐章修订改过而定位不到，被直接丢掉，最终稿"嘉宾表示，试点费用约为20美元。"归属仍错却照样成功
+  it('逐章只改数字、整篇还要改归属：合并处理基于当前文章再改一次，最终稿归属和数字都对', async () => {
+    const { model, reconcilePrompts, schemas } = pilot({
+      reconcile: () => ({ items: [verdict({ quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。' })] }),
+    });
+    const result = await finalizeArticle(pilotInput(), model, stages().onStage);
+    expect(result.markdown).toBe('# 试点\n\n## 费用\n\n主持人估计，试点费用约为20美元。');
+    expect(result.revisions).toEqual([
+      CHAPTER_REVISION,
+      { type: 'attribution', before: '嘉宾表示，试点费用约为20美元。', after: '主持人估计，试点费用约为20美元。', reason: '这是主持人的估计，不是嘉宾的说法', evidence: EVIDENCE },
+    ]);
+    expect(result.review).toEqual({ sections: 1, revisions: 2, rewritten: null, checks: [], unapplied: [superseded('数字已改对，归属仍错')] });
+    expect(result.rejected).toEqual({});
+    // 合并请求只发一次，基于当前文章（已含逐章修订），带已采用的修订
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(reconcilePrompts[0]!.user).toContain(`<article>\n${AFTER_CHAPTER}\n</article>`);
+    expect(reconcilePrompts[0]!.user).toContain('"before": "试点费用为200美元。"');
+    expect(schemas.at(-1)).toBe(RECONCILE_SCHEMA);
+  });
+
+  // 抓：两路给出一模一样的修订时也去调合并模型（白白多一次请求），或者没有留痕
+  it('两路给出相同的修订：记为 covered，不调合并处理', async () => {
+    const { model, reconcilePrompts } = pilot({ fidelity: [CHAPTER_FIX] });
+    const result = await finalizeArticle(pilotInput(), model, stages().onStage);
+    expect(result.markdown).toBe(AFTER_CHAPTER);
+    expect(result.revisions).toEqual([CHAPTER_REVISION]);
+    expect(result.review.unapplied).toEqual([
+      { stage: 'article', disposition: 'covered', type: 'quantity', quote: '试点费用为200美元。', replacement: '试点费用约为20美元。', problem: '金额是约 20 美元', evidence: EVIDENCE, note: '另一条修订已写入相同的替换文字' },
+    ]);
+    expect(reconcilePrompts).toHaveLength(0);
+  });
+
+  // 抓：合并处理判定"已改正"或"建议不成立"时仍改动文章，或者没有把结论和理由留痕
+  it.each([
+    ['covered', '当前文章已经改正'],
+    ['unfounded', '依据不支持这条建议'],
+  ])('合并处理返回 %s：文章保持逐章修订后的样子，建议连同理由记进 unapplied', async (status, note) => {
+    const { model } = pilot({ reconcile: () => ({ items: [verdict({ status, note })] }) });
+    const result = await finalizeArticle(pilotInput(), model, stages().onStage);
+    expect(result.markdown).toBe(AFTER_CHAPTER);
+    expect(result.revisions).toEqual([CHAPTER_REVISION]);
+    expect(result.review.unapplied).toEqual([{ ...superseded(note), disposition: status }]);
+  });
+
+  // 抓：合并处理给出的修订把逐章已改对的数字（200 → 约 20）又改回初稿写法，也被采用
+  it('合并处理的修订把初稿写法改回来：拒绝为 reverts_earlier，前一步的修正保留', async () => {
+    const { model } = pilot({ reconcile: () => ({ items: [verdict({ quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用为200美元。', note: '改归属' })] }) });
+    const result = await finalizeArticle(pilotInput(), model, stages().onStage);
+    expect(result.markdown).toBe(AFTER_CHAPTER);
+    expect(result.revisions).toEqual([CHAPTER_REVISION]);
+    expect(result.rejected).toEqual({ reverts_earlier: 1 });
+    expect(result.review.unapplied).toEqual([
+      superseded('改归属'),
+      { stage: 'reconcile', disposition: 'reverts_earlier', type: 'attribution', quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用为200美元。', problem: '这是主持人的估计，不是嘉宾的说法', evidence: EVIDENCE, note: '改归属' },
+    ]);
+  });
+
+  // 抓：合并处理给出的修订绕过了逐章和整篇修订都要过的校验（定位、唯一、字幕依据）
+  it.each([
+    ['quote 在当前文章里找不到', { quote: '主持人表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。' }, 'quote_not_found', EVIDENCE, { quote_not_found: 1 }],
+    ['quote 在当前文章里出现两次', { quote: '试点', replacement: '试点项目' }, 'quote_not_unique', EVIDENCE, { quote_not_unique: 1 }],
+    [
+      'evidence 不在字幕里',
+      { quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。', evidence: 'The guest said the pilot cost 20 dollars.' },
+      'evidence_not_in_transcript',
+      'The guest said the pilot cost 20 dollars.',
+      { evidence_not_in_transcript: 1 },
+    ],
+  ])('合并处理的修订%s：拒绝，记 stage reconcile，文章不变', async (_label, patch, reason, evidence, rejected) => {
+    const { model } = pilot({ reconcile: () => ({ items: [verdict({ ...patch, note: '还要改' })] }) });
+    const result = await finalizeArticle(pilotInput(), model, stages().onStage);
+    expect(result.markdown).toBe(AFTER_CHAPTER);
+    expect(result.revisions).toEqual([CHAPTER_REVISION]);
+    expect(result.review.unapplied).toEqual([
+      superseded('还要改'),
+      { stage: 'reconcile', disposition: reason, type: 'attribution', quote: patch.quote, replacement: patch.replacement, problem: '这是主持人的估计，不是嘉宾的说法', evidence, note: '还要改' },
+    ]);
+    expect(result.rejected).toEqual(rejected);
+  });
+
+  // 抓：重叠建议的依据本身不在字幕里时也送去合并处理（模型可能据此改文章）
+  it('重叠建议的 evidence 不在字幕里：直接记 evidence_not_in_transcript，不调合并处理', async () => {
+    const { model, reconcilePrompts } = pilot({ fidelity: [{ ...ARTICLE_FIX, evidence: 'The guest said it cost about 20 dollars' }] });
+    const result = await finalizeArticle(pilotInput(), model, stages().onStage);
+    expect(result.markdown).toBe(AFTER_CHAPTER);
+    expect(result.review.unapplied).toEqual([
+      { stage: 'article', disposition: 'evidence_not_in_transcript', type: 'attribution', quote: '嘉宾表示，试点费用为200美元。', replacement: '主持人估计，试点费用约为20美元。', problem: '这是主持人的估计，不是嘉宾的说法', evidence: 'The guest said it cost about 20 dollars' },
+    ]);
+    expect(reconcilePrompts).toHaveLength(0);
+  });
+
+  // 抓：原本就不在初稿里的 quote（模型编的）也被当成"重叠"送去合并处理
+  it('quote 原本就不在初稿里：直接 quote_not_found，不进合并处理', async () => {
+    const { model, reconcilePrompts } = pilot({ fidelity: [{ ...ARTICLE_FIX, quote: '嘉宾说试点很便宜。' }] });
+    const result = await finalizeArticle(pilotInput(), model, stages().onStage);
+    expect(result.markdown).toBe(AFTER_CHAPTER);
+    expect(result.review.unapplied).toEqual([
+      { stage: 'article', disposition: 'quote_not_found', type: 'attribution', quote: '嘉宾说试点很便宜。', replacement: '主持人估计，试点费用约为20美元。', problem: '这是主持人的估计，不是嘉宾的说法', evidence: EVIDENCE },
+    ]);
+    expect(result.rejected).toEqual({ quote_not_found: 1 });
+    expect(reconcilePrompts).toHaveLength(0);
+  });
+
+  // 抓：合并处理漏给、重复给或格式不对的结论被当成"处理过"，没处理的建议悄悄消失，文章照样保存
+  const SECOND = { type: 'unsupported', quote: '费用为200美元', evidence: 'Our pilot cost about 20 dollars. This is my estimate', problem: '这是主持人的估计', replacement: '费用约为20美元，是主持人的估计' };
+  it.each<[string, unknown[], unknown]>([
+    ['缺条目', [ARTICLE_FIX], { items: [] }],
+    ['index 重复', [ARTICLE_FIX, SECOND], { items: [verdict({ status: 'covered' }), verdict({ status: 'covered' })] }],
+    ['缺 items', [ARTICLE_FIX], {}],
+    ['status 无效', [ARTICLE_FIX], { items: [verdict({ status: 'fixed' })] }],
+  ])('合并处理响应%s：review_failed，不返回可保存的结果', async (_label, fidelity, raw) => {
+    const { model, reconcilePrompts } = pilot({ fidelity, reconcile: () => raw });
+    const save = vi.fn();
+    const err = await rejection(finalizeArticle(pilotInput(), model, stages().onStage).then(save));
+    expect({ code: err.code, message: err.message }).toEqual({
+      code: 'review_failed',
+      message: '内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：模型没有对每条建议给出有效结论）',
+    });
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  // 抓：合并请求失败时退回"只采用逐章修订"的文章保存；或者账单错误被包成 review_failed
+  it('合并处理请求失败（繁忙）：review_failed，说明是哪一步', async () => {
+    const { model } = pilot({ reconcile: () => { throw new AppError('gemini_busy', 'HTTP 503'); } });
+    const save = vi.fn();
+    const err = await rejection(finalizeArticle(pilotInput(), model, stages().onStage).then(save));
+    expect({ code: err.code, message: err.message }).toEqual({
+      code: 'review_failed',
+      message: '内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：Gemini 模型繁忙，请稍后重试（HTTP 503））',
+    });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('合并处理请求返回 402：gemini_billing 原样抛出', async () => {
+    const original = new AppError('gemini_billing');
+    const { model } = pilot({ reconcile: () => { throw original; } });
+    expect(await rejection(finalizeArticle(pilotInput(), model, stages().onStage))).toBe(original);
   });
 });
 
@@ -448,6 +664,16 @@ describe('finalizeArticle：模型调用失败', () => {
       },
     });
     expect(await rejection(finalizeArticle(input(), model, stages().onStage))).toBe(original);
+  });
+
+  // 抓：约束提取确认不了（requirements_unconfirmed）被包成 review_failed 或当成没有约束继续核对、保存
+  it('约束提取确认不了：requirements_unconfirmed 原样抛出，不核对', async () => {
+    const original = new AppError('requirements_unconfirmed', '提取了 3 次，字数要求仍和原话对不上');
+    const { model, reviewPrompts, fidelityPrompts } = fakeModel();
+    const err = await rejection(finalizeArticle(input({ instructions: '不超过1500字', requirements: Promise.reject(original) }), model, stages().onStage));
+    expect(err).toBe(original);
+    expect(reviewPrompts).toHaveLength(0);
+    expect(fidelityPrompts).toHaveLength(0);
   });
 
   // 抓：约束提取时的 402 被包成 review_failed

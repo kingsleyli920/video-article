@@ -17,7 +17,7 @@ describe('bodyGrowth', () => {
       [111500, 10300],
       [113000, 10300],
     ];
-    expect(bodyGrowth(samples, 112200)).toEqual({ ok: true, reason: '', baseLength: 0, finalLength: 10300, intermediateSamples: 5 });
+    expect(bodyGrowth(samples, 112200)).toEqual({ ok: true, reason: '', baseLength: 0, draftLength: 10300, intermediateSamples: 5, distinctLengths: 5 });
   });
 
   // 抓：机械要求很长的流式阶段或很多个不同的采样值，短文章（正文半秒内发完）的真流式被判不通过
@@ -33,7 +33,7 @@ describe('bodyGrowth', () => {
       [30400, 334],
       [30500, 334],
     ];
-    expect(bodyGrowth(samples, 30450)).toEqual({ ok: true, reason: '', baseLength: 0, finalLength: 334, intermediateSamples: 2 });
+    expect(bodyGrowth(samples, 30450)).toEqual({ ok: true, reason: '', baseLength: 0, draftLength: 334, intermediateSamples: 2, distinctLengths: 2 });
   });
 
   // 抓：把"至少一次中间长度"写成了"至少两次/三次"
@@ -52,10 +52,11 @@ describe('bodyGrowth', () => {
     ];
     expect(bodyGrowth(samples, 30450)).toEqual({
       ok: false,
-      reason: '完成前没有看到中间长度：正文从 0 字一步变成 334 字',
+      reason: '初稿写完前没有看到中间长度：正文从 0 字一步变成 334 字',
       baseLength: 0,
-      finalLength: 334,
+      draftLength: 334,
       intermediateSamples: 0,
+      distinctLengths: 0,
     });
   });
 
@@ -68,7 +69,7 @@ describe('bodyGrowth', () => {
       [30400, 334],
       [30500, 334],
     ];
-    expect(bodyGrowth(samples, 30450)).toMatchObject({ ok: false, reason: '完成前没有看到中间长度：正文从 0 字一步变成 334 字' });
+    expect(bodyGrowth(samples, 30450)).toMatchObject({ ok: false, reason: '初稿写完前没有看到中间长度：正文从 0 字一步变成 334 字' });
   });
 
   // 抓：页面上留着上一篇文章，新的正文没有画出来，只看"长度大于 0"会当成已经在显示
@@ -80,7 +81,7 @@ describe('bodyGrowth', () => {
       [60000, 5000],
       [60500, 5000],
     ];
-    expect(bodyGrowth(samples, 60200)).toEqual({ ok: false, reason: '正文没有增长：开始时 5000 字，完成后 5000 字', baseLength: 5000, finalLength: 5000, intermediateSamples: 0 });
+    expect(bodyGrowth(samples, 60200)).toEqual({ ok: false, reason: '正文没有增长：开始时 5000 字，初稿写完时 5000 字', baseLength: 5000, draftLength: 5000, intermediateSamples: 0, distinctLengths: 0 });
   });
 
   // 抓：旧内容的长度正好落在 0 和新长度之间，被当成"中间长度"
@@ -91,18 +92,56 @@ describe('bodyGrowth', () => {
       [60000, 5000],
       [60500, 8000],
     ];
-    expect(bodyGrowth(samples, 60200)).toMatchObject({ ok: false, reason: '完成前没有看到中间长度：正文从 5000 字一步变成 8000 字' });
+    expect(bodyGrowth(samples, 60200)).toMatchObject({ ok: false, reason: '初稿写完前没有看到中间长度：正文从 5000 字一步变成 8000 字' });
   });
 
-  // 抓：完成之后才采到的中间长度（比如完成后页面还在补画）被算成"完成前在增长"
-  it('中间长度只出现在完成之后：不算', () => {
+  // 抓：初稿写完之后才采到的中间长度（比如进入核对后页面还在补画）被算成"初稿阶段在增长"
+  it('中间长度只出现在初稿写完之后：不算', () => {
     expect(bodyGrowth([[900, 0], [30400, 0], [30500, 120], [30600, 334]], 30450)).toMatchObject({ ok: false, intermediateSamples: 0 });
   });
 
-  // 抓：采样为空或者没采到完成后的状态时，拿不完整的数据得出"通过"
-  it('没有采样、或者最后一条采样早于完成：判不通过并说明原因', () => {
+  // 抓：采样为空或者没采到初稿写完后的状态时，拿不完整的数据得出"通过"
+  it('没有采样、或者最后一条采样早于初稿写完：判不通过并说明原因', () => {
     expect(bodyGrowth([], 30450)).toMatchObject({ ok: false, reason: '没有采样' });
-    expect(bodyGrowth([[900, 0], [30100, 120], [30200, 334]], 30450)).toMatchObject({ ok: false, reason: '没有完成之后的采样：最后一次采样在 30200 ms，完成在 30450 ms' });
+    expect(bodyGrowth([[900, 0], [30100, 120], [30200, 334]], 30450)).toMatchObject({ ok: false, reason: '没有初稿写完之后的采样：最后一次采样在 30200 ms，初稿写完在 30450 ms' });
+  });
+
+  // 审查方反例。抓：判定看的是"完成"而不是"初稿写完"：整篇初稿一次显示（没有流式），核对后页面因核对记录或最终稿变长，
+  // 初稿的长度就落在"开始"和"完成"之间，被当成中间长度判通过
+  it('整篇初稿一次显示、随后因核对记录或最终稿变长：初稿阶段没有中间长度，判不通过', () => {
+    const samples: Sample[] = [
+      [900, 0],
+      [59900, 0],
+      [60000, 5000],
+      [120000, 5000],
+      [180100, 5800],
+    ];
+    expect(bodyGrowth(samples, 60000)).toEqual({
+      ok: false,
+      reason: '初稿写完前没有看到中间长度：正文从 0 字一步变成 5000 字',
+      baseLength: 0,
+      draftLength: 5000,
+      intermediateSamples: 0,
+      distinctLengths: 0,
+    });
+  });
+
+  // 抓：draftLength 取了最后一条采样（核对后的最终稿），核对后正文变短时初稿阶段的长度不再"小于最终长度"被漏算，
+  // 核对后变长时又把初稿写完时的完整长度也算成中间长度
+  it.each([
+    ['变短', 350],
+    ['变长', 900],
+  ])('初稿阶段正常增长、核对后正文%s：判通过，draftLength 是进入核对时的长度', (_label, finalLength) => {
+    const samples: Sample[] = [
+      [900, 0],
+      [30100, 120],
+      [30150, 120],
+      [30200, 250],
+      [30300, 400],
+      [30500, 400],
+      [60000, finalLength],
+    ];
+    expect(bodyGrowth(samples, 30400)).toEqual({ ok: true, reason: '', baseLength: 0, draftLength: 400, intermediateSamples: 3, distinctLengths: 2 });
   });
 
   // 回归：线上示例视频最终验收那次（evidence/final/online-sample/run1）的真实采样，抄了开头、开始出字前后和结尾三段。
@@ -126,7 +165,7 @@ describe('bodyGrowth', () => {
       [117738, 10821],
       [119255, 10821],
     ];
-    expect(bodyGrowth(samples, 117982)).toEqual({ ok: true, reason: '', baseLength: 0, finalLength: 10821, intermediateSamples: 7 });
+    expect(bodyGrowth(samples, 117982)).toEqual({ ok: true, reason: '', baseLength: 0, draftLength: 10821, intermediateSamples: 7, distinctLengths: 7 });
   });
 
   // 回归：补充验收 V01（268 字的短文）的真实采样结尾。正文 29971 ms 开始到达，服务端 30402 ms 模型结束，前后约 470 毫秒；
@@ -142,7 +181,7 @@ describe('bodyGrowth', () => {
       [29491, 0],
       [30994, 334],
     ];
-    expect(bodyGrowth(samples, 30444)).toMatchObject({ ok: false, reason: '完成前没有看到中间长度：正文从 0 字一步变成 334 字' });
+    expect(bodyGrowth(samples, 30444)).toMatchObject({ ok: false, reason: '初稿写完前没有看到中间长度：正文从 0 字一步变成 334 字' });
   });
 });
 

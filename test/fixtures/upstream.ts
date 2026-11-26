@@ -49,12 +49,16 @@ export function geminiJson(value: unknown, finishReason = 'STOP') {
   return { candidates: [{ content: { parts: [{ text: JSON.stringify(value) }], role: 'model' }, finishReason }] };
 }
 
-export type GeminiPurpose = 'article' | 'rewrite' | 'review' | 'requirements' | 'summary';
+export type GeminiPurpose = 'article' | 'rewrite' | 'review' | 'reconcile' | 'requirements' | 'summary';
 
-/** 按系统提示词的开头判断一次 Gemini 请求是做什么的（文章、按要求修订、对照字幕核对、提取约束、5W1H） */
+/** 重叠修订建议合并处理的系统提示词开头；它和两种核对一样以"你是事实核对编辑"开头，要先单独认出来 */
+const RECONCILE_PREFIX = '你是事实核对编辑。一篇根据视频字幕写成的文章刚做过两路核对';
+
+/** 按系统提示词的开头判断一次 Gemini 请求是做什么的（文章、按要求修订、对照字幕核对、重叠修订的合并处理、提取约束、5W1H） */
 export function geminiPurpose(url: string, body: unknown): GeminiPurpose {
   const system = String((body as { systemInstruction?: { parts?: { text?: string }[] } } | null)?.systemInstruction?.parts?.[0]?.text ?? '');
   if (url.includes('streamGenerateContent')) return system.startsWith('你是中文内容编辑。下面是一篇') ? 'rewrite' : 'article';
+  if (system.startsWith(RECONCILE_PREFIX)) return 'reconcile';
   if (system.startsWith('你是事实核对编辑')) return 'review';
   if (system.startsWith('你负责从用户写给文章生成器的要求里')) return 'requirements';
   return 'summary';

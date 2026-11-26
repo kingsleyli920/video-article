@@ -1,10 +1,10 @@
 import { countArticleChars, parseArticle, validateArticle } from '../shared/article';
 import { LIMITS, REVIEW_TIMING } from '../shared/limits';
-import type { ArticleReview, Revision } from '../shared/types';
+import type { ArticleReview, Revision, SuggestionStage, UnappliedSuggestion } from '../shared/types';
 import { AppError } from './app-error';
 import type { Prompt } from './gemini';
 import { checkRequirements, describeRequirements, hasRequirements, rewritePrompt, type Requirements } from './requirements';
-import { applyRevisions, fidelityReviewPrompt, parseIssues, reviewPrompt, splitForReview, REVIEW_SCHEMA, type RejectReason } from './review';
+import { applyRevisions, evidenceInTranscript, fidelityReviewPrompt, parseIssues, parseReconcile, reconcilePrompt, reviewPrompt, splitForReview, RECONCILE_SCHEMA, REVIEW_SCHEMA, type RejectReason, type ReviewIssue } from './review';
 import type { VideoMeta } from './youtube';
 
 /** 收尾阶段要用到的模型调用，由生成流程提供（带超时、备用模型和取消），测试里可以换成替身 */
@@ -44,6 +44,8 @@ export function assertArticleLength(markdown: string): void {
  * 1. 核对可计算约束，并在有字数上限时尽量为核对补字预留两成空间；两种需要共用至多一次整篇修订。
  *    修订后仍不满足用户原约束时报 requirements_unmet；内部预留目标不是新的硬性约束，不用截断来凑字数。
  * 2. 按章核对与一次整篇语义限定复核并行；先合并逐章修订，再应用整篇建议，所有替换经过相同校验（见 review.ts）。
+ *    要改的句子已被另一条修订改过、按原文定位不到的建议，不直接丢弃：重复的记为已覆盖，其余基于当前文章再做一次合并处理。
+ *    没有采用的建议连同来源阶段和处置结果记进 review.unapplied。
  * 3. 修订完再核对一遍结构和约束，确认局部修订没有破坏它们。
  * 任何一步的模型调用失败都会让这次生成失败（review_failed），不会把没核对过的文章当成已完成。
  */
@@ -86,16 +88,59 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
     readIssues(fidelityReviewPrompt({ video, transcriptText, instructions, outline, section: markdown })),
   ]).catch((err: unknown) => failReview(err, '对照字幕核对没有完成'));
 
-  // 两路基于同一份核对前文章；已被逐章修订替换的旧 quote 会被校验拒绝，不能覆盖已改好的内容。
+  // 两路基于同一份核对前文章：先合并逐章修订，再应用整篇建议。
   const combined = chapterOutcomes.map((o) => o.markdown).join('');
   const fidelityOutcome = { ...applyRevisions(combined, fidelity.issues, transcriptText), malformed: fidelity.malformed.length };
-  const outcomes = [...chapterOutcomes, fidelityOutcome];
-  const reviewed = fidelityOutcome.markdown;
-  const revisions = outcomes.flatMap((o) => o.applied);
+  const staged: { stage: SuggestionStage; outcome: (typeof chapterOutcomes)[number] }[] = [...chapterOutcomes.map((outcome) => ({ stage: 'chapter' as const, outcome })), { stage: 'article', outcome: fidelityOutcome }];
+  let reviewed = fidelityOutcome.markdown;
+  const revisions = staged.flatMap((s) => s.outcome.applied);
   const rejected: FinalizeResult['rejected'] = {};
-  for (const o of outcomes) {
-    for (const r of o.rejected) rejected[r.reason] = (rejected[r.reason] ?? 0) + 1;
-    if (o.malformed) rejected.malformed = (rejected.malformed ?? 0) + o.malformed;
+  const count = (reason: RejectReason, n = 1) => (rejected[reason] = (rejected[reason] ?? 0) + n);
+  const unapplied: UnappliedSuggestion[] = [];
+  const pending: { stage: SuggestionStage; issue: ReviewIssue }[] = [];
+  for (const { stage, outcome } of staged) {
+    if (outcome.malformed) count('malformed', outcome.malformed);
+    for (const { issue, reason } of outcome.rejected) {
+      // 引文在核对前的文章里有、轮到它时却定位不到：多数是它要改的句子已被另一条修订改过（也可能是引了别的章的句子）。
+      // 这类建议不能直接丢，见 reconcilePrompt；rejected 里按最终处置计数，不记成 quote_not_found。
+      const overlapped = reason === 'quote_not_found' && markdown.includes(issue.quote);
+      if (!overlapped) {
+        count(reason);
+        unapplied.push({ stage, disposition: reason, ...issue });
+      } else if (!evidenceInTranscript(issue.evidence, transcriptText)) {
+        count('evidence_not_in_transcript');
+        unapplied.push({ stage, disposition: 'evidence_not_in_transcript', ...issue });
+      }
+      // 另一条修订已经写入了一模一样的替换文字：重复建议，问题已改正
+      else if (issue.replacement.trim() !== '' && reviewed.includes(issue.replacement) && !markdown.includes(issue.replacement)) unapplied.push({ stage, disposition: 'covered', ...issue, note: '另一条修订已写入相同的替换文字' });
+      else pending.push({ stage, issue });
+    }
+  }
+
+  if (pending.length > 0) {
+    const raw = await model.json(reconcilePrompt({ video, article: reviewed, applied: revisions, pending: pending.map((p) => p.issue) }), RECONCILE_SCHEMA).catch((err: unknown) => failReview(err, '重叠修订建议的合并处理没有完成'));
+    const items = parseReconcile(raw, pending.length);
+    if (!items) throw new AppError('review_failed', '重叠修订建议的合并处理没有完成：模型没有对每条建议给出有效结论');
+    for (const [index, { stage, issue }] of pending.entries()) {
+      const item = items[index]!;
+      if (item.status !== 'revise') {
+        unapplied.push({ stage, disposition: item.status, ...issue, note: item.note });
+        continue;
+      }
+      unapplied.push({ stage, disposition: 'superseded', ...issue, note: item.note });
+      const next: ReviewIssue = { type: issue.type, quote: item.quote, replacement: item.replacement, evidence: item.evidence.trim() || issue.evidence, problem: issue.problem };
+      const outcome = applyRevisions(reviewed, [next], transcriptText);
+      // 不能把前面已经改掉的初稿写法又改回来
+      const reverts = outcome.applied.length > 0 && revisions.some((r) => r.before.trim().length >= 4 && !reviewed.includes(r.before) && outcome.markdown.includes(r.before));
+      const reason: RejectReason | null = reverts ? 'reverts_earlier' : (outcome.rejected[0]?.reason ?? null);
+      if (reason) {
+        count(reason);
+        unapplied.push({ stage: 'reconcile', disposition: reason, ...next, note: item.note });
+      } else {
+        reviewed = outcome.markdown;
+        revisions.push(...outcome.applied);
+      }
+    }
   }
 
   // 局部修订不改标题层级，正常不会破坏结构；万一破坏了就不能保存
@@ -115,6 +160,7 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
       revisions: revisions.length,
       rewritten,
       checks: hasRequirements(requirements) ? describeRequirements(reviewed, requirements) : [],
+      ...(unapplied.length > 0 ? { unapplied } : {}),
     },
   };
 }
@@ -134,7 +180,7 @@ export function groupSections(sections: string[], max: number): string[] {
  */
 function failReview(err: unknown, step: string): never {
   if (!(err instanceof AppError)) throw err;
-  if (['gemini_billing', 'gemini_quota', 'gemini_region', 'requirements_unmet', 'article_too_long'].includes(err.code)) throw err;
+  if (['gemini_billing', 'gemini_quota', 'gemini_region', 'requirements_unmet', 'requirements_unconfirmed', 'article_too_long'].includes(err.code)) throw err;
   // summary_invalid 是结构化输出解析失败的通用错误码，文案里的"总结"在这里不适用，换成中性的说法
   const cause = err.code === 'summary_invalid' ? `模型返回的格式无效${err.detail ? `（${err.detail}）` : ''}` : err.message;
   throw new AppError('review_failed', `${step}：${cause}`);

@@ -23,7 +23,7 @@ const STAGE_TEXT: Record<GenerationStage, string> = {
 };
 
 /** 核对没通过时文章下方的说明用"未通过核对"，其他失败是"内容不完整" */
-const REVIEW_ERRORS = new Set(['requirements_unmet', 'review_failed']);
+const REVIEW_ERRORS = new Set(['requirements_unmet', 'requirements_unconfirmed', 'review_failed']);
 
 const form = byId<HTMLFormElement>('generate-form');
 const urlInput = byId<HTMLInputElement>('video-url');

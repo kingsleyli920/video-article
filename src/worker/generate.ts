@@ -9,7 +9,7 @@ import { streamText, type FallbackConfig, type GeminiOptions, type GeminiStats }
 import { generateJsonWithFallback, scaleBudget } from './json-model';
 import { checkDamagedNumbers } from './number-check';
 import { articlePrompt } from './prompts';
-import { NO_REQUIREMENTS, parseRequirements, REQUIREMENTS_SCHEMA, requirementsPrompt, type Requirements } from './requirements';
+import { confirmRequirements, REQUIREMENTS_SCHEMA, requirementsPrompt, type Requirements } from './requirements';
 import { createStore, type GenerationContext } from './store';
 import { relayOptions } from './transcript-relay';
 import { loadTranscript } from './transcripts';
@@ -250,7 +250,10 @@ function assertFinished(finishReason: string | null): void {
   throw new AppError('blocked', finishReason);
 }
 
-/** 没有用户要求时不调用模型；提取用低档思考（只是从一句话里找数字），主模型繁忙时换备用模型 */
+/**
+ * 没有用户要求时不调用模型；提取用低档思考（只是从一句话里找数字），主模型繁忙时换备用模型。
+ * 提取结果确认不了时有限次重新提取，仍不行就失败（见 confirmRequirements）。
+ */
 async function extractRequirements(
   instructions: string,
   gemini: GeminiOptions,
@@ -259,12 +262,25 @@ async function extractRequirements(
   signal: AbortSignal,
   usage: { requirements: unknown },
 ): Promise<Requirements> {
-  if (!instructions.trim()) return NO_REQUIREMENTS;
-  const { raw, model, stats } = await generateJsonWithFallback({ ...gemini, thinkingLevel: 'low' }, fallback, requirementsPrompt(instructions), REQUIREMENTS_SCHEMA, scaleBudget(REQUIREMENTS_TIMING, scale), {
-    purpose: 'requirements',
-    signal,
-  });
-  const { requirements, dropped } = parseRequirements(raw, instructions);
-  usage.requirements = { model, usage: stats.usage ?? null, dropped };
-  return requirements;
+  const calls: { model: string; usage: unknown }[] = [];
+  const tries: string[][] = [];
+  try {
+    const { requirements } = await confirmRequirements(
+      instructions,
+      async () => {
+        const { raw, model, stats } = await generateJsonWithFallback({ ...gemini, thinkingLevel: 'low' }, fallback, requirementsPrompt(instructions), REQUIREMENTS_SCHEMA, scaleBudget(REQUIREMENTS_TIMING, scale), {
+          purpose: 'requirements',
+          signal,
+        });
+        calls.push({ model, usage: stats.usage ?? null });
+        return raw;
+      },
+      undefined,
+      tries,
+    );
+    return requirements;
+  } finally {
+    // 失败时也记下每次提取丢了哪些项
+    usage.requirements = calls.length ? { calls, tries } : null;
+  }
 }

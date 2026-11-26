@@ -24,6 +24,7 @@ export const ERROR_MESSAGES = {
   article_too_long: '文章超过长度上限，已停止生成',
   invalid_structure: '文章缺少有效的章节结构，无法提供章节总结',
   requirements_unmet: '文章没有满足生成要求里的硬性约束，修订后仍不满足',
+  requirements_unconfirmed: '没能确认生成要求里的字数、章节等硬性约束，这次生成没有保存，请换一种说法重试',
   review_failed: '内容核对没有完成，这次生成没有保存',
   save_failed: '保存生成上下文失败，章节总结不可用',
   generation_not_found: '这次生成已过期或不存在，请重新生成',

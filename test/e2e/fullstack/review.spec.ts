@@ -122,7 +122,7 @@ test('正文在 stage: reviewing 之前就在页面上逐步增长，核对中�
     list.filter((s) => s.t <= reviewingAt).map((s): Sample => [s.t, s.len]),
     reviewingAt,
   );
-  console.log(`reviewing 之前的中间长度采样 ${growth.intermediateSamples} 条，正文 ${growth.baseLength} → ${growth.finalLength} 字符`);
+  console.log(`reviewing 之前的中间长度采样 ${growth.intermediateSamples} 条（${growth.distinctLengths} 种长度），正文 ${growth.baseLength} → ${growth.draftLength} 字符`);
   expect(growth.reason).toBe('');
   expect(growth.ok).toBe(true);
   // 7 段、每段间隔 300 毫秒、每 40 毫秒采一次：中间长度至少应有十几条，这里只要求 3 条，避免机器忙时偶发失败

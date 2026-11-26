@@ -2,9 +2,10 @@
 
 **当前结果**（代码 `008de50` 之后的工作树，线上 `d1de7b0d`，2026-11-26）：
 
-- 不调用真实模型的测试 840 项全部通过：
-  - vitest 750 项：L1a 412、L1b 69、L3 51、L1c 148、L1d 70；
+- 不调用真实模型的测试 918 项全部通过：
+  - vitest 828 项：L1a 478、L1b 77、L3 54、L1c 148、L1d 71；
   - Playwright 90 项：L2 33、L5 受控全栈 15、L5 视觉 42（桌面、手机各 21）。
+  - 独立审查三项修复之后重跑了 vitest、L2 和 L5 受控全栈；L5 视觉和覆盖率没有重跑，沿用上一轮的数字。
 - L1a 到 L1d 覆盖率：语句 98.58%、分支 91.34%、函数 98.28%。
 - 类型检查、构建、泄漏检查、部署后只读检查和线上冒烟都通过。
 - 真实模型的验收结论和逐条需求对照见 [需求验收对照](REQUIREMENTS_ACCEPTANCE.md)。
@@ -119,7 +120,7 @@
 | 构建和泄漏检查 | `npm run check:leaks` | 通过：前端产物和 Worker 打包产物里都没有凭据 |
 | 实际启动 | 用真实配置跑 `npm run dev`，再跑 `npm run smoke -- http://127.0.0.1:8787` | 8 项通过，没有调用模型 |
 | 部署 | `npm run deploy`（核对完整账户 ID） | 版本 `df12f059` |
-| 部署后检查（只读） | `npm run cf:deploy-check` | 通过。100% 流量在新版本上；变量和 `wrangler.jsonc` 一致；三个测试专用变量都不在线上；secret 和 DO 绑定存在；`other-worker` 未改动 |
+| 部署后检查（只读） | `npm run cf:deploy-check` | 通过。100% 流量在新版本上；变量和 `wrangler.jsonc` 一致；三个测试专用变量都不在线上；secret 和 DO 绑定存在，账户里其他 Worker 未改动 |
 | 线上冒烟 | `npm run smoke -- https://video-article.kingsleyli920.workers.dev` | 8 项通过 |
 | 线上全链路（真实 YouTube 和 Gemini） | `E2E_BASE_URL=<线上> npm run test:e2e:live` | 3 项通过，详细数据见下 |
 
@@ -402,7 +403,7 @@
 
 - 来源面板 0.8 秒出现（正文 0 字），浏览器首个正文 2.9 秒、首个可读段落 4.2 秒，模型完成 81.7 秒，保存成功，4 章 5,413 字；字幕实时获取；两章 5W1H 都是 `cached=false`，分别 7.8 秒和 4.8 秒。
 - 内容通读后的偏差：压缩明显，快问快答被并成一个主持人没问过的问题；占位被嵌进句子，写成"大约有〔字幕此处数字不清，无法确定具体数量〕项"；"算盘计算模式"，原话是 adding machines；把 "us" 补成"网景"；50 亿和 50 到 60 亿混写；没写 Ilya 等人的投资关系。
-- 部署后只读检查通过：100% 流量在 `94f81320`，模型变量和 `wrangler.jsonc` 一致，测试专用变量不在线上，`other-worker` 未改动。线上冒烟 8 项通过。
+- 部署后只读检查通过：100% 流量在 `94f81320`，模型变量和 `wrangler.jsonc` 一致，测试专用变量不在线上，账户里其他 Worker 未改动。线上冒烟 8 项通过。
 
 ### 等待体验的测试
 
@@ -478,7 +479,7 @@
 |---|---|
 | `npm run cf:verify` | 账户 ID 和 `.env` 完整一致，wrangler 用的是项目令牌 |
 | `npm run deploy` | 版本 `9e80c523-6941-4279-b94c-a23aa3b70d4d`，2026-11-25T19:10:12Z |
-| `npm run cf:deploy-check` | 通过。`GEMINI_MODEL=gemini-4-hydrogen`、`GEMINI_THINKING_LEVEL=high`、`GEMINI_FALLBACK_MODEL=gemini-3.6-flash`、`GEMINI_FALLBACK_THINKING_LEVEL=low`；测试专用变量不在线上；`other-worker` 未改动 |
+| `npm run cf:deploy-check` | 通过。`GEMINI_MODEL=gemini-4-hydrogen`、`GEMINI_THINKING_LEVEL=high`、`GEMINI_FALLBACK_MODEL=gemini-3.6-flash`、`GEMINI_FALLBACK_THINKING_LEVEL=low`；测试专用变量不在线上，账户里其他 Worker 未改动 |
 | `npm run smoke -- <线上地址>` | 8 项通过 |
 | 余额恢复 | 部署前直接调用 `gemini-4-hydrogen` 返回 HTTP 200，服务档 `standard` |
 

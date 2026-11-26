@@ -55,10 +55,29 @@ describe('核对出修订', () => {
     });
     const done = eventOf(gen.events, 'done')!;
     expect(done.chars).toBe(77);
-    expect(done.review).toEqual({ sections: 2, revisions: 1, rewritten: null, checks: [] });
+    // 整篇复核返回同一个问题，章内已改过：旧 quote 定位不到，替换文字已在文章里，记为 covered，不调合并处理
+    expect(done.review).toEqual({
+      sections: 2,
+      revisions: 1,
+      rewritten: null,
+      checks: [],
+      unapplied: [
+        {
+          stage: 'article',
+          disposition: 'covered',
+          type: 'quantity',
+          quote: '大约有1200项。',
+          replacement: '大约有一千多项（字幕此处数字不清）。',
+          problem: '字幕里的数字不完整，不能确定是 1200',
+          evidence: "we're tracking on the order of",
+          note: '另一条修订已写入相同的替换文字',
+        },
+      ],
+    });
     expect(done.numberWarnings).toEqual([]);
+    expect(ofKind(await stack.requests(), 'reconcile')).toHaveLength(0);
 
-    // 两章加整篇复核；整篇会返回同一个问题，但章内已改过，旧 quote 应被拒绝。
+    // 两章加整篇复核
     const reviews = ofKind(await stack.requests(), 'review');
     expect(reviews.map((r) => r.model)).toEqual(['mock-primary', 'mock-primary', 'mock-primary']);
     expect(reviews.map((r) => promptOf(r).user.includes('<section>\n## 第二章：数字'))).toEqual([false, true, false]);
@@ -230,3 +249,88 @@ describe('核对阶段的失败和断开', () => {
     expect(summary.status).toBe(404);
   });
 });
+
+describe('重叠修订的合并处理（审查方反例）', () => {
+  const EVIDENCE = "Host: Our pilot cost about 20 dollars. This is my estimate, not the guest's statement.";
+  const FINAL = '# 试点\n\n## 费用\n\n主持人估计，试点费用约为20美元。';
+
+  // 抓：经真实 HTTP 时整篇建议因句子已被逐章改过而丢掉，保存的文章"嘉宾表示，试点费用约为20美元。"归属仍错；
+  // 合并请求没有发到上游或被当成核对请求；5W1H 用的不是最终文章
+  it('逐章改数字、整篇改归属：最终文章是"主持人估计…"，5W1H 上游请求里的章节与之一致', async () => {
+    await stack.scenario({
+      videos: { mockvideo01: { kind: 'ok', title: 'Pilot cost', channel: '测试频道', description: '', cues: [[0, "Host: Our pilot cost about 20 dollars. This is my estimate, not the guest's statement."]] } },
+      streams: { 'mock-primary': { kind: 'ok', texts: ['# 试点\n\n## 费用\n\n', '嘉宾表示，试点费用为200美元。'], intervalMs: 20 } },
+      reviews: {
+        'mock-primary': {
+          kind: 'ok',
+          issues: [{ type: 'quantity', quote: '试点费用为200美元。', evidence: EVIDENCE, problem: '金额是约 20 美元', replacement: '试点费用约为20美元。' }],
+          fidelityIssues: [{ type: 'attribution', quote: '嘉宾表示，试点费用为200美元。', evidence: EVIDENCE, problem: '这是主持人的估计，不是嘉宾的说法', replacement: '主持人估计，试点费用约为20美元。' }],
+        },
+      },
+      reconciles: {
+        'mock-primary': {
+          kind: 'response',
+          result: { items: [{ index: 0, status: 'revise', note: '数字已改对，归属仍错', quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。', evidence: '' }] },
+        },
+      },
+    });
+    const gen = await generate(stack, { url: MOCK_URL });
+
+    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'stage', 'revised', 'done']);
+    expect(eventOf(gen.events, 'revised')!.markdown).toBe(FINAL);
+    const done = eventOf(gen.events, 'done')!;
+    expect(done.review.revisions).toBe(2);
+    expect(done.review.unapplied).toEqual([
+      { stage: 'article', disposition: 'superseded', type: 'attribution', quote: '嘉宾表示，试点费用为200美元。', replacement: '主持人估计，试点费用约为20美元。', problem: '这是主持人的估计，不是嘉宾的说法', evidence: EVIDENCE, note: '数字已改对，归属仍错' },
+    ]);
+    const reconciles = ofKind(await stack.requests(), 'reconcile');
+    expect(reconciles.map((r) => r.model)).toEqual(['mock-primary']);
+    expect(promptOf(reconciles[0]!).user).toContain('<article>\n# 试点\n\n## 费用\n\n嘉宾表示，试点费用约为20美元。\n</article>');
+    expect(ofKind(await stack.requests(), 'review')).toHaveLength(2);
+
+    await stack.reset();
+    const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
+    expect(summary.status).toBe(200);
+    const user = promptOf(ofKind(await stack.requests(), 'summary')[0]!).user;
+    expect(user).toContain('<current_chapter id="1">\n## 费用\n\n主持人估计，试点费用约为20美元。\n</current_chapter>');
+    expect(user).not.toContain('嘉宾表示');
+  });
+});
+
+describe('约束提取确认不了', () => {
+  // 抓：经真实 HTTP 时提取返回 {}（字段全缺）被当成"用户没提约束"，文章照样保存、5W1H 可用
+  it('三次都返回 {}：error requirements_unconfirmed，约束提取 3 次，随后取 5W1H 返回 generation_not_found', async () => {
+    await stack.scenario({ requirements: { 'mock-primary': { kind: 'ok', result: {} } } });
+    const gen = await generate(stack, { url: MOCK_URL, instructions: '不超过1500字' });
+
+    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'error']);
+    expect(gen.events.at(-1)!.data).toEqual({
+      code: 'requirements_unconfirmed',
+      message: '没能确认生成要求里的字数、章节等硬性约束，这次生成没有保存，请换一种说法重试（提取了 3 次，模型返回的格式都无效）',
+      partial: true,
+    });
+    const requests = await stack.requests();
+    expect(ofKind(requests, 'requirements').map((r) => r.model)).toEqual(['mock-primary', 'mock-primary', 'mock-primary']);
+    expect(ofKind(requests, 'review')).toHaveLength(0);
+
+    await stack.reset();
+    const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
+    expect(summary.status).toBe(404);
+    expect(summary.body).toEqual(NOT_FOUND);
+    expect(ofKind(await stack.requests(), 'summary')).toHaveLength(0);
+  });
+
+  // 抓：第二次提取正确时仍按第一次（没有约束）执行，68 字的初稿没有按 50 字上限修订
+  it('第一次 {}、第二次正确：按 50 字上限修订后完成', async () => {
+    await stack.scenario({
+      requirements: { 'mock-primary': { kind: 'sequence', results: [{}, { ...NONE, maxChars: 50, charsQuote: '不超过 50 字' }] } },
+      rewrites: { 'mock-primary': { kind: 'ok', texts: [SHORT], intervalMs: 0 } },
+    });
+    const gen = await generate(stack, { url: MOCK_URL, instructions: '全文不超过 50 字' });
+    expect(gen.events.at(-1)!.event).toBe('done');
+    expect(eventOf(gen.events, 'revised')!.markdown).toBe(SHORT);
+    expect(eventOf(gen.events, 'done')!.review.checks).toEqual(['全文 46 字，上限 50 字']);
+    expect(ofKind(await stack.requests(), 'requirements')).toHaveLength(2);
+  });
+});
+

@@ -123,5 +123,5 @@
 - **硬约束检查**：L1a `test/be-unit/requirements.test.ts`、`finalize.test.ts`，L1b `test/be-ft/requirements.test.ts`，L3 `test/be-e2e/review.test.ts`，L5 `test/e2e/fullstack/review.spec.ts`；线上实例是 V08（1,515 → 1,159 字）。
 - **备用 thinking**：L1b `test/be-ft/generate.test.ts`"备用模型没有配置思考档时……"，L1a `test/be-unit/summary-model.test.ts`；变异验证（恢复默认参数后用例失败）。
 - **字数统计**：L1a `test/be-unit/article.test.ts`，L1c `test/fe-unit/article-chars.test.ts`（统计值等于渲染后可见文字的长度）。
-- **临时探针 Worker**：`video-article-probe` 已删除。部署后检查显示账户里只有 `other-worker`（没有动过，修改时间仍是 2024-07-29）和 `video-article`。
+- **临时探针 Worker**：`video-article-probe` 已删除。部署后检查显示账户里与本项目有关的 Worker 只有 `video-article`，其他 Worker 没有动过。
 - **`docs/evidence/`**（约 8 MB，131 个文件）：V13、V15 五轮本地复验的初稿、最终稿、修订、请求记录和当轮源码快照，以及一次受控运行的输出和 4 张截图。随 `git archive` 进入审查包的 `source/`，凭据扫描（`.env` 里四个真实值的精确匹配、Google API key、Bearer、JWT）都是 0 命中。
