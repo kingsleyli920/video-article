@@ -1,0 +1,30 @@
+[
+  {
+    "type": "unsupported",
+    "before": "高收入与抵押品增强信用资质",
+    "after": "相对于债务的高收入与抵押品增强信用资质",
+    "reason": "原文省略了收入需“相对于债务”这一必要条件，将其简化为一般性的“高收入”。",
+    "evidence": "A creditworthy borrower has two things: the ability to repay and collateral. Having a lot of income in relation to his debt gives him the ability to repay. In the event that he can't repay, he has valuable assets to use as collateral that can be sold."
+  },
+  {
+    "type": "attribution",
+    "before": "（如1929年美国、1989年日本及2008年美欧与世界多地）。",
+    "after": "（视频提到，如1929年美国、1989年日本及2008年美欧与世界多地）。",
+    "reason": "历史年份与国家地区的例证缺少“视频提到”等局部来源限定。",
+    "evidence": "For the United States, Europe and much of the rest of the world this happened in 2008. It happened for the same reason it happened in Japan in 1989 and in the United States back in 1929."
+  },
+  {
+    "type": "attribution",
+    "before": "（如美国20世纪30年代与2008年）",
+    "after": "（如视频提到的美国20世纪30年代与2008年）",
+    "reason": "美国在20世纪30年代和2008年利率降至0%的历史断言缺少局部来源限定。",
+    "evidence": "Interest rates in the United States hit 0% during the deleveraging of the 1930s and again in 2008."
+  },
+  {
+    "type": "attribution",
+    "before": "利率归零后央行凭空印钞（如2008年美联储印钞超2万亿美元）",
+    "after": "利率降至接近0后央行凭空印钞（如视频提到2008年美联储印钞超2万亿美元）",
+    "reason": "字幕说利率降至“接近0”而非绝对“归零”，且2008年美联储印钞超2万亿美元的统计缺少局部来源限定。",
+    "evidence": "Having already lowered its interest rates to nearly 0 - it's forced to print money. Unlike cutting spending, debt reduction, and wealth redistribution, printing money is inflationary and stimulative. Inevitably, the central bank prints new money — out of thin air — and uses it to buy financial assets and government bonds. It happened in the United States during the Great Depression and again in 2008, when the United States' central bank — the Federal Reserve — printed over two trillion dollars."
+  }
+]

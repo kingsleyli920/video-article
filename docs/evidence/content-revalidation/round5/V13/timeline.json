@@ -1,0 +1,87 @@
+{
+  "outcome": "error",
+  "probeError": null,
+  "headersAt": 21,
+  "responseHeaders": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "content-encoding": "",
+    "cache-control": "no-cache, no-transform",
+    "cf-ray": ""
+  },
+  "metaAt": 29,
+  "firstDeltaAt": null,
+  "firstParagraphAt": null,
+  "lastDeltaAt": null,
+  "stages": [
+    [
+      21,
+      "transcript"
+    ],
+    [
+      29,
+      "generating"
+    ]
+  ],
+  "revisedAt": null,
+  "endAt": 560,
+  "meta": {
+    "generationId": "7661ba9ee114082a979072dd6e529f0a59d675f754da5fb1635bfc8e4662e8c5",
+    "video": {
+      "id": "PHe0bXAIuk0",
+      "title": "How The Economic Machine Works by Ray Dalio",
+      "channel": "Principles by Ray Dalio",
+      "lengthSeconds": 1860
+    },
+    "transcript": {
+      "source": "live",
+      "language": "en",
+      "kind": "manual",
+      "chars": 26211,
+      "preview": [
+        {
+          "time": "00:00",
+          "text": "How the economic machine works, in 30 minutes. The economy works like a simple machine. But many people don't understand it — or they don't agree on how it works"
+        },
+        {
+          "time": "09:32",
+          "text": "You just created credit. Out of thin air. It's not until you pay the bar tab later that the asset and liability disappear, the debt goes away and the transaction is settled."
+        },
+        {
+          "time": "19:24",
+          "text": "2. debts are reduced through defaults and restructurings. 3. wealth is redistributed from the 'haves' to the 'have nots'. and finally, 4. the central bank prints new money."
+        }
+      ]
+    },
+    "model": "gemini-4-hydrogen"
+  },
+  "done": null,
+  "failure": {
+    "code": "gemini_billing",
+    "message": "Gemini 账户的预付额度已用完，暂时无法生成",
+    "partial": false
+  },
+  "timeline": [
+    {
+      "ms": 21,
+      "bytes": 43,
+      "events": [
+        "stage"
+      ]
+    },
+    {
+      "ms": 29,
+      "bytes": 992,
+      "events": [
+        "meta",
+        "stage"
+      ]
+    },
+    {
+      "ms": 559,
+      "bytes": 133,
+      "events": [
+        "error"
+      ]
+    }
+  ]
+}

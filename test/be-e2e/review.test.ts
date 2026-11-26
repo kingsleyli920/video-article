@@ -3,6 +3,7 @@
  * 覆盖"核对出修订 → 保存最终版本 → 5W1H 用最终版本"、"超字数 → 整篇修订 → 完成"、核对时客户端断开、核对超时。
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { LIMITS } from '../../src/shared/limits';
 import { readSse } from '../../src/shared/sse';
 import { deltaText, eventOf, generate, ofKind, promptOf, sleep, summarize, waitFor } from './api';
 import { ARTICLE_MARKDOWN, MOCK_URL, TRANSCRIPT_TEXT } from './expected';
@@ -57,10 +58,12 @@ describe('核对出修订', () => {
     expect(done.review).toEqual({ sections: 2, revisions: 1, rewritten: null, checks: [] });
     expect(done.numberWarnings).toEqual([]);
 
-    // 两章各一个核对请求，只有第二章的那个拿到了问题（模拟上游按 <section> 分发）
+    // 两章加整篇复核；整篇会返回同一个问题，但章内已改过，旧 quote 应被拒绝。
     const reviews = ofKind(await stack.requests(), 'review');
-    expect(reviews.map((r) => r.model)).toEqual(['mock-primary', 'mock-primary']);
-    expect(reviews.map((r) => promptOf(r).user.includes('<section>\n## 第二章：数字'))).toEqual([false, true]);
+    expect(reviews.map((r) => r.model)).toEqual(['mock-primary', 'mock-primary', 'mock-primary']);
+    expect(reviews.map((r) => promptOf(r).user.includes('<section>\n## 第二章：数字'))).toEqual([false, true, false]);
+    expect(promptOf(reviews[2]!).system).toContain('整篇文章的语义限定复核');
+    expect(promptOf(reviews[2]!).user).toContain(`<section>\n${ARTICLE_MARKDOWN}\n</section>`);
     for (const r of reviews) expect(promptOf(r).user).toContain(`<transcript>\n${TRANSCRIPT_TEXT}\n</transcript>`);
 
     await stack.reset();
@@ -103,6 +106,50 @@ describe('超字数 → 修订 → 完成', () => {
 });
 
 describe('核对阶段的失败和断开', () => {
+  it.each([
+    ['不是 JSON', { kind: 'invalid' as const }],
+    ['缺少 issues', { kind: 'response' as const, result: {} }],
+    ['issues 不是数组', { kind: 'response' as const, result: { issues: {} } }],
+  ])('核对响应%s：经 HTTP 发 review_failed，不发 done，也不保存', async (_name, behavior) => {
+    await stack.scenario({ reviews: { 'mock-primary': behavior, 'mock-fallback': behavior } });
+    const gen = await generate(stack, { url: MOCK_URL });
+    // SSE 已经开始，HTTP 状态仍为 200；失败必须以 error 事件结束，不能误报 done。
+    expect(gen.status).toBe(200);
+    expect(gen.contentType).toContain('text/event-stream');
+    expect(deltaText(gen.events)).toBe(ARTICLE_MARKDOWN);
+    expect(gen.events.at(-1)).toMatchObject({ event: 'error', data: { code: 'review_failed', partial: true } });
+    expect(eventOf(gen.events, 'done')).toBeUndefined();
+    expect(eventOf(gen.events, 'revised')).toBeUndefined();
+    const reviews = ofKind(await stack.requests(), 'review');
+    expect(reviews.some((r) => r.model === 'mock-primary')).toBe(true);
+    // 格式无效不属于可重试的繁忙/超时；直接失败，不把无效结果当成没有问题。
+    expect(reviews.every((r) => r.model === 'mock-primary')).toBe(true);
+
+    await stack.reset();
+    const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
+    expect(summary.status).toBe(404);
+    expect(summary.body).toEqual(NOT_FOUND);
+    expect(ofKind(await stack.requests(), 'summary')).toHaveLength(0);
+  });
+
+  it('重写稿超过全局长度上限：经 HTTP 报 article_too_long，5W1H 查不到未保存的上下文', async () => {
+    const oversized = `# 标题\n\n## 一\n\n${'a'.repeat(LIMITS.articleChars)}\n\n## 二\n\n正文。\n\n## 三\n\n正文。`;
+    await stack.scenario({
+      requirements: { 'mock-primary': { kind: 'ok', result: { ...NONE, chaptersMin: 3, chaptersMax: 3, chaptersQuote: '分三章' } } },
+      rewrites: { 'mock-primary': { kind: 'ok', texts: [oversized], intervalMs: 0 } },
+    });
+    const gen = await generate(stack, { url: MOCK_URL, instructions: '分三章写' });
+    expect(gen.events.at(-1)).toEqual({ event: 'error', data: { code: 'article_too_long', message: '文章超过长度上限，已停止生成', partial: true } });
+    expect(eventOf(gen.events, 'done')).toBeUndefined();
+    expect(eventOf(gen.events, 'revised')).toBeUndefined();
+    expect(ofKind(await stack.requests(), 'review')).toHaveLength(0);
+
+    await stack.reset();
+    const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
+    expect(summary.status).toBe(404);
+    expect(summary.body).toEqual(NOT_FOUND);
+  });
+
   // 抓：核对进行中用户关掉页面，核对请求没被取消（白白消耗额度），核对结束后文章照样被保存
   it('核对进行中中止 fetch：上游的核对请求被中止，该生成不保存', async () => {
     // 核对 4 秒后才返回"没有问题"；如果没被取消，结束后会正常保存
@@ -121,8 +168,8 @@ describe('核对阶段的失败和断开', () => {
         if (message.event === 'meta') generationId = (JSON.parse(message.data) as { generationId: string }).generationId;
         if (message.event === 'stage' && message.data.includes('reviewing')) break;
       }
-      // 等两个核对请求都到了上游再断开
-      await waitFor(async () => (ofKind(await stack.requests(), 'review').length === 2 ? true : null), 2_000, '两个核对请求到达上游');
+      // 等两章和整篇复核三个请求都到了上游再断开
+      await waitFor(async () => (ofKind(await stack.requests(), 'review').length === 3 ? true : null), 2_000, '三个核对请求到达上游');
     } finally {
       controller.abort();
     }
@@ -131,12 +178,12 @@ describe('核对阶段的失败和断开', () => {
     const reviews = await waitFor(
       async () => {
         const list = ofKind(await stack.requests(), 'review');
-        return list.length === 2 && list.every((r) => r.durationMs !== null) ? list : null;
+        return list.length === 3 && list.every((r) => r.durationMs !== null) ? list : null;
       },
       3_000,
       '核对请求的连接关闭',
     );
-    expect(reviews.map((r) => r.aborted)).toEqual([true, true]);
+    expect(reviews.map((r) => r.aborted)).toEqual([true, true, true]);
     expect(reviews.every((r) => r.durationMs! < 3_500)).toBe(true);
 
     // 等到核对本该返回之后再查，排除"只是还没来得及保存"
@@ -164,13 +211,13 @@ describe('核对阶段的失败和断开', () => {
     const reviews = await waitFor(
       async () => {
         const list = ofKind(await stack.requests(), 'review');
-        return list.length >= 3 && list.every((r) => r.durationMs !== null) ? list : null;
+        return list.length >= 4 && list.every((r) => r.durationMs !== null) ? list : null;
       },
       3_000,
       '核对请求的连接全部关闭',
     );
-    // 两章并行：各自主模型 7.5 秒超时后换备用；先超时的那一章让整次失败
-    expect(reviews.filter((r) => r.model === 'mock-primary').map((r) => r.aborted)).toEqual([true, true]);
+    // 两章和整篇复核并行：主模型各超时后换备用，任一路超时都会让整次失败
+    expect(reviews.filter((r) => r.model === 'mock-primary').map((r) => r.aborted)).toEqual([true, true, true]);
     for (const r of reviews.filter((r) => r.model === 'mock-primary')) {
       expect(r.durationMs!).toBeGreaterThanOrEqual(7_400);
       expect(r.durationMs!).toBeLessThan(8_500);

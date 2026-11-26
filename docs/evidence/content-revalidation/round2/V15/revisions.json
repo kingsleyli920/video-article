@@ -1,0 +1,37 @@
+[
+  {
+    "type": "unsupported",
+    "before": "终端提示符会变为 `sqlite>`",
+    "after": "终端提示符不再是美元符号，前面会显示 `sqlite`",
+    "reason": "字幕仅说明提示符不再是美元符号、前面会显示 sqlite，未说出带有 > 符号的 sqlite>，属于猜测屏幕内容。",
+    "evidence": "And notice how my terminal prompt changes. It's no longer dollar sign. It now says sqlite in front."
+  },
+  {
+    "type": "quantity",
+    "before": "在 Goodreads 数据中，例如《Go, Went, Gone》一书获得了约 592 票。",
+    "after": "在 Goodreads 数据演示中，讲师举例假设《Go, Went, Gone》一书可能获得了约 592 票。",
+    "reason": "原话使用了 maybe 和 let's say 的不确定与举例假设语气，文章省略后使 592 票变成关于 Goodreads 数据的确定事实。",
+    "evidence": "Maybe people on the internet decided to rate this book out of 5 and maybe Go, Went, Gone got about, let's say, 592 votes."
+  },
+  {
+    "type": "attribution",
+    "before": "像 `AVG`、`COUNT`、`SUM` 这类命令是否有统一的名称？",
+    "after": "这类命令是否也有一个名称？",
+    "reason": "AVG、COUNT、SUM 是讲师 Carter Zenke 反问确认时举的例子，并非提问学生自己说出。",
+    "evidence": "SPEAKER: I'm wondering, do these sorts of commands have a funct-- are these commands encode something like data types or just encode something? Do these commands also have a name? … CARTER ZENKE: Yeah. And can I ask are you referring to the AVG like COUNT like SUM those kinds of things, or?"
+  },
+  {
+    "type": "unsupported",
+    "before": "可见返回结果并非依据字符串长度，而是按字母表顺序比较：",
+    "after": "讲师据此指出，结果可能并非依据字符串长度，而似乎是按字母表顺序比较：",
+    "reason": "原话使用的是 probably not 和 seems 等推测语气，文章改写成了完全肯定的结论。",
+    "evidence": "So it's probably not that MAX gives us the length of the string, but what do you notice? Well, I see MIN is really early on in the alphabet. It has an A here, whereas MAX has a W, pretty low in the alphabet. And I would bet if we ordered these book titles, we would see a new name up at the very top and a Wretchedness, the book here, down at the bottom. So MAX seems to give us the lowest alphabetically, which is kind of contradictory with titles here or strings."
+  },
+  {
+    "type": "unsupported",
+    "before": "主要是因为拼写错误，将 `publisher` 误输成了 `pubsliher`，而表中并不存在名为 `pubsliher` 的列。",
+    "after": "是的，同时讲师表示自己好像拼错了查询，将 `publisher` 误输成了 `pubsliher`，而该列并不存在，于是 SQL 生成了这些数据。",
+    "reason": "讲师先肯定了学生关于引号的猜测（Yeah），再说明自己误拼了列名且该列不存在，文章写成了“主要是因为拼写错误”，加强了因果归因并遗漏了对引号作用的肯定回应。",
+    "evidence": "SPEAKER: Because of the quotes? … CARTER ZENKE: Yeah. So I think I mistyped some of my query here. I said it looks like \"pubsliher\" instead of \"publisher.\" And in this case, SQL will give me what I asked for. I said SELECT \"pubsliher\" from \"longlist.\" And says, OK, here it is. But that column doesn't exist so it creates this data for me."
+  }
+]

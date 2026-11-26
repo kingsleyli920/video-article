@@ -108,7 +108,7 @@ test('按要求修订：经历"正在修订"，完成后核对记录写明修订
   await start(page, '写给投资人，不超过 1200 字');
   await gen.push(stage('transcript'), ['meta', meta()], stage('generating'), ...deltas(DRAFT_MD));
   await gen.push(stage('revising'));
-  expect(await statusMain(page)).toBe('初稿没有满足生成要求，正在修订 · 已用时 0 秒');
+  expect(await statusMain(page)).toBe('正在修订初稿 · 已用时 0 秒');
   await gen.push(stage('reviewing'));
   expect(await statusMain(page)).toBe('正文已写完，正在对照字幕核对 · 已用时 0 秒');
   await gen.push(revised(REVIEWED_MD, []), ['done', done({ chars: 1018, review: REWRITTEN_REVIEW })]);

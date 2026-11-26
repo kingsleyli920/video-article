@@ -1,5 +1,5 @@
 import { Lexer } from 'marked';
-import { countArticleChars, parseArticle } from '../shared/article';
+import { articleText, countArticleChars, parseArticle } from '../shared/article';
 import type { Prompt } from './gemini';
 import { ARTICLE_RULES, videoBlock } from './prompts';
 import type { VideoMeta } from './youtube';
@@ -16,7 +16,7 @@ export interface Requirements {
   chaptersMax: number | null;
   /** 每一章要有的三级小节个数 */
   sectionsPerChapter: number | null;
-  /** 每一章都要出现的小节名 */
+  /** 每一章都要分别按此顺序出现的小节名 */
   sectionTitles: string[];
 }
 
@@ -110,6 +110,35 @@ export interface Violation {
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
+interface Subsection {
+  title: string;
+  body: string;
+}
+
+/** 三级标题各自开启小节；更低级的标题不单独充当正文，但其下的文字仍属于这个小节。 */
+function subsections(markdown: string): Subsection[] {
+  const sections: Subsection[] = [];
+  for (const token of Lexer.lex(markdown)) {
+    if (token.type === 'heading' && token.depth === 3) {
+      sections.push({ title: token.text.trim(), body: '' });
+    } else if (sections.length > 0 && token.type !== 'heading') {
+      sections[sections.length - 1]!.body += token.raw;
+    }
+  }
+  return sections;
+}
+
+/** 每个要求匹配后面一个独立的小节，不能让一个合并标题重复满足多个名称。 */
+function sectionTitlesInOrder(sections: Subsection[], titles: string[]): boolean {
+  let previous = -1;
+  for (const title of titles) {
+    const index = sections.findIndex((section, i) => i > previous && section.title.includes(title));
+    if (index === -1) return false;
+    previous = index;
+  }
+  return true;
+}
+
 /** 按统一口径核对文章是否满足约束。字数用 countArticleChars，章节用 parseArticle，小节数三级标题。 */
 export function checkRequirements(markdown: string, r: Requirements): Violation[] {
   const violations: Violation[] = [];
@@ -124,12 +153,19 @@ export function checkRequirements(markdown: string, r: Requirements): Violation[
   }
   if (r.sectionsPerChapter !== null || r.sectionTitles.length > 0) {
     for (const chapter of chapters) {
-      const sections = Lexer.lex(chapter.markdown).flatMap((t) => (t.type === 'heading' && t.depth === 3 ? [t.text.trim()] : []));
-      const missing = r.sectionTitles.filter((title) => !sections.some((s) => s.includes(title)));
+      const sections = subsections(chapter.markdown);
+      const missing = r.sectionTitles.filter((title) => !sections.some((s) => s.title.includes(title)));
       if (r.sectionsPerChapter !== null && sections.length !== r.sectionsPerChapter) {
         violations.push({ kind: 'sections', message: `第 ${chapter.id} 章有 ${sections.length} 个小节，要求每章 ${r.sectionsPerChapter} 个` });
       } else if (missing.length > 0) {
         violations.push({ kind: 'sections', message: `第 ${chapter.id} 章缺少小节：${missing.join('、')}` });
+      } else if (!sectionTitlesInOrder(sections, r.sectionTitles)) {
+        violations.push({ kind: 'sections', message: `第 ${chapter.id} 章的小节须分别按顺序列出：${r.sectionTitles.join('、')}` });
+      }
+      for (const [index, section] of sections.entries()) {
+        if (!articleText(section.body).trim()) {
+          violations.push({ kind: 'sections', message: `第 ${chapter.id} 章的第 ${index + 1} 个小节没有正文` });
+        }
       }
     }
   }
@@ -154,15 +190,15 @@ export function describeRequirements(markdown: string, r: Requirements): string[
   return lines;
 }
 
-/** 约束没满足时的有限修订：让模型在草稿基础上改到满足要求，不是从头重写，也不靠截断。 */
-export function rewritePrompt(input: { video: VideoMeta; transcriptText: string; instructions: string; markdown: string; violations: Violation[] }): Prompt {
-  const { video, transcriptText, instructions, markdown, violations } = input;
+/** 有限修订：满足用户原约束，并可为后续核对预留篇幅；不是从头重写，也不靠截断。 */
+export function rewritePrompt(input: { video: VideoMeta; transcriptText: string; instructions: string; markdown: string; violations: Violation[]; reserveChars?: number }): Prompt {
+  const { video, transcriptText, instructions, markdown, violations, reserveChars } = input;
   return {
-    system: `你是中文内容编辑。下面是一篇根据视频字幕写成的文章草稿，它没有满足用户提出的硬性要求。请修订草稿，使它满足全部要求。
+    system: `你是中文内容编辑。下面是一篇根据视频字幕写成的文章草稿，请按下面列出的用户硬性要求及核对前篇幅预留目标作有限修订。
 
 修订规则：
-- 只做满足要求所必需的改动，其余内容保持原样。
-- 要压缩篇幅时，删去次要的例子、重复和铺垫，保留关键结论、数字和人名；不能把具体数字改掉，也不能改写成更笼统的说法。写到字数上限的八成左右，留出余量。
+- 只做满足要求与预留目标所必需的改动，其余内容保持原样。
+- 要压缩篇幅时，删去次要的例子、重复和铺垫，保留关键结论、数字和人名；不能把具体数字改掉，也不能改写成更笼统的说法。为后续核对补回来源、条件等必要限定留出余量，不以删去这些限定来压缩。
 - 要补内容（例如缺少的小节、章节）时，只用字幕里有的内容。
 - 不加入字幕之外的事实，不改变原来的发言归属。
 - 直接输出修订后的完整文章，从一级标题开始，不要解释改了什么。
@@ -181,8 +217,12 @@ ${instructions.trim()}
 </user_requirements>
 
 <unmet_requirements note="程序按统一口径算出来的，以它为准">
-${violations.map((v) => `- ${v.message}`).join('\n')}
-</unmet_requirements>
+${violations.map((v) => `- ${v.message}`).join('\n') || '无'}
+</unmet_requirements>${reserveChars === undefined ? '' : `
+
+<review_headroom note="内部预留目标，不是用户硬性上限">
+请尽量将核对前全文压缩至不超过 ${reserveChars} 字，为内容核对补回必要限定留出空间。用户原有字数下限、章节及小节要求优先；不能为达到此目标删除必要限定。是否合格仍按用户原约束判断。
+</review_headroom>`}
 
 <draft>
 ${markdown}

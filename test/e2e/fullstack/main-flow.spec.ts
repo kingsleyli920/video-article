@@ -128,7 +128,7 @@ test('主流程：正文逐步出现 → 完成状态、章节、数字提示 �
   // 上游：字幕只在生成时取了一次；5W1H 请求里的字幕、简介、用户要求和章节都来自服务端保存的上下文，系统提示带人物规则全文
   // 有生成要求时，约束提取和写文章同时开始（两者到达上游的先后不固定，所以单独数）；文章写完后两章各核对一次，然后才是 5W1H
   const upstream = await upstreamRequests();
-  expect(upstream.filter((r) => r.kind !== 'requirements').map((r) => r.kind)).toEqual(['player', 'captions', 'stream', 'review', 'review', 'summary']);
+  expect(upstream.filter((r) => r.kind !== 'requirements').map((r) => r.kind)).toEqual(['player', 'captions', 'stream', 'review', 'review', 'review', 'summary']);
   expect(upstream.filter((r) => r.kind === 'requirements')).toHaveLength(1);
   const summaryRequest = upstream.find((r) => r.kind === 'summary');
   const { system, user, config } = promptOf(summaryRequest);

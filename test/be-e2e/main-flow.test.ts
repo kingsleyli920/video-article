@@ -90,11 +90,12 @@ describe('主流程：生成文章 → 5W1H', () => {
     expect(reviewedMs!).toBeLessThanOrEqual(savedMs);
 
     // 上游实际收到的：先播放器、再字幕，然后同时发出约束提取和一次主模型流式请求（两者到达顺序不固定），
-    // 文章写完后每章一个核对请求；请求里是整理后的字幕和去掉首尾空白的用户要求
+    // 文章写完后每章一个核对请求，另加一个整篇的语义限定复核；请求里是整理后的字幕和去掉首尾空白的用户要求
     const generationRequests = await stack.requests();
     expect(generationRequests.slice(0, 2).map((r) => r.kind)).toEqual(['player', 'captions']);
     expect(generationRequests.slice(2, 4).map((r) => r.kind).sort()).toEqual(['requirements', 'stream']);
     expect(generationRequests.slice(4).map((r) => [r.kind, r.model])).toEqual([
+      ['review', 'mock-primary'],
       ['review', 'mock-primary'],
       ['review', 'mock-primary'],
     ]);

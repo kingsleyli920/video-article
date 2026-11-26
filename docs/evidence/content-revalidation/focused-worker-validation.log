@@ -1,0 +1,16 @@
+
+ RUN  v4.1.12 <repo>
+
+console warning; message = An event handler returned a value of type "number" that will be ignored. Event handlers should not have a return value.
+console warning; message = An event handler returned a value of type "number" that will be ignored. Event handlers should not have a return value.
+uncaught exception; source = Uncaught (in promise); stack = Error: disk full
+    at GenerationStore.<anonymous> (<repo>/test/be-ft/generate.test.ts:269:13)
+    at GenerationStore.save (file://<repo>/node_modules/@vitest/spy/dist/index.js:332:34)
+    at file://<repo>/node_modules/@cloudflare/vitest-plugin/dist/worker/lib/cloudflare/test-internal.mjs:375:47
+console warning; message = An event handler returned a value of type "number" that will be ignored. Event handlers should not have a return value.
+
+ Test Files  2 passed (2)
+      Tests  41 passed (41)
+   Start at  20:23:30
+   Duration  7.64s (transform 273ms, setup 0ms, import 548ms, tests 11.94s, environment 0ms)
+

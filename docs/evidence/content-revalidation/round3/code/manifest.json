@@ -1,0 +1,9 @@
+{
+  "purpose": "保留第三轮实际源码，后续复制证据提示调整不覆盖历史",
+  "codeSha256": {
+    "src/worker/prompts.ts": "ab06dd2be1957000ff13e99439bb75ca4b3d84de15779b68050bbd3e8da5a13e",
+    "src/worker/review.ts": "b39cc4d6d59705203de06618695f69f8b55036c5ad1f84e4757c57b544db4afa",
+    "src/worker/finalize.ts": "a81e211aee53f1d0223632dcb3e90ce2a7fa896283ec30c7bacf0c1084e14c8f",
+    "src/shared/limits.ts": "b026125d8f09b30cae36eac72580130dbf08632c71e561d7bee60b4e03e61012"
+  }
+}

@@ -4,7 +4,7 @@ import { LIMITS } from '../../src/shared/limits';
 import { readSse } from '../../src/shared/sse';
 import { handleGenerate } from '../../src/worker/generate';
 import { GenerationStore, openStore } from '../../src/worker/store';
-import { ARTICLE_MARKDOWN, ARTICLE_TEXTS, geminiJson, OTHER_VIDEO_ID, playerResponse, SAMPLE_VIDEO_ID, srv1 } from '../fixtures/upstream';
+import { ARTICLE_MARKDOWN, ARTICLE_TEXTS, geminiJson, NO_REQUIREMENTS_JSON, OTHER_VIDEO_ID, playerResponse, SAMPLE_VIDEO_ID, srv1 } from '../fixtures/upstream';
 import { eventOf, generate, geminiSse, mockUpstream } from './helpers';
 
 afterEach(() => vi.restoreAllMocks());
@@ -240,6 +240,25 @@ describe('POST /api/generations', () => {
     mockUpstream({ geminiStream: geminiSse(['# 标题\n\n只有一段正文。']) });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
     expect(eventOf(events, 'error')).toEqual({ code: 'invalid_structure', message: '文章缺少有效的章节结构，无法提供章节总结（没有二级标题章节）', partial: true });
+    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
+  });
+
+  // 抓：全文重写没有复用初稿的异常长输出保护，或长度错误被包装成 review_failed。
+  it('重写流超过全局长度上限：article_too_long，不再核对，不保存或替换页面', async () => {
+    const oversized = `# 标题\n\n## 一\n\n${'a'.repeat(LIMITS.articleChars)}\n\n## 二\n\n正文。\n\n## 三\n\n正文。`;
+    const upstream = mockUpstream({
+      geminiStream: geminiSse(ARTICLE_TEXTS),
+      requirementsJson: geminiJson({ ...NO_REQUIREMENTS_JSON, chaptersMin: 3, chaptersMax: 3, chaptersQuote: '分三章' }),
+      geminiOverride: ({ purpose }) => (purpose === 'rewrite' ? new Response(geminiSse([oversized]), { headers: { 'content-type': 'text/event-stream' } }) : undefined),
+    });
+    const save = vi.spyOn(GenerationStore.prototype, 'save');
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID), instructions: '分三章写' });
+    expect(eventOf(events, 'error')).toEqual({ code: 'article_too_long', message: '文章超过长度上限，已停止生成', partial: true });
+    expect(eventOf(events, 'done')).toBeUndefined();
+    expect(eventOf(events, 'revised')).toBeUndefined();
+    expect(upstream.gemini('rewrite')).toHaveLength(1);
+    expect(upstream.gemini('review')).toHaveLength(0);
+    expect(save).not.toHaveBeenCalled();
     expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
   });
 

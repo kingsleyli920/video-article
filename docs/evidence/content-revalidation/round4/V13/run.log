@@ -1,0 +1,8 @@
+HTTP 200 text/event-stream; charset=utf-8，响应头到达 19 ms
+字幕来源：live（manual，26211 字符），模型：gemini-4-hydrogen
+网络分块 123 个，delta 事件 41 个，正文 1604 字符
+探针：来源信息 23 ms，首个正文文本 60204 ms，首个可读段落 60435 ms，最后一段正文 63562 ms，流结束 133752 ms
+结果：error requirements_unmet：文章没有满足生成要求里的硬性约束，修订后仍不满足（全文 1,511 字，要求不超过 1,500 字）
+正文增长（毫秒 → 字符数）：60204→40  60360→155  60578→274  60906→400  61174→524  61412→649  61747→775  62023→895  62247→1019  62508→1130  62748→1234  62983→1343  63254→1457  63493→1591  63562→1604
+已写入 <repo>/docs/evidence/content-revalidation/round4/V13/（input.json、raw.sse、timeline.json、article.md）
+Error: 生成未成功结束：error

@@ -38,6 +38,8 @@ export type SummaryScenario =
 
 /** 对照字幕核对（generateContent）的行为。ok：每个核对请求只返回 quote 出现在该请求 <section> 里的问题，各章因此各拿各的 */
 export type ReviewScenario =
+  /** 可解析的 JSON，但核对协议形状可能无效；用于经 HTTP 验证 fail-closed */
+  | { kind: 'response'; result: unknown }
   | { kind: 'ok'; issues: { type: string; quote: string; evidence: string; problem: string; replacement: string }[]; delayMs?: number }
   | { kind: 'busy' }
   | { kind: 'hang' }
@@ -220,6 +222,7 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
       if (purpose === 'review') {
         entry.kind = 'review';
         const behavior = scenario.reviews?.[model] ?? { kind: 'ok', issues: [] };
+        if (behavior.kind === 'response') return structured(res, behavior.result);
         if (behavior.kind !== 'ok') return summary(res, behavior);
         const user = String((body as { contents?: { parts?: { text?: string }[] }[] } | null)?.contents?.[0]?.parts?.[0]?.text ?? '');
         // 用户消息末尾的"请核对 <section>，输出问题列表。"里也有 <section>，要找的是 "<section>\n" 开头的那一块

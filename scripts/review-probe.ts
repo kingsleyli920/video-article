@@ -44,7 +44,9 @@ const results = await Promise.all(
     const stats: GeminiStats = {};
     const t0 = Date.now();
     const raw = await generateJson({ apiKey, model, thinkingLevel, timeouts: { requestMs: 600_000 } }, reviewPrompt({ video, transcriptText, instructions, outline, section }), REVIEW_SCHEMA, stats);
-    const { issues, malformed } = parseIssues(raw);
+    const parsed = parseIssues(raw);
+    if (parsed === null) throw new Error(`第 ${index + 1} 个核对单元没有返回有效的问题列表`);
+    const { issues, malformed } = parsed;
     const outcome = applyRevisions(section, issues, transcriptText);
     return { index, ms: Date.now() - t0, usage: stats.usage ?? null, issues, malformed, outcome };
   }),

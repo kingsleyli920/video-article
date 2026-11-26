@@ -1,0 +1,8 @@
+HTTP 200 text/event-stream; charset=utf-8，响应头到达 21 ms
+字幕来源：live（manual，26211 字符），模型：gemini-4-hydrogen
+网络分块 3 个，delta 事件 0 个，正文 0 字符
+探针：来源信息 29 ms，首个正文文本 null ms，首个可读段落 null ms，最后一段正文 null ms，流结束 560 ms
+结果：error gemini_billing：Gemini 账户的预付额度已用完，暂时无法生成
+正文增长（毫秒 → 字符数）：
+已写入 <repo>/docs/evidence/content-revalidation/round5/V13/（input.json、raw.sse、timeline.json、article.md）
+Error: 生成未成功结束：error

@@ -1,0 +1,12 @@
+event: stage
+data: {"stage":"transcript"}
+
+event: meta
+data: {"generationId":"1958d83d2b678884ed2a4bd0a942c4c56344ff80289ad2ffce83d1af07b5dc55","video":{"id":"vHYeChEf2lA","title":"CS50 SQL - Lecture 0 - Querying","channel":"CS50","lengthSeconds":4753},"transcript":{"source":"live","language":"en","kind":"manual","chars":67749,"preview":[{"time":"00:00","text":"[MUSIC PLAYING] CARTER ZENKE: Well, hello, one and all, and welcome to CS50's Introduction to Databases with SQL. My name is Carter Zenke."},{"time":"25:42","text":"And now I'll say, WHERE the \"format\" is not equal to hardcover Semicolon. So notice here I'm using single quotes for hardcover. This is a string. It's not a table name or a column name."},{"time":"52:17","text":"Now I'll hit Enter. And I'll see I do get back Pyre. So even though I said WHERE \"title\" is LIKE lowercase 'pyre', I got back capital Pyre."}]},"model":"gemini-4-hydrogen"}
+
+event: stage
+data: {"stage":"generating"}
+
+event: error
+data: {"code":"gemini_billing","message":"Gemini 账户的预付额度已用完，暂时无法生成","partial":false}
+

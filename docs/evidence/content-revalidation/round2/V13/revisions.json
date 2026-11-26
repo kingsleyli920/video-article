@@ -1,0 +1,37 @@
+[
+  {
+    "type": "unsupported",
+    "before": "使每个周期结束时的增长和债务均高于上一周期。",
+    "after": "使每个短期周期的谷底和顶点都比上一周期有更高的增长和更多的债务。",
+    "reason": "字幕说的是每个短期债务周期的谷底和顶点都比上一周期拥有更高的增长和更多债务，原文置于长期债务周期下只写“每个周期结束时”，既改变了“谷底和顶点”的表述，也容易让人误以为指长期周期。",
+    "evidence": "The short term debt cycle typically lasts 5 - 8 years and happens over and over again for decades. But notice that the bottom and top of each cycle finish with more growth than the previous cycle and with more debt."
+  },
+  {
+    "type": "unsupported",
+    "before": "繁荣期上涨的收入与资产价格（甚至形成泡沫）掩盖了债务负担（债务与收入之比）。",
+    "after": "繁荣期上涨的收入几乎抵消了债务增长、使债务负担（债务与收入之比）保持可控，同时资产价格飙升（甚至形成泡沫），与上涨的收入共同让借款人长期保持信用良好。",
+    "reason": "字幕中是上涨的收入几乎抵消了债务增长、使债务负担保持可控，同时上涨的收入和资产价格让借款人长期保持信用良好，而非两者“掩盖了债务负担”。",
+    "evidence": "So even though debts have been growing, incomes have been growing nearly as fast to offset them. Let's call the ratio of debt-to-income the debt burden. So long as incomes continue to rise, the debt burden stays manageable. At the same time asset values soar. … So even with the accumulation of lots of debt, rising incomes and asset values help borrowers remain creditworthy for a long time."
+  },
+  {
+    "type": "unsupported",
+    "before": "当偿债增长快于收入，支出削减引发信用枯竭与资产抛售，经济抵达长期债务顶峰，如1929年美国、1989年日本及2008年美欧等世界多地。",
+    "after": "当偿债增长快于收入，支出削减引发收入下滑与借贷减少、周期随之反转，经济抵达长期债务顶峰（如1929年美国、1989年日本及2008年美欧等世界多地），随后进入去杠杆化并出现信用枯竭与资产抛售。",
+    "reason": "字幕中信用枯竭与被迫抛售资产发生在经济抵达长期债务顶峰、进入去杠杆化之后，原文将其顺序倒置并归因于顶峰前的支出削减。",
+    "evidence": "At some point, debt repayments start growing faster than incomes forcing people to cut back on their spending. … incomes begin to go down... ...which makes people less creditworthy causing borrowing to go down. Debt repayments continue to rise which makes spending drop even further... ...and the cycle reverses itself. This is the long term debt peak. Debt burdens have simply become too big. For the United States, Europe and much of the rest of the world this happened in 2008. It happened for the same reason it happened in Japan in 1989 and in the United States back in 1929. Now the economy begins Deleveraging. … No longer creditworthy, credit dries up and borrowers can no longer borrow enough money to make their debt repayments. Scrambling to fill this hole, borrowers are forced to sell assets."
+  },
+  {
+    "type": "unsupported",
+    "before": "政策若能平衡前三种通缩方式与印钞",
+    "after": "政策若能平衡前三种方式与印钞",
+    "reason": "字幕仅说明削减支出和债务削减具有通缩性，并未将财富再分配归为通缩方式，原文将前两种措施的通缩属性推广到了前三种方式。",
+    "evidence": "Unlike cutting spending, debt reduction, and wealth redistribution, printing money is inflationary and stimulative. … Policy makers need to balance the four ways that debt burdens come down. The deflationary ways need to balance with the inflationary ways in order to maintain stability."
+  },
+  {
+    "type": "quantity",
+    "before": "若收入仅增1%，",
+    "after": "若收入仅增约1%，",
+    "reason": "字幕中收入增速为“around only 1%”，文章删去了表示约数的“around”。",
+    "evidence": "If debt is growing at 2% because of that interest rate and income is only growing at around only 1%, you will never reduce the debt burden."
+  }
+]

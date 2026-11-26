@@ -72,7 +72,7 @@ export interface ArticleReview {
   sections: number;
   /** 采用的局部修订数 */
   revisions: number;
-  /** 初稿没满足可计算约束、整篇修订过一次时的记录；没发生是 null */
+  /** 为满足可计算约束或给核对预留篇幅，整篇修订过一次的记录；纯预留时 unmet 为空，没发生是 null */
   rewritten: { unmet: string[]; charsBefore: number; charsAfter: number } | null;
   /** 可计算约束的核对结果，每条一句，如"全文 1,025 字，上限 1,200 字"；用户没提这类要求时为空 */
   checks: string[];
@@ -80,7 +80,7 @@ export interface ArticleReview {
 
 /** 生成接口的 SSE 事件：事件名 → data 的 JSON 结构 */
 export interface StreamEvents {
-  /** revising：初稿没满足可计算约束，正在按要求修订；reviewing：正在对照字幕核对 */
+  /** revising：为满足约束或给核对预留篇幅，正在修订初稿；reviewing：正在对照字幕核对 */
   stage: { stage: 'transcript' | 'generating' | 'revising' | 'reviewing' };
   meta: { generationId: string; video: VideoInfo; transcript: TranscriptInfo; model: string };
   delta: { text: string };

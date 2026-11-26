@@ -1,0 +1,17 @@
+
+ RUN  v4.1.12 /private$VALIDATION_ROOT
+
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对出修订 > 第二章的残缺数字被修订：revised 是最终全文，保存的就是它，5W1H 用修订后的句子 147ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 超字数 → 修订 → 完成 > "全文不超过 50 字"而初稿 68 字：revising，一次修订请求，保存 46 字的修订稿 149ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 核对响应不是 JSON：经 HTTP 发 review_failed，不发 done，也不保存 118ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 核对响应缺少 issues：经 HTTP 发 review_failed，不发 done，也不保存 116ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 核对响应issues 不是数组：经 HTTP 发 review_failed，不发 done，也不保存 113ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 重写稿超过全局长度上限：经 HTTP 报 article_too_long，5W1H 查不到未保存的上下文 115ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 核对进行中中止 fetch：上游的核对请求被中止，该生成不保存 5008ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 核对主备模型都不响应：在缩短后的预算内（主模型 7.5 秒、合计 10.5 秒）报 review_failed，不保存 10621ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  19:23:31
+   Duration  17.51s (transform 33ms, setup 0ms, import 52ms, tests 17.35s, environment 0ms)
+

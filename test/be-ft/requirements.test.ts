@@ -36,6 +36,11 @@ const THREE_SECTIONS = [
   '组合还在扩大。',
 ].join('\n\n');
 
+const NAMED_SECTIONS = '# 柏林与基金\n\n## 柏林岁月\n\n### 核心观点\n\n嘉宾 2003 年搬到柏林。\n\n### 原话依据\n\n之后十年里基金先后投资了 Alpha、Beta 和 Gamma。\n\n### 给你的启发\n\n现在大约有五家被投公司。';
+const EMPTY_SECTIONS = '# 柏林与基金\n\n## 柏林岁月\n\n### 核心观点\n\n### 原话依据\n\n### 给你的启发';
+const SECTION_INSTRUCTIONS = '每章按核心观点、原话依据、给你的启发的顺序分三个小节';
+const SECTION_REQUIREMENTS = { ...NONE, sectionsPerChapter: 3, sectionTitles: ['核心观点', '原话依据', '给你的启发'], sectionsQuote: SECTION_INSTRUCTIONS };
+
 /** 整篇修订流式返回：分两块 */
 const rewriteOf = (markdown: string) => geminiSse([markdown.slice(0, 20), markdown.slice(20)]);
 
@@ -64,7 +69,7 @@ describe('用户要求"不超过 N 字"', () => {
     expect(done.chars).toBe(36);
     expect(done.review).toEqual({ sections: 2, revisions: 0, rewritten: { unmet: ['全文 61 字，要求不超过 50 字'], charsBefore: 61, charsAfter: 36 }, checks: ['全文 36 字，上限 50 字'] });
     // 核对的是修订稿
-    expect(upstream.gemini('review').map((r) => promptOf(r.body).user.includes('2003 年搬到柏林。'))).toEqual([true, false]);
+    expect(upstream.gemini('review').map((r) => promptOf(r.body).user.includes('2003 年搬到柏林。'))).toEqual([true, false, true]);
 
     const saved = await openStore(env, eventOf(events, 'meta')!.generationId).load();
     expect(saved!.article.markdown).toBe(SHORT);
@@ -132,6 +137,43 @@ describe('章节和小节要求', () => {
     expect(done.review.rewritten!.unmet).toEqual(['第 1 章有 0 个小节，要求每章 3 个', '第 2 章有 0 个小节，要求每章 3 个']);
     expect(done.review.checks).toEqual(['每章 3 个小节']);
     expect(eventOf(events, 'revised')!.markdown).toBe(THREE_SECTIONS);
+  });
+
+  it.each([
+    ['合并标题', '# 柏林与基金\n\n## 柏林岁月\n\n### 核心观点、原话依据、给你的启发\n\n嘉宾 2003 年搬到柏林。\n\n### 其他一\n\n现在大约有五家被投公司。\n\n### 其他二\n\n预计会增加到五到六家。'],
+    ['小节倒序', '# 柏林与基金\n\n## 柏林岁月\n\n### 给你的启发\n\n现在大约有五家被投公司。\n\n### 原话依据\n\n之后十年里基金先后投资了 Alpha、Beta 和 Gamma。\n\n### 核心观点\n\n嘉宾 2003 年搬到柏林。'],
+    ['空小节', EMPTY_SECTIONS],
+  ])('%s不能直接成功：按要求修订为独立、有序且有正文的小节后保存', async (_name, draft) => {
+    const upstream = mockUpstream({
+      captions: CAPTIONS,
+      geminiStream: geminiSse([draft]),
+      requirementsJson: geminiJson(SECTION_REQUIREMENTS),
+      rewriteStream: rewriteOf(NAMED_SECTIONS),
+    });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID), instructions: SECTION_INSTRUCTIONS });
+
+    expect(upstream.gemini('rewrite')).toHaveLength(1);
+    expect(eventOf(events, 'done')!.review.rewritten!.unmet.length).toBeGreaterThan(0);
+    expect(eventOf(events, 'done')!.review.checks).toEqual(['每章 3 个小节：核心观点、原话依据、给你的启发']);
+    expect(eventOf(events, 'revised')!.markdown).toBe(NAMED_SECTIONS);
+    const saved = await openStore(env, eventOf(events, 'meta')!.generationId).load();
+    expect(saved!.article.markdown).toBe(NAMED_SECTIONS);
+  });
+
+  it('修订稿仍只有空小节：报 requirements_unmet，不保存、不发 done', async () => {
+    const save = vi.spyOn(GenerationStore.prototype, 'save');
+    mockUpstream({
+      captions: CAPTIONS,
+      geminiStream: geminiSse([EMPTY_SECTIONS]),
+      requirementsJson: geminiJson(SECTION_REQUIREMENTS),
+      rewriteStream: rewriteOf(EMPTY_SECTIONS),
+    });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID), instructions: SECTION_INSTRUCTIONS });
+
+    expect(eventOf(events, 'error')).toMatchObject({ code: 'requirements_unmet' });
+    expect(eventOf(events, 'done')).toBeUndefined();
+    expect(save).not.toHaveBeenCalled();
+    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
   });
 });
 

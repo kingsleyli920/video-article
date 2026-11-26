@@ -29,7 +29,7 @@ async function startSampling(page: Page): Promise<void> {
     const w = window as unknown as { __samples: PageSample[] };
     const started = performance.now();
     w.__samples = [];
-    setInterval(() => {
+    const record = () => {
       const article = document.getElementById('article')!;
       const status = document.querySelector('#status .status-text');
       w.__samples.push({
@@ -39,7 +39,12 @@ async function startSampling(page: Page): Promise<void> {
         status: status?.firstChild?.textContent ?? '',
         text: article.textContent ?? '',
       });
-    }, 40);
+    };
+    setInterval(record, 40);
+    // 本地字幕响应可能短于 40ms；MutationObserver 避免漏记实际显示过的阶段。
+    const observer = new MutationObserver(record);
+    observer.observe(document.getElementById('status')!, { subtree: true, childList: true, characterData: true });
+    record();
   });
 }
 
@@ -173,10 +178,10 @@ test('对照字幕修订一处：初稿先流式显示 → 核对后正文换成
   await expect(record.locator('.revision-evidence')).toHaveText(`字幕原文：${EVIDENCE}`);
   await expect(record.locator('li')).toBeVisible();
 
-  // 核对请求：两章各一次，第一章的核对单元里是初稿的句子
+  // 核对请求：两章各一次，另有整篇复核，均基于未合并的初稿。
   const reviews = await requestsOf('review');
-  expect(reviews).toHaveLength(2);
-  expect(reviews.map((r) => promptOf(r).user.includes(WRONG))).toEqual([true, false]);
+  expect(reviews).toHaveLength(3);
+  expect(reviews.map((r) => promptOf(r).user.includes(WRONG))).toEqual([true, false, true]);
 
   // 点第 1 章 5W1H：浏览器只发路径；发给模型的 <current_chapter> 是修订后的句子（服务端保存的是最终版本）
   await summaryToggle(page, '第一章：搬到硅谷').click();
@@ -237,7 +242,7 @@ test('初稿超出字数上限：页面经历"正在修订"，最终显示修订
   await fillAndGenerate(page, VIDEO_URL, LIMIT_INSTRUCTIONS);
 
   const status = page.locator('#status');
-  await expect(status.locator('.status-text')).toContainText('初稿没有满足生成要求，正在修订', { timeout: 15_000 });
+  await expect(status.locator('.status-text')).toContainText('正在修订初稿', { timeout: 15_000 });
   await expect(page.locator('#article h2')).toHaveText(['第一章：开场', '第二章：数字']);
   await expect(chapter(page, '1').locator('.chapter-body')).toContainText('我们今天聊聊这家基金过去二十年在芯片行业里的全部投资。');
   await expect(summaryToggle(page, '第一章：开场')).toBeDisabled();
@@ -247,7 +252,7 @@ test('初稿超出字数上限：页面经历"正在修订"，最终显示修订
   expect(stagesSeen(await samples(page))).toEqual([
     '正在获取字幕',
     '正在生成文章',
-    '初稿没有满足生成要求，正在修订',
+    '正在修订初稿',
     '正文已写完，正在对照字幕核对',
     expect.stringMatching(/^已完成/),
   ]);
@@ -301,4 +306,30 @@ test('修订稿仍超出字数上限：页面显示"未通过核对"和具体字
   expect(summaryRequests).toHaveLength(0);
   // 没满足就不核对字幕
   expect(await requestsOf('review')).toHaveLength(0);
+});
+
+// 用户上限已满足，仍先压缩留余量；页面不能误报初稿违反了用户要求。
+test('核对前预留篇幅：浏览器说明内部压缩，保存后可正常使用5W1H', async ({ page }) => {
+  const instructions = '全文不超过 130 字';
+  await setScenario({
+    streams: { 'mock-primary': { kind: 'ok', texts: LONG_DRAFT, intervalMs: 50 } },
+    requirements: { 'mock-primary': { kind: 'ok', result: { ...NO_REQUIREMENTS_JSON, maxChars: 130, charsQuote: instructions } } },
+    rewrites: { 'mock-primary': { kind: 'ok', texts: SHORT_REWRITE, intervalMs: 200 } },
+    reviews: { 'mock-primary': { kind: 'ok', issues: [] } },
+  });
+  await page.goto('/');
+  await fillAndGenerate(page, VIDEO_URL, instructions);
+  await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok', { timeout: 15_000 });
+  const record = page.locator('#article > h1 + .article-review');
+  await expect(record.locator(':scope > p')).toHaveText([
+    '为后续字幕核对预留篇幅，已压缩初稿，全文从 113 字改为 56 字。',
+    '生成要求核对：全文 56 字，上限 130 字。',
+  ]);
+  await expect(page.locator('#article')).not.toContainText('没有满足生成要求');
+  const rewrites = await requestsOf('rewrite');
+  expect(rewrites).toHaveLength(1);
+  expect(promptOf(rewrites[0]).user).toContain('<review_headroom');
+  await summaryToggle(page, '第一章：开场').click();
+  await expect(chapter(page, '1').locator('.summary-table tr')).toHaveCount(6);
+  expect(promptOf((await requestsOf('summary'))[0]).user).toContain('**主持人:** 聊聊芯片投资。');
 });

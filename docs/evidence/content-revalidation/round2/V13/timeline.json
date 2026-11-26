@@ -1,0 +1,732 @@
+{
+  "outcome": "done",
+  "probeError": null,
+  "headersAt": 19,
+  "responseHeaders": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "content-encoding": "",
+    "cache-control": "no-cache, no-transform",
+    "cf-ray": ""
+  },
+  "metaAt": 24,
+  "firstDeltaAt": 42621,
+  "firstParagraphAt": 42841,
+  "lastDeltaAt": 45562,
+  "stages": [
+    [
+      19,
+      "transcript"
+    ],
+    [
+      25,
+      "generating"
+    ],
+    [
+      45867,
+      "reviewing"
+    ]
+  ],
+  "revisedAt": 102784,
+  "endAt": 102785,
+  "meta": {
+    "generationId": "94ff439aec30ae259d1d5b701b695ff505f9dd0caa80209e708aa5875d23075f",
+    "video": {
+      "id": "PHe0bXAIuk0",
+      "title": "How The Economic Machine Works by Ray Dalio",
+      "channel": "Principles by Ray Dalio",
+      "lengthSeconds": 1860
+    },
+    "transcript": {
+      "source": "live",
+      "language": "en",
+      "kind": "manual",
+      "chars": 26211,
+      "preview": [
+        {
+          "time": "00:00",
+          "text": "How the economic machine works, in 30 minutes. The economy works like a simple machine. But many people don't understand it — or they don't agree on how it works"
+        },
+        {
+          "time": "09:32",
+          "text": "You just created credit. Out of thin air. It's not until you pay the bar tab later that the asset and liability disappear, the debt goes away and the transaction is settled."
+        },
+        {
+          "time": "19:24",
+          "text": "2. debts are reduced through defaults and restructurings. 3. wealth is redistributed from the 'haves' to the 'have nots'. and finally, 4. the central bank prints new money."
+        }
+      ]
+    },
+    "model": "gemini-4-hydrogen"
+  },
+  "done": {
+    "chapters": [
+      {
+        "id": "1",
+        "title": "一、交易、核心概念与三大动力"
+      },
+      {
+        "id": "2",
+        "title": "二、短期与长期债务周期"
+      },
+      {
+        "id": "3",
+        "title": "三、去杠杆化与经验法则"
+      }
+    ],
+    "chars": 1484,
+    "timing": {
+      "transcriptMs": 7,
+      "firstTokenMs": 42605,
+      "firstParagraphMs": 42825,
+      "modelDoneMs": 45836,
+      "reviewedMs": 102758,
+      "savedMs": 102763
+    },
+    "numberWarnings": [],
+    "model": "gemini-4-hydrogen",
+    "review": {
+      "sections": 3,
+      "revisions": 5,
+      "rewritten": null,
+      "checks": [
+        "全文 1,484 字，上限 1,500 字",
+        "共 3 章，要求正好 3 章"
+      ]
+    }
+  },
+  "failure": null,
+  "timeline": [
+    {
+      "ms": 19,
+      "bytes": 43,
+      "events": [
+        "stage"
+      ]
+    },
+    {
+      "ms": 24,
+      "bytes": 949,
+      "events": [
+        "meta"
+      ]
+    },
+    {
+      "ms": 25,
+      "bytes": 43,
+      "events": [
+        "stage"
+      ]
+    },
+    {
+      "ms": 15018,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 30022,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 42621,
+      "bytes": 148,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42622,
+      "bytes": 152,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42747,
+      "bytes": 173,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42841,
+      "bytes": 168,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42945,
+      "bytes": 170,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43003,
+      "bytes": 166,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43099,
+      "bytes": 138,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43154,
+      "bytes": 136,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43246,
+      "bytes": 161,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43359,
+      "bytes": 144,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43375,
+      "bytes": 121,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43486,
+      "bytes": 120,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43529,
+      "bytes": 157,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43595,
+      "bytes": 110,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43705,
+      "bytes": 125,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43793,
+      "bytes": 126,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43852,
+      "bytes": 152,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43919,
+      "bytes": 130,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44014,
+      "bytes": 146,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44083,
+      "bytes": 143,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44187,
+      "bytes": 134,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44235,
+      "bytes": 106,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44347,
+      "bytes": 109,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44414,
+      "bytes": 119,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44472,
+      "bytes": 125,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44511,
+      "bytes": 119,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44620,
+      "bytes": 152,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44661,
+      "bytes": 128,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44723,
+      "bytes": 128,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44813,
+      "bytes": 146,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44910,
+      "bytes": 134,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44984,
+      "bytes": 124,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45024,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 45043,
+      "bytes": 153,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45119,
+      "bytes": 146,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45180,
+      "bytes": 126,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45272,
+      "bytes": 151,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45344,
+      "bytes": 132,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45414,
+      "bytes": 141,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45489,
+      "bytes": 146,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45562,
+      "bytes": 119,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45867,
+      "bytes": 42,
+      "events": [
+        "stage"
+      ]
+    },
+    {
+      "ms": 46867,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 47868,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 48871,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 49873,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 50874,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 51878,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 52879,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 53882,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 54884,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 55887,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 56889,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 57893,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 58893,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 59895,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 60026,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 60898,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 61900,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 62903,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 63907,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 64910,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 65912,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 66916,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 67919,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 68921,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 69924,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 70926,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 71929,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 72932,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 73935,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 74938,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 75029,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 75941,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 76943,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 77945,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 78946,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 79947,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 80949,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 81953,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 82955,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 83957,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 84961,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 85963,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 86966,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 87975,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 88975,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 89977,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 90033,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 90978,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 91981,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 92984,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 93988,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 94989,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 95992,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 96995,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 97997,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 99000,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 100004,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 101005,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 102005,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 102784,
+      "bytes": 8713,
+      "events": [
+        "revised"
+      ]
+    },
+    {
+      "ms": 102784,
+      "bytes": 537,
+      "events": [
+        "done"
+      ]
+    }
+  ]
+}

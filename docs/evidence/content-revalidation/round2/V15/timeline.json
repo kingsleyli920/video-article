@@ -1,0 +1,1678 @@
+{
+  "outcome": "done",
+  "probeError": null,
+  "headersAt": 19,
+  "responseHeaders": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "content-encoding": "",
+    "cache-control": "no-cache, no-transform",
+    "cf-ray": ""
+  },
+  "metaAt": 26,
+  "firstDeltaAt": 38607,
+  "firstParagraphAt": 39088,
+  "lastDeltaAt": 57697,
+  "stages": [
+    [
+      19,
+      "transcript"
+    ],
+    [
+      27,
+      "generating"
+    ],
+    [
+      57891,
+      "reviewing"
+    ]
+  ],
+  "revisedAt": 135881,
+  "endAt": 135882,
+  "meta": {
+    "generationId": "a92726d3e8fd975cb00d72d81494f6a85699b1aa352e49b1823d25c2e9b80766",
+    "video": {
+      "id": "vHYeChEf2lA",
+      "title": "CS50 SQL - Lecture 0 - Querying",
+      "channel": "CS50",
+      "lengthSeconds": 4753
+    },
+    "transcript": {
+      "source": "live",
+      "language": "en",
+      "kind": "manual",
+      "chars": 67749,
+      "preview": [
+        {
+          "time": "00:00",
+          "text": "[MUSIC PLAYING] CARTER ZENKE: Well, hello, one and all, and welcome to CS50's Introduction to Databases with SQL. My name is Carter Zenke."
+        },
+        {
+          "time": "25:42",
+          "text": "And now I'll say, WHERE the \"format\" is not equal to hardcover Semicolon. So notice here I'm using single quotes for hardcover. This is a string. It's not a table name or a column name."
+        },
+        {
+          "time": "52:17",
+          "text": "Now I'll hit Enter. And I'll see I do get back Pyre. So even though I said WHERE \"title\" is LIKE lowercase 'pyre', I got back capital Pyre."
+        }
+      ]
+    },
+    "model": "gemini-4-hydrogen"
+  },
+  "done": {
+    "chapters": [
+      {
+        "id": "1",
+        "title": "一、查询：数据库基础与 SELECT 语句"
+      },
+      {
+        "id": "2",
+        "title": "二、筛选：WHERE 条件、模糊匹配与范围查询"
+      },
+      {
+        "id": "3",
+        "title": "三、排序：ORDER BY 的升序、降序与多列排序"
+      },
+      {
+        "id": "4",
+        "title": "四、聚合：聚合函数、去重与结果美化"
+      }
+    ],
+    "chars": 7339,
+    "timing": {
+      "transcriptMs": 9,
+      "firstTokenMs": 38590,
+      "firstParagraphMs": 39072,
+      "modelDoneMs": 57854,
+      "reviewedMs": 135853,
+      "savedMs": 135859
+    },
+    "numberWarnings": [],
+    "model": "gemini-4-hydrogen",
+    "review": {
+      "sections": 4,
+      "revisions": 5,
+      "rewritten": null,
+      "checks": []
+    }
+  },
+  "failure": null,
+  "timeline": [
+    {
+      "ms": 19,
+      "bytes": 43,
+      "events": [
+        "stage"
+      ]
+    },
+    {
+      "ms": 26,
+      "bytes": 876,
+      "events": [
+        "meta"
+      ]
+    },
+    {
+      "ms": 27,
+      "bytes": 43,
+      "events": [
+        "stage"
+      ]
+    },
+    {
+      "ms": 15018,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 30022,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 38607,
+      "bytes": 58,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 38608,
+      "bytes": 142,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 38805,
+      "bytes": 177,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 38901,
+      "bytes": 167,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 39088,
+      "bytes": 147,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 39263,
+      "bytes": 136,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 39319,
+      "bytes": 161,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 39484,
+      "bytes": 145,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 39604,
+      "bytes": 175,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 39765,
+      "bytes": 176,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 39963,
+      "bytes": 181,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 40055,
+      "bytes": 141,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 40257,
+      "bytes": 167,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 40411,
+      "bytes": 155,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 40510,
+      "bytes": 157,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 40636,
+      "bytes": 154,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 40785,
+      "bytes": 157,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 40982,
+      "bytes": 156,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 41129,
+      "bytes": 151,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 41218,
+      "bytes": 167,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 41390,
+      "bytes": 130,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 41483,
+      "bytes": 117,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 41639,
+      "bytes": 178,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 41785,
+      "bytes": 126,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 41907,
+      "bytes": 131,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 41971,
+      "bytes": 148,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42168,
+      "bytes": 133,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42394,
+      "bytes": 130,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42527,
+      "bytes": 129,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42599,
+      "bytes": 144,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42712,
+      "bytes": 128,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42805,
+      "bytes": 132,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 42998,
+      "bytes": 126,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43080,
+      "bytes": 139,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43181,
+      "bytes": 148,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43323,
+      "bytes": 173,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43380,
+      "bytes": 169,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43581,
+      "bytes": 152,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43661,
+      "bytes": 110,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43801,
+      "bytes": 127,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 43926,
+      "bytes": 148,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44056,
+      "bytes": 165,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44156,
+      "bytes": 158,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44258,
+      "bytes": 142,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44424,
+      "bytes": 142,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44479,
+      "bytes": 134,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44577,
+      "bytes": 114,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44723,
+      "bytes": 103,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44783,
+      "bytes": 130,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 44887,
+      "bytes": 118,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45001,
+      "bytes": 130,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45026,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 45113,
+      "bytes": 141,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45253,
+      "bytes": 117,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45362,
+      "bytes": 152,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45427,
+      "bytes": 113,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45502,
+      "bytes": 84,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45645,
+      "bytes": 139,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45681,
+      "bytes": 104,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45787,
+      "bytes": 94,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 45868,
+      "bytes": 105,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 46109,
+      "bytes": 173,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 46231,
+      "bytes": 149,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 46402,
+      "bytes": 126,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 46493,
+      "bytes": 157,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 46619,
+      "bytes": 152,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 46688,
+      "bytes": 143,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 46841,
+      "bytes": 141,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 46977,
+      "bytes": 118,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 47143,
+      "bytes": 140,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 47294,
+      "bytes": 123,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 47407,
+      "bytes": 137,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 47571,
+      "bytes": 135,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 47777,
+      "bytes": 115,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 47876,
+      "bytes": 142,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 47972,
+      "bytes": 140,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 48131,
+      "bytes": 129,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 48202,
+      "bytes": 101,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 48367,
+      "bytes": 118,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 48510,
+      "bytes": 108,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 48585,
+      "bytes": 135,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 48729,
+      "bytes": 125,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 48855,
+      "bytes": 108,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 48952,
+      "bytes": 125,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49004,
+      "bytes": 120,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49165,
+      "bytes": 146,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49216,
+      "bytes": 146,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49356,
+      "bytes": 126,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49460,
+      "bytes": 128,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49540,
+      "bytes": 166,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49660,
+      "bytes": 119,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49759,
+      "bytes": 160,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49876,
+      "bytes": 154,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 49996,
+      "bytes": 117,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 50080,
+      "bytes": 173,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 50242,
+      "bytes": 134,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 50336,
+      "bytes": 120,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 50483,
+      "bytes": 109,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 50575,
+      "bytes": 138,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 50769,
+      "bytes": 170,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 50924,
+      "bytes": 173,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 51098,
+      "bytes": 148,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 51196,
+      "bytes": 131,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 51291,
+      "bytes": 115,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 51412,
+      "bytes": 127,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 51566,
+      "bytes": 158,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 51672,
+      "bytes": 111,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 51771,
+      "bytes": 101,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 51871,
+      "bytes": 146,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 51984,
+      "bytes": 141,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52081,
+      "bytes": 109,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52188,
+      "bytes": 143,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52278,
+      "bytes": 128,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52357,
+      "bytes": 143,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52464,
+      "bytes": 111,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52564,
+      "bytes": 147,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52636,
+      "bytes": 142,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52761,
+      "bytes": 129,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52879,
+      "bytes": 112,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 52932,
+      "bytes": 93,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 53102,
+      "bytes": 151,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 53171,
+      "bytes": 109,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 53309,
+      "bytes": 142,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 53443,
+      "bytes": 154,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 53577,
+      "bytes": 156,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 53714,
+      "bytes": 166,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 53811,
+      "bytes": 150,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 53930,
+      "bytes": 113,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 53984,
+      "bytes": 99,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 54123,
+      "bytes": 138,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 54249,
+      "bytes": 139,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 54418,
+      "bytes": 152,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 54523,
+      "bytes": 123,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 54625,
+      "bytes": 138,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 54782,
+      "bytes": 111,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 54843,
+      "bytes": 114,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 54968,
+      "bytes": 125,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 55096,
+      "bytes": 133,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 55187,
+      "bytes": 131,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 55288,
+      "bytes": 120,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 55419,
+      "bytes": 158,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 55553,
+      "bytes": 154,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 55664,
+      "bytes": 141,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 55823,
+      "bytes": 170,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 55956,
+      "bytes": 136,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 56098,
+      "bytes": 172,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 56208,
+      "bytes": 148,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 56346,
+      "bytes": 146,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 56514,
+      "bytes": 175,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 56622,
+      "bytes": 123,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 56784,
+      "bytes": 144,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 56912,
+      "bytes": 173,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 57039,
+      "bytes": 133,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 57168,
+      "bytes": 139,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 57284,
+      "bytes": 163,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 57419,
+      "bytes": 128,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 57488,
+      "bytes": 157,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 57595,
+      "bytes": 138,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 57697,
+      "bytes": 54,
+      "events": [
+        "delta"
+      ]
+    },
+    {
+      "ms": 57891,
+      "bytes": 42,
+      "events": [
+        "stage"
+      ]
+    },
+    {
+      "ms": 58888,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 59891,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 60029,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 60893,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 61899,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 62899,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 63903,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 64905,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 65908,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 66912,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 67914,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 68918,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 69920,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 70923,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 71927,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 72930,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 73934,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 74935,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 75032,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 75939,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 76941,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 77945,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 78946,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 79949,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 80952,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 81955,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 82958,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 83960,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 84963,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 85963,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 86966,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 87977,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 88975,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 89978,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 90036,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 90980,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 91981,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 92984,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 93987,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 94989,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 95992,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 96995,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 97997,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 98999,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 100001,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 101003,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 102005,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 103008,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 104012,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 105015,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 105039,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 106019,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 107022,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 108024,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 109028,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 110031,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 111032,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 112035,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 113039,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 114042,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 115045,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 116046,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 117049,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 118052,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 119055,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 120042,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 120058,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 121060,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 122064,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 123066,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 124068,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 125070,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 126073,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 127076,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 128077,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 129081,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 130085,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 131087,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 132088,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 133094,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 134094,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 135045,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 135097,
+      "bytes": 14,
+      "events": []
+    },
+    {
+      "ms": 135880,
+      "bytes": 8186,
+      "events": []
+    },
+    {
+      "ms": 135881,
+      "bytes": 12401,
+      "events": [
+        "revised",
+        "done"
+      ]
+    }
+  ]
+}

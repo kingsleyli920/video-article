@@ -1,0 +1,212 @@
+{
+  "format": "video-article-content-revalidation-v1",
+  "caseId": "V13",
+  "smoke": false,
+  "startedAt": "2026-11-26T04:35:30.597Z",
+  "finishedAt": "2026-11-26T04:35:32.495Z",
+  "success": false,
+  "error": "Error: 生成未成功结束：error",
+  "inputSource": "evidence/final2/online-cases-2/V13",
+  "subtitleSource": "evidence/additional/preflight/PHe0bXAIuk0",
+  "originalInputSha256": "5891747b80a7f2a3d0479bed8aeb2ec7e804b93b54ac997fa3b2ff0b88d2ef25",
+  "rawCuesSha256": "d283b39f942bc33df7a5e5640e311ad854005b3f63cbda72beae2a237f0d85b0",
+  "inputSha256": {
+    "evidence/final2/online-cases-2/V13/input.json": "5891747b80a7f2a3d0479bed8aeb2ec7e804b93b54ac997fa3b2ff0b88d2ef25",
+    "evidence/additional/preflight/PHe0bXAIuk0/preflight.json": "01ce6dd7953d0b6db512beb32351699b356832839339e8e10be3c3018c5da2bd",
+    "evidence/additional/preflight/PHe0bXAIuk0/raw-cues.json": "d283b39f942bc33df7a5e5640e311ad854005b3f63cbda72beae2a237f0d85b0",
+    "evidence/additional/preflight/PHe0bXAIuk0/prepared.txt": "8286e97e521af40000b09d320401736e14a22b8a6d0229d713c1032fd5b9d063"
+  },
+  "preparedSha256": "8286e97e521af40000b09d320401736e14a22b8a6d0229d713c1032fd5b9d063",
+  "preparedChars": 26211,
+  "video": {
+    "id": "PHe0bXAIuk0",
+    "title": "How The Economic Machine Works by Ray Dalio",
+    "channel": "Principles by Ray Dalio",
+    "description": "",
+    "lengthSeconds": 1860
+  },
+  "metadataLimitation": "已存preflight未记录视频简介；本轮简介为空，不联网补取",
+  "sourceWorktree": ".claude/worktrees/continue-previous-work-90e737",
+  "sourceGitHead": "007dea61e765fbda3ef43817028fca136206b9c4",
+  "codeSha256": {
+    "scripts/lib/env-file.ts": "89cebee91bc4608c5ab59342db49d68a6f2f0fe70cefc0d5265d6f4e3e12c959",
+    "scripts/revalidate-content.ts": "bc635767aa5e832e7a983e21891ea8baccc8eb7b261d8c2e57a0e577a6184c9d",
+    "scripts/stream-probe.ts": "eeed9248eca889711bd4b68bb5037aa42b9ce1079a7467a5bb23c43ca36564b0",
+    "src/shared/article.ts": "d925288ba67e377a55e3a1b6c8da6097d7406c416aaf01c95644ec7206255874",
+    "src/shared/errors.ts": "e258549b93d35bc1f859b9e73bcb9a74b06ff228f3036663edd83854305d6106",
+    "src/shared/limits.ts": "b026125d8f09b30cae36eac72580130dbf08632c71e561d7bee60b4e03e61012",
+    "src/shared/sse.ts": "7a2b04109c37dfa7df67a595bb998aa96cf8601a3e70c5afd58e65430d83d246",
+    "src/shared/types.ts": "89e5d077084a79d36edb6b4b40cb07afb9264365a817d461b484452969593129",
+    "src/shared/video-id.ts": "f6641842d666b202826f9fb85756a9d1739c422bc1da8e90064f8f1d2bd15729",
+    "src/worker/app-error.ts": "02afb0a99df95f217e69d3df7ac4d661c2a9bc9f362cf5fe7a5be43ea38ac452",
+    "src/worker/config.ts": "8103978867d2cc3080f2b0f85d8edde47de4111ac73a9013a86fb238350dc22c",
+    "src/worker/env.d.ts": "e6658913986ad98c714f6298439e0f1c23e4c817c077f4bc497934b81eb1fb6a",
+    "src/worker/event-stream.ts": "dbb21e188f95b834c014e910c91369587d691c7546abdd122ce0dd43e1f66af9",
+    "src/worker/finalize.ts": "719efd7f4eaa1dd31281e5781f5c05a61ca8743d73527029dd859ef95ac76cce",
+    "src/worker/gemini.ts": "d85e81e8e7d1dab4e027bcadb5844e4254ef365567a6a397ce7e60a830044024",
+    "src/worker/generate.ts": "177b5b54ec9fd840ba76f3b15d216a413824609d053bd21319c1db1d4ffcd540",
+    "src/worker/index.ts": "7f5704faaa9dd5342d4fe7e06208a344acd654ecf47c364660659f925358a035",
+    "src/worker/json-model.ts": "82acc386317b5c627d179c18120bccc70d026532077ea4182899d60f8e4aa8f0",
+    "src/worker/number-check.ts": "ade46d92af6f279851917da931889ed9d6eeebce382a28d87ee14534c9967f6b",
+    "src/worker/prompts.ts": "278cbe495377ff769b0f1611c1c15edffe6ea3973dc0c37e9dd9f396f7550989",
+    "src/worker/requirements.ts": "951961cd89471341000114d0d63fdeb6730560fedf36d0c3b1819f6e14cdc886",
+    "src/worker/review.ts": "73e69e466bce194b4080dca5cfe5874eb01789cf8c6243a3bfb6a3027a760cb3",
+    "src/worker/store.ts": "076a686488075124446974c10c559798f2810f318b002cbe6bdc7f3e8946291f",
+    "src/worker/summary-model.ts": "5cd3449cdc4c835f73ab2dad3d8a333808c4c6c273899fe75806b987fff2c8b2",
+    "src/worker/summary-schema.ts": "dab39699d25755b382a08121705c07ff365532ab4d82d4346a3cb7255dc539b1",
+    "src/worker/summary.ts": "14b8874374df0e180376a988a964ee9a0c4c99d0e9a59826b53345a021ad5ed5",
+    "src/worker/transcript-preview.ts": "72203d083e86317d5fe5efd07f045fa211d65c2b9ab01621029b0f30e0dda484",
+    "src/worker/transcript-relay.ts": "dd85ac07f1cfd12d7272ae8aa4ddebc4272680565f96efa02b3ef2ca7ab1b4c7",
+    "src/worker/transcripts.ts": "01c70a7bf63b22e161444946957457b38c6144ba3d15382c659be6c4cdc8f24f",
+    "src/worker/transcripts/xRh2sVcNXQ8.json": "f44a8fada60cabe7afd47b093622333b4ee0cce0fcf3ad99bfeb257ed81c4982",
+    "src/worker/youtube.ts": "e1c6ede1a9e85eee3858f90fc322eb4c0d3701c081d27fd268d24ea57d73b116",
+    "test/fixtures/upstream.ts": "00cee481497217dca201614e1c2bbbc680e06c16c1abeebb8581330885c0b56f",
+    "test/harness/mock-upstream.ts": "92ac4a76357b5ae77f50823c12b95276d3a1b19d9c9d4f2cec997b4cfd7ce7b9",
+    "wrangler.jsonc": "1de5c9c048d1a8385c352bba7d5fd2d878df4fd76bd5344621a11e7ddb421c6e"
+  },
+  "productionVars": {
+    "GEMINI_MODEL": "gemini-4-hydrogen",
+    "GEMINI_THINKING_LEVEL": "high",
+    "GEMINI_FALLBACK_MODEL": "gemini-3.6-flash",
+    "GEMINI_FALLBACK_THINKING_LEVEL": "low"
+  },
+  "wrapperSha256": "ce104d562fae19c560c7d2c06871ec869c7b2a545fb3a62cd3a9641ac6f6ae6e",
+  "executionOnly": "临时main仅增加/__ready和GET /__evidence/<id>调用生产GenerationStore.load；/api原样进入生产handler。无客户端assets。仅YouTube由已存字幕替代；smoke模式另替代Gemini。",
+  "runtime": {
+    "node": "v22.15.0",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "requests": [
+    {
+      "startedAt": "2026-11-26T04:35:31.931Z",
+      "model": "gemini-4-hydrogen",
+      "purpose": "requirements",
+      "requestBody": {
+        "systemInstruction": {
+          "parts": [
+            {
+              "text": "你负责从用户写给文章生成器的要求里，提取能直接数出来的硬性约束。只提取用户明确写出数量的要求，不推测、不补充。\n\n- maxChars / minChars：全文字数的上限、下限。\"不超过 1500 字\"\"最多 800 字\"\"1500 字以内\"是上限；\"至少 2000 字\"\"不少于 2000 字\"是下限；\"800 到 1000 字\"两个都有。\"简短一点\"\"写长一些\"这类没有数字的说法不提取。\n- chaptersMin / chaptersMax：章节数。\"正好 3 章\"\"分三章\"\"写三章\"时两个都填 3；\"不超过 5 章\"只填上限；\"至少 4 章\"只填下限。\n- sectionsPerChapter：每一章要有几个小节（\"每章三个小节\"）。sectionTitles：用户点名每章都要有的小节名，按用户写的原样、顺序列出（\"每章都包含'核心观点''原话依据'两个小节\"→ [\"核心观点\",\"原话依据\"]）。\n- 没有对应要求的数字字段填 0，sectionTitles 填空数组。\n- 每一类约束都要给出 quote：从用户要求里逐字复制的那半句话。没有对应要求时 quote 填空字符串。程序会核对 quote 是否真的出现在用户要求里。"
+            }
+          ]
+        },
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "<user_requirements>\n面向大学生，写三章、最多1500字的中文经济学笔记；保留货币、信用、收入、债务的区别，金额和比例按字幕，不补投资建议。\n</user_requirements>\n\n请提取硬性约束。"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 65536,
+          "responseMimeType": "application/json",
+          "responseJsonSchema": {
+            "type": "object",
+            "properties": {
+              "maxChars": {
+                "type": "integer"
+              },
+              "minChars": {
+                "type": "integer"
+              },
+              "charsQuote": {
+                "type": "string"
+              },
+              "chaptersMin": {
+                "type": "integer"
+              },
+              "chaptersMax": {
+                "type": "integer"
+              },
+              "chaptersQuote": {
+                "type": "string"
+              },
+              "sectionsPerChapter": {
+                "type": "integer"
+              },
+              "sectionTitles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sectionsQuote": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "maxChars",
+              "minChars",
+              "charsQuote",
+              "chaptersMin",
+              "chaptersMax",
+              "chaptersQuote",
+              "sectionsPerChapter",
+              "sectionTitles",
+              "sectionsQuote"
+            ]
+          },
+          "thinkingConfig": {
+            "thinkingLevel": "low"
+          }
+        }
+      },
+      "requestBodySha256": "cd83eece0cdf8cebe56ece35705775b8976e4bcb50d8e067cadd51b3ccfeead6",
+      "transcriptSha256": null,
+      "transcriptMatches": null,
+      "status": 402,
+      "responseBase64": "ewogICJlcnJvciI6IHsKICAgICJjb2RlIjogNDAyLAogICAgIm1lc3NhZ2UiOiAiWW91ciBwcmVwYXltZW50IGNyZWRpdHMgYXJlIGRlcGxldGVkLiBQbGVhc2UgZ28gdG8gQUkgU3R1ZGlvIGF0IGh0dHBzOi8vYWkuc3R1ZGlvL3Byb2plY3RzIHRvIG1hbmFnZSB5b3VyIHByb2plY3QgYW5kIGJpbGxpbmcuIExlYXJuIG1vcmUgYXQgaHR0cHM6Ly9haS5nb29nbGUuZGV2L2dlbWluaS1hcGkvZG9jcy9iaWxsaW5nI3ByZXBheS4gIiwKICAgICJzdGF0dXMiOiAiUkVTT1VSQ0VfRVhIQVVTVEVEIgogIH0KfQo=",
+      "ms": 509,
+      "aborted": false,
+      "error": null
+    },
+    {
+      "startedAt": "2026-11-26T04:35:31.948Z",
+      "model": "gemini-4-hydrogen",
+      "purpose": "article",
+      "requestBody": {
+        "systemInstruction": {
+          "parts": [
+            {
+              "text": "你是中文内容编辑，把 YouTube 视频字幕整理成一篇中文文章。\n\n结构要求（程序会检查，不满足时本次生成判为失败，用户无法查看章节总结）：\n- 第一行是一级标题（# 标题），全文只有这一个一级标题。\n- 用二级标题（## ）划分章节，至少一个章节；每个章节的标题和正文都不能为空。\n\n忠实度：\n1. 只写字幕里有的内容，不补充字幕之外的事实、数据、观点或例子；也不要用括号给专名补充字幕里没有的信息，例如给公司名附上它的产品名、给人名附上头衔或年龄。代码、命令和提示符里的每个符号也必须有口述依据，不能按常见格式补齐。\n2. 每个回答只写这一次回答里说过的话，也就是这次提问到下一次提问之间的字幕。不要把别的话题里的观点、例子挪进来，也不要把几次问答合成一次。把问题压缩成书面语时，保留原问题问的对象和比较关系（原来问 A 和 B 哪个好，就不要改成问 A 和 C）。\n3. 数量级按原文准确换算：hundreds of millions = 数亿，billions = 数十亿，tens of billions = 数百亿，hundreds of billions = 数千亿，trillions = 数万亿。\n4. 字幕里残缺或有歧义的数字（缺位、多出标点、听不清），不要补全、推算，也不要用视频以外的数字替代。整理字幕时，已确认残缺的数字已经换成\"〔字幕此处数字不清，无法确定具体数量〕\"：写到这里时照实说明数量不清，例如\"大量法案（字幕此处数字不清）\"，不写任何具体数字，也不要换成\"上千\"\"数百\"这类说法。其他听不清的数字同样照实写出不确定性。括号里的\"原文\"只能照抄字幕的原样文字，不能填你推测的数。\n5. 字幕（尤其是自动识别）常把人名、产品名和术语听错。只有上下文能确定时才纠正：例如字幕自己给出了拼写，或者这个词在当前语境里只有一种合理解释。能确定的纠正直接写正确写法，不加注释；证据不足时保留字幕原文，只有这种情况才加\"（原文 xxx）\"。\n6. 保持原话的范围和确定程度：原文说\"公司\"\"企业\"，就不要擅自改成\"初创公司\"；推测、转述或传闻保留相应语气，I think、I believe、may 不能因为你知道相关知识就删掉。about、approximately 保留为\"约\"，usually、typically 保留为\"通常\"；写成一个数值区间也不能代替约数语气。比较边界同样不能变：\"超过\"不等于\"至少\"，\"小于\"不等于\"不超过\"。\n7. 讲者说明是自己的解释框架、简化模型或建议时，保留讲者归属和适用范围，不要改成无条件成立的一般规律。视频里以当前口吻陈述的统计也要在该句或紧邻说明中写明\"视频所述\"\"视频中讲者提到\"等来源；不能只靠全文开头的笼统归属，把它写成读者当前可直接采用的统计。演示或假设数据则保留\"这次演示\"等相应语境，不要把真实统计误标为假设，也不补字幕没有给出的日期。约数与假设是不同限定：原话同时有 maybe、about、let's say 时，不能只用\"约\"代替\"假设、可能\"。\n8. 对同一对象、同一范围的前后说法或读数，要回看整段字幕比较。若口径不一致且文章保留了两种说法，必须就近明确写出\"字幕前后口径不一致，未作统一\"等说明；仅分别写\"先说……后说……\"不够。也可以略去有冲突的细节，只保留无冲突的内容；不能挑一个冲突值当作唯一事实，更不能靠常识、计算年份范围等方式替字幕裁定。\n9. 压缩时保留会改变结论的条件与因果方向：条件成立时才有的结果，不能写成无条件或必然发生；先后发生不等于前者导致后者，后续缓解措施也不能并列成问题起因。多种措施的属性不能互相套用，总额增加与相对某个基数的负担下降不能混为一谈。篇幅不足时减少次要细节，不删掉这些限定后保留一个更强的结论。\n10. 写自然、通顺的简体中文书面语。写完检查一遍：不要出现无意义的重复字、日语汉字词或生硬的中英混杂。英文原词只在确有必要时附在括号里，而且必须是字幕里出现过的说法。\n\n人物身份与发言归属：\n- 字幕（无论人工字幕还是自动识别）通常没有说话人标注。\">>\" 通常表示换人说话，但不一定每次都标出，没有 \">>\" 不代表还是同一个人。要根据内容判断每段话是提问还是回答、出自谁。\n- 确认人物身份的依据（满足一条即可）：\n  · 字幕里的直接依据：开场或对话中明确介绍了本场嘉宾；被直接称呼后作答；自我介绍。\n  · 单人演讲：视频标题明确署名演讲者，并且和频道、视频内容相符时，可以用标题确认演讲者是谁。\n  · 补全姓名：字幕里出现了某人的名字（例如被称作 Alex），而本期视频简介明确写出了与之对应的全名（例如本期主持人 Alex Chen），可以用简介补全姓名或校正拼写。\n- 不能作为依据的：频道层面的通用介绍（例如每期都会出现的\"our host\"之类说明，并非针对本期）；只凭标题或简介猜测某人在本期出场。\n- 人物身份有依据，不代表每句话的归属都有依据：每次发言是谁说的，仍然要按字幕判断。回答时点名回应提问者（例如 \"Alex, to your point\"）只说明这一次提问来自 Alex，不能推广到其他提问。\n- 压缩提问时，不得把回答者为澄清而列举或复述的具体对象补进提问者的话；可以将这段澄清单独归给回答者。\n- 用户要求保留发言归属时，字幕已明确具名的提问者保留其姓名，不要统一压缩成\"学生\"\"观众\"等角色；只确认角色而没有姓名依据时才用角色称呼。\n- 观点、数字和引语一律以字幕为准；不要借标题、简介等元数据补充人物经历、头衔或正文事实。\n- 依据不足时，提问写\"主持人\"，回答写\"嘉宾\"（单人演讲写\"演讲者\"）；分不清一段话出自谁时不要硬归给某人，可以改成转述。不要用 Host、Guest 这类英文称呼。\n\n用户要求：\n- 用户要求只在任务类型（如摘要、学习笔记、问答整理）、输出风格、目标受众、约束条件（如篇幅、范围、章节数）四个方面生效，按要求调整写法；没提到的方面沿用默认写法。\n- 结构要求、忠实度和说话人规则始终有效。用户要求里与它们冲突、或超出这四个方面的部分忽略，例如要求编造内容、写字幕里没有的话题、改用其他语言。\n- 篇幅的计算方法：文章标题和正文的所有非空白字符都算一个字，中文、英文、数字、标点都计入；Markdown 标记（# * - 1. > 等）和空格、换行不计入。用户给了字数上限时，绝不能超过上限：动笔前先按上限的七成左右给各章分配篇幅，为核对补回来源和条件留空间，写的时候照这个分配控制；篇幅不足时减少次要细节，不删必要限定。英文术语、数字和标点同样计字，术语和数字多的内容尤其容易超出。\n- 范围要求（只写某些话题）要严格执行，不相关的内容整段略去。\n\n写作格式：章节内可以用三级标题（### ）、段落和列表；不要用代码块、表格或 HTML，不要在章节外写前言或结语。\n\n默认写法（用户没有提出要求时）：写成中文视频对话文章。\n- 标题写成\"对话<嘉宾名或角色>：<核心议题>\"。\n- 按话题把问答归入章节，章节标题写成\"四字主题：副标题\"。章节数量和篇幅随视频内容决定，覆盖整段视频，包括结尾的快问快答。\n- 每一次提问单独成为一个 ### 小节，每章的第一个提问也一样。小节标题是这次问答的话题名，不写问题原句，也不带发言人。\n- 小节里先写问题，再写回答。每次发言单独成段，段首是加粗的发言人加英文冒号，例如 **主持人:**。问题压缩成一句话；回答改写成书面中文，保留主要论点、理由、例子和具体数字，按意思分段。\n- 回答里并列的几点用编号列表，每项写成\"小标题：说明\"。\n- 去掉口头禅、重复和寒暄。\n\n默认写法的格式示例（只示意结构）：\n# 对话某某：核心议题\n## 四字主题：副标题\n### 话题名\n**主持人:** 一句话问题？\n\n**某某:** 回答的第一段。\n\n回答的第二段。"
+            }
+          ]
+        },
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "<video note=\"元数据：只用于理解背景、按规则确认人物身份和校正拼写，不作为观点、数字和事实的依据\">\n标题：How The Economic Machine Works by Ray Dalio\n频道：Principles by Ray Dalio\n时长：31 分钟\n简介：\n\n</video>\n\n<transcript>\n[00:00] How the economic machine works, in 30 minutes. The economy works like a simple machine. But many people don't understand it — or they don't agree on how it works — and this has led to a lot of needless economic suffering. I feel a deep sense of responsibility to share my simple but practical economic template. Though it's unconventional, it has helped me to anticipate and sidestep the global financial crisis, and has worked well for me for over 30 years. Let's begin. Though the economy might seem complex, it works in a simple, mechanical way. It's made up of a few simple parts and a lot of simple transactions that are repeated over and over again a zillion times. These transactions are above all else driven by human nature, and they create 3 main forces that drive the economy. Number 1: Productivity growth Number 2: The Short term debt cycle and Number 3: The Long term debt cycle We'll look at these three forces and how laying them on top of each other creates a good template for tracking economic movements and figuring out what's happening now. Let's start with the simplest part of the economy: Transactions. An economy is simply the sum of the transactions that make it up and a transaction is a very simple thing. You make transactions all the time. Every time you buy something you create a transaction. Each transaction consists of a buyer exchanging money or credit with a seller for goods, services or financial assets. Credit spends just like money, so adding together the money spent and the amount of credit spent,\n\n[01:49] you can know the total spending. The total amount of spending drives the economy. If you divide the amount spent by the quantity sold, you get the price. And that's it. That's a transaction. It is the building block of the economic machine. All cycles and all forces in an economy are driven by transactions. So, if we can understand transactions, we can understand the whole economy. A market consists of all the buyers and all the sellers making transactions for the same thing. For example, there is a wheat market, a car market, a stock market and markets for millions of things. An economy consists of all of the transactions in all of its markets. If you add up the total spending and the total quantity sold in all of the markets, you have everything you need to know to understand the economy. It's just that simple. People, businesses, banks and governments all engage in transactions the way I just described: exchanging money and credit for goods, services and financial assets. The biggest buyer and seller is the government, which consists of two important parts: a Central Government that collects taxes and spends money... ...and a Central Bank, which is different from other buyers and sellers because it controls the amount of money and credit in the economy. It does this by influencing interest rates and printing new money. For these reasons, as we'll see, the Central Bank is an important player in the flow of Credit. I want you to pay attention to credit. Credit is the most important part of the economy,\n\n[03:34] and probably the least understood. It is the most important part because it is the biggest and most volatile part. Just like buyers and sellers go to the market to make transactions, so do lenders and borrowers. Lenders usually want to make their money into more money and borrowers usually want to buy something they can't afford, like a house or car or they want to invest in something like starting a business. Credit can help both lenders and borrowers get what they want. Borrowers promise to repay the amount they borrow, called the principal, plus an additional amount, called interest. When interest rates are high, there is less borrowing because it's expensive. When interest rates are low, borrowing increases because it's cheaper. When borrowers promise to repay and lenders believe them, credit is created. Any two people can agree to create credit out of thin air! That seems simple enough but credit is tricky because it has different names. As soon as credit is created, it immediately turns into debt. Debt is both an asset to the lender, and a liability to the borrower. In the future, when the borrower repays the loan, plus interest, the asset and liability disappear and the transaction is settled. So, why is credit so important? Because when a borrower receives credit, he is able to increase his spending. And remember, spending drives the economy. This is because one person's spending is another person's income. Think about it, every dollar you spend, someone else earns. and every dollar you earn, someone else has spent.\n\n[05:25] So when you spend more, someone else earns more. When someone's income rises it makes lenders more willing to lend him money because now he's more worthy of credit. A creditworthy borrower has two things: the ability to repay and collateral. Having a lot of income in relation to his debt gives him the ability to repay. In the event that he can't repay, he has valuable assets to use as collateral that can be sold. This makes lenders feel comfortable lending him money. So increased income allows increased borrowing which allows increased spending. And since one person's spending is another person's income, this leads to more increased borrowing and so on. This self-reinforcing pattern leads to economic growth and is why we have Cycles. In a transaction, you have to give something in order to get something and how much you get depends on how much you produce over time we learned and that accumulated knowledge raises are living standards we call this productivity growth those who were invented and hard-working raise their productivity and their living standards faster than those who are complacent and lazy, but that isn't necessarily true over the short run. Productivity matters most in the long run, but credit matters most in the short run. This is because productivity growth doesn't fluctuate much, so it's not a big driver of economic swings. Debt is — because it allows us to consume more than we produce when we acquire it and it forces us to consume less than we produce when we pay it back.\n\n[07:11] Debt swings occur in two big cycles. One takes about 5 to 8 years and the other takes about 75 to 100 years. While most people feel the swings, they typically don't see them as cycles because they see them too up close -- day by day, week by week. In this chapter we are going to step back and look at these three big forces and how they interact to make up our experiences. As mentioned, swings around the line are not due to how much innovation or hard work there is, they're primarily due to how much credit there is. Let's for a second imagine an economy without credit. In this economy, the only way I can increase my spending is to increase my income, which requires me to be more productive and do more work. Increased productivity is the only way for growth. Since my spending is another person's income, the economy grows every time I or anyone else is more productive. If we follow the transactions and play this out, we see a progression like the productivity growth line. But because we borrow, we have cycles. This isn't due to any laws or regulation, it's due to human nature and the way that credit works. Think of borrowing as simply a way of pulling spending forward. In order to buy something you can't afford, you need to spend more than you make. To do this, you essentially need to borrow from your future self. In doing so you create a time in the future that you need to spend less than you make in order to pay it back. It very quickly resembles a cycle. Basically, anytime you borrow you create a cycle.?\n\n[08:55] This is as true for an individual as it is for the economy. This is why understanding credit is so important because it sets into motion a mechanical, predictable series of events that will happen in the future. This makes credit different from money. Money is what you settle transactions with. When you buy a beer from a bartender with cash, the transaction is settled immediately. But when you buy a beer with credit, it's like starting a bar tab. You're saying you promise to pay in the future. Together you and the bartender create an asset and a liability. You just created credit. Out of thin air. It's not until you pay the bar tab later that the asset and liability disappear, the debt goes away and the transaction is settled. The reality is that most of what people call money is actually credit. The total amount of credit in the United States is about $50 trillion and the total amount of money is only about $3 trillion. Remember, in an economy without credit: the only way to increase your spending is to produce more. But in an economy with credit, you can also increase your spending by borrowing. As a result, an economy with credit has more spending and allows incomes to rise faster than productivity over the short run, but not over the long run. Now, don't get me wrong, credit isn't necessarily something bad that just causes cycles. It's bad when it finances over-consumption that can't be paid back. However, it's good when it efficiently allocates resources and produces income so you can pay back the debt.\n\n[10:37] For example, if you borrow money to buy a big TV, it doesn't generate income for you to pay back the debt. But, if you borrow money to buy a tractor — and that tractor let's you harvest more crops and earn more money — then, you can pay back your debt and improve your living standards. In an economy with credit, we can follow the transactions and see how credit creates growth. Let me give you an example: Suppose you earn $100,000 a year and have no debt. You are creditworthy enough to borrow $10,000 dollars - say on a credit card - so you can spend $110,000 dollars even though you only earn $100,000 dollars. Since your spending is another person's income, someone is earning $110,000 dollars. The person earning $110,000 dollars with no debt can borrow $11,000 dollars, so he can spend $121,000 dollars even though he has only earned $110,000 dollars. His spending is another person's income and by following the transactions we can begin to see how this process works in a self-reinforcing pattern. But remember, borrowing creates cycles and if the cycle goes up, it eventually needs to come down. This leads us into the Short Term Debt Cycle. As economic activity increases, we see an expansion - the first phase of the short term debt cycle. Spending continues to increase and prices start to rise. This happens because the increase in spending is fueled by credit - which can be created instantly out of thin air. When the amount of spending and incomes grow faster than the production of goods:\n\n[12:22] prices rise. When prices rise, we call this inflation. The Central Bank doesn't want too much inflation because it causes problems. Seeing prices rise, it raises interest rates. With higher interest rates, fewer people can afford to borrow money. And the cost of existing debts rises. Think about this as the monthly payments on your credit card going up. Because people borrow less and have higher debt repayments, they have less money leftover to spend, so spending slows ...and since one person's spending is another person's income, incomes drop...and so on and so forth. When people spend less, prices go down. We call this deflation. Economic activity decreases and we have a recession. If the recession becomes too severe and inflation is no longer a problem, the central bank will lower interest rates to cause everything to pick up again. With low interest rates, debt repayments are reduced and borrowing and spending pick up and we see another expansion. As you can see, the economy works like a machine. In the short term debt cycle, spending is constrained only by the willingness of lenders and borrowers to provide and receive credit. When credit is easily available, there's an economic expansion. When credit isn't easily available, there's a recession. And note that this cycle is controlled primarily by the central bank. The short term debt cycle typically lasts 5 - 8 years and happens over and over again for decades. But notice that the bottom and top of each cycle finish with more growth than the previous cycle and with more debt.\n\n[14:16] Why? Because people push it — they have an inclination to borrow and spend more instead of paying back debt. It's human nature. Because of this, over long periods of time, debts rise faster than incomes creating the Long Term Debt Cycle. Despite people becoming more indebted, lenders even more freely extend credit. Why? Because everybody thinks things are going great! People are just focusing on what's been happening lately. And what has been happening lately? Incomes have been rising! Asset values are going up! The stock market roars! It's a boom! It pays to buy goods, services, and financial assets with borrowed money! When people do a lot of that, we call it a bubble. So even though debts have been growing, incomes have been growing nearly as fast to offset them. Let's call the ratio of debt-to-income the debt burden. So long as incomes continue to rise, the debt burden stays manageable. At the same time asset values soar. People borrow huge amounts of money to buy assets as investments causing their prices to rise even higher. People feel wealthy. So even with the accumulation of lots of debt, rising incomes and asset values help borrowers remain creditworthy for a long time. But this obviously can not continue forever. And it doesn't. Over decades, debt burdens slowly increase creating larger and larger debt repayments. At some point, debt repayments start growing faster than incomes forcing people to cut back on their spending. And since one person's spending is another person's income,\n\n[16:12] incomes begin to go down... ...which makes people less creditworthy causing borrowing to go down. Debt repayments continue to rise which makes spending drop even further... ...and the cycle reverses itself. This is the long term debt peak. Debt burdens have simply become too big. For the United States, Europe and much of the rest of the world this happened in 2008. It happened for the same reason it happened in Japan in 1989 and in the United States back in 1929. Now the economy begins Deleveraging. In a deleveraging; people cut spending, incomes fall, credit disappears, assets prices drop, banks get squeezed, the stock market crashes, social tensions rise and the whole thing starts to feed on itself the other way. As incomes fall and debt repayments rise, borrowers get squeezed. No longer creditworthy, credit dries up and borrowers can no longer borrow enough money to make their debt repayments. Scrambling to fill this hole, borrowers are forced to sell assets. The rush to sell assets floods the market This is when the stock market collapses, the real estate market tanks and banks get into trouble. As asset prices drop, the value of the collateral borrowers can put up drops. This makes borrowers even less creditworthy. People feel poor. Credit rapidly disappears. Less spending › less income › less wealth › less credit › less borrowing and so on. It's a vicious cycle. This appears similar to a recession but the difference here is that interest rates can't be lowered to save the day.\n\n[18:10] In a recession, lowering interest rates works to stimulate the borrowing. However, in a deleveraging, lowering interest rates doesn't work because interest rates are already low and soon hit 0% - so the stimulation ends. Interest rates in the United States hit 0% during the deleveraging of the 1930s and again in 2008. The difference between a recession and a deleveraging is that in a deleveraging borrowers' debt burdens have simply gotten too big and can't be relieved by lowering interest rates. Lenders realize that debts have become too large to ever be fully paid back. Borrowers have lost their ability to repay and their collateral has lost value. They feel crippled by the debt - they don't even want more! Lenders stop lending. Borrowers stop borrowing. Think of the economy as being not-creditworthy, just like an individual. So what do you do about a deleveraging? The problem is debt burdens are too high and they must come down. There are four ways this can happen. 1. people, businesses, and governments cut their spending. 2. debts are reduced through defaults and restructurings. 3. wealth is redistributed from the 'haves' to the 'have nots'. and finally, 4. the central bank prints new money. These 4 ways have happened in every deleveraging in modern history. Usually, spending is cut first. As we just saw, people, businesses, banks and even governments tighten their belts and cut their spending so that they can pay down their debt. This is often referred to as austerity. When borrowers stop taking on new debts,\n\n[20:01] and start paying down old debts, you might expect the debt burden to decrease. But the opposite happens! Because spending is cut - and one man's spending is another man's income - it causes incomes to fall. They fall faster than debts are repaid and the debt burden actually gets worse. As we've seen, this cut in spending is deflationary and painful. Businesses are forced to cut costs... which means less jobs and higher unemployment. This leads to the next step: debts must be reduced! Many borrowers find themselves unable to repay their loans — and a borrower's debts are a lender's assets. When borrowers don't repay the bank, people get nervous that the bank won't be able to repay them so they rush to withdraw their money from the bank. Banks get squeezed and people, businesses and banks default on their debts. This severe economic contraction is a depression. A big part of a depression is people discovering much of what they thought was their wealth isn't really there. Let's go back to the bar. When you bought a beer and put it on a bar tab, you promised to repay the bartender. Your promise became an asset of the bartender. But if you break your promise - if you don't pay him back and essentially default on your bar tab - then the 'asset' he has isn't really worth anything. It has basically disappeared. Many lenders don't want their assets to disappear and agree to debt restructuring. Debt restructuring means lenders get paid back less or get paid back over a longer time frame\n\n[21:48] or at a lower interest rate that was first agreed. Somehow a contract is broken in a way that reduces debt. Lenders would rather have a little of something than all of nothing. Even though debt disappears, debt restructuring causes income and asset values to disappear faster, so the debt burden continues to gets worse. Like cutting spending, debt reduction is also painful and deflationary. All of this impacts the central government because lower incomes and less employment means the government collects fewer taxes. At the same time it needs to increase its spending because unemployment has risen. Many of the unemployed have inadequate savings and need financial support from the government. Additionally, governments create stimulus plans and increase their spending to make up for the decrease in the economy. Governments' budget deficits explode in a deleveraging because they spend more than they earn in taxes. This is what is happening when you hear about the budget deficit on the news. To fund their deficits, governments need to either raise taxes or borrow money. But with incomes falling and so many unemployed, who is the money going to come from? The rich. Since governments need more money and since wealth is heavily concentrated in the hands of a small percentage of the people, governments naturally raise taxes on the wealthy which facilitates a redistribution of wealth in the economy - from the 'haves' to the 'have nots'. The 'have-nots,' who are suffering, begin to resent the wealthy 'haves.'\n\n[23:30] The wealthy 'haves,' being squeezed by the weak economy, falling asset prices, higher taxes, begin to resent the 'have nots.' If the depression continues social disorder can break out. Not only do tensions rise within countries, they can rise between countries - especially debtor and creditor countries. This situation can lead to political change that can sometimes be extreme. In the 1930s, this led to Hitler coming to power, war in Europe, and depression in the United States. Pressure to do something to end the depression increases. Remember, most of what people thought was money was actually credit. So, when credit disappears, people don't have enough money. People are desperate for money and you remember who can print money? The Central Bank can. Having already lowered its interest rates to nearly 0 - it's forced to print money. Unlike cutting spending, debt reduction, and wealth redistribution, printing money is inflationary and stimulative. Inevitably, the central bank prints new money — out of thin air — and uses it to buy financial assets and government bonds. It happened in the United States during the Great Depression and again in 2008, when the United States' central bank — the Federal Reserve — printed over two trillion dollars. Other central banks around the world that could, printed a lot of money, too. By buying financial assets with this money, it helps drive up asset prices which makes people more creditworthy. However, this only helps those who own financial assets.\n\n[25:15] You see, the central bank can print money but it can only buy financial assets. The Central Government, on the other hand, can buy goods and services and put money in the hands of the people but it can't print money. So, in order to stimulate the economy, the two must cooperate. By buying government bonds, the Central Bank essentially lends money to the government, allowing it to run a deficit and increase spending on goods and services through its stimulus programs and unemployment benefits. This increases people's income as well as the government's debt. However, it will lower the economy's total debt burden. This is a very risky time. Policy makers need to balance the four ways that debt burdens come down. The deflationary ways need to balance with the inflationary ways in order to maintain stability. If balanced correctly, there can be a Beautiful Deleveraging. You see, a deleveraging can be ugly or it can be beautiful. How can a deleveraging be beautiful? Even though a deleveraging is a difficult situation, handling a difficult situation in the best possible way is beautiful. A lot more beautiful than the debt-fueled, unbalanced excesses of the leveraging phase. In a beautiful deleveraging, debts decline relative to income, real economic growth is positive, and inflation isn't a problem. It is achieved by having the right balance. The right balance requires a certain mix of cutting spending, reducing debt, transferring wealth and printing money so that economic and social stability can be maintained.\n\n[27:09] People ask if printing money will raise inflation. It won't if it offsets falling credit. Remember, spending is what matters. A dollar of spending paid for with money has the same effect on price as a dollar of spending paid for with credit. By printing money, the Central Bank can make up for the disappearance of credit with an increase in the amount of money. In order to turn things around, the Central Bank needs to not only pump up income growth but get the rate of income growth higher than the rate of interest on the accumulated debt. So, what do I mean by that? Basically, income needs to grow faster than debt grows. For example: let's assume that a country going through a deleveraging has a debt-to- income ratio of 100%. That means that the amount of debt it has is the same as the amount of income the entire country makes in a year. Now think about the interest rate on that debt, let's say it is 2%. If debt is growing at 2% because of that interest rate and income is only growing at around only 1%, you will never reduce the debt burden. You need to print enough money to get the rate of income growth above the rate of interest. However, printing money can easily be abused because it's so easy to do and people prefer it to the alternatives. The key is to avoid printing too much money and causing unacceptably high inflation, the way Germany did during its deleveraging in the 1920's. If policymakers achieve the right balance, a deleveraging isn't so dramatic. Growth is slow but debt burdens go down.\n\n[28:51] That's a beautiful deleveraging. When incomes begin to rise, borrowers begin to appear more creditworthy. And when borrowers appear more creditworthy, lenders begin to lend money again. Debt burdens finally begin to fall. Able to borrow money, people can spend more. Eventually, the economy begins to grow again, leading to the reflation phase of the long term debt cycle. Though the deleveraging process can be horrible if handled badly, if handled well, it will eventually fix the problem. It takes roughly a decade or more for debt burdens to fall and economic activity to get back to normal - hence the term 'lost decade.' Of course, the economy is a little more complicated than this template suggests. However, laying the short term debt cycle on top of the long term debt cycle and then laying both of them on top of the productivity growth line gives a reasonably good template for seeing where we've been, where we are now and where we are probably headed. So in summary, there are three rules of thumb that I'd like you to take away from this: First: Don't have debt rise faster than income, because your debt burdens will eventually crush you. Second: Don't have income rise faster than productivity, because you will eventually become uncompetitive. And third: Do all that you can to raise your productivity, because, in the long run, that's what matters most. This is simple advice for you and it's simple advice for policy makers. You might be surprised but most people — including most policy makers — don't pay enough attention\n\n[30:38] to this. This template has worked for me and I hope that it'll work for you. Thank you.\n</transcript>\n\n<user_requirements>\n面向大学生，写三章、最多1500字的中文经济学笔记；保留货币、信用、收入、债务的区别，金额和比例按字幕，不补投资建议。\n</user_requirements>\n\n请按规则写这篇文章，直接从一级标题开始输出。"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 65536,
+          "thinkingConfig": {
+            "thinkingLevel": "high"
+          }
+        }
+      },
+      "requestBodySha256": "c42e4b10241246865b2344cb77128e598238a80a1602ebac45f03992e1f5c1a6",
+      "transcriptSha256": "8286e97e521af40000b09d320401736e14a22b8a6d0229d713c1032fd5b9d063",
+      "transcriptMatches": true,
+      "status": 402,
+      "responseBase64": "ewogICJlcnJvciI6IHsKICAgICJjb2RlIjogNDAyLAogICAgIm1lc3NhZ2UiOiAiWW91ciBwcmVwYXltZW50IGNyZWRpdHMgYXJlIGRlcGxldGVkLiBQbGVhc2UgZ28gdG8gQUkgU3R1ZGlvIGF0IGh0dHBzOi8vYWkuc3R1ZGlvL3Byb2plY3RzIHRvIG1hbmFnZSB5b3VyIHByb2plY3QgYW5kIGJpbGxpbmcuIExlYXJuIG1vcmUgYXQgaHR0cHM6Ly9haS5nb29nbGUuZGV2L2dlbWluaS1hcGkvZG9jcy9iaWxsaW5nI3ByZXBheS4gIiwKICAgICJzdGF0dXMiOiAiUkVTT1VSQ0VfRVhIQVVTVEVEIgogIH0KfQo=",
+      "ms": 510,
+      "aborted": false,
+      "error": null
+    }
+  ],
+  "savedContext": null,
+  "checks": {
+    "everyTranscriptMatches": true,
+    "savedFinalMatches": false,
+    "temporaryRemoved": true,
+    "noSummaryRequests": true
+  }
+}

@@ -13,12 +13,23 @@ afterEach(() => vi.restoreAllMocks());
 
 const SUMMARY = { who: 'Maria Lopez', what: '搬到柏林，基金投资 Alpha、Beta、Gamma', when: '2003 年起', where: '柏林', why: '', how: '' };
 
-/** 第一章的核对返回 TIME_ISSUE，第二章没有问题 */
-const firstChapterIssue = (body: string) => geminiJson({ issues: promptOf(body).user.includes('<section>\n# 柏林与基金') ? [TIME_ISSUE] : [] });
+/** 整篇专项仍属于 review 用途，通过 system 区分，而不是完整文章也含有的第一章标题。 */
+const isFidelityReview = (body: string) => promptOf(body).system.includes('负责整篇文章的语义限定复核');
+/** 第一章的核对返回 TIME_ISSUE，第二章与整篇专项没有问题 */
+const firstChapterIssue = (body: string) => geminiJson({ issues: !isFidelityReview(body) && promptOf(body).user.includes('<section>\n# 柏林与基金') ? [TIME_ISSUE] : [] });
 
 describe('对照字幕核对：没有问题', () => {
-  // 抓：没有核对阶段就保存；没问题时也发 revised；done.review 缺字段；核对请求不是每章一个，或者漏了这一章原文、整段字幕
-  it('事件里有 stage: reviewing、没有 revised；每章一个核对请求，带这一章原文和整段字幕', async () => {
+  it('有效问题列表里只有个别坏建议：拒绝建议，但仍完成并保存原稿', async () => {
+    mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM, reviewJson: geminiJson({ issues: [{ type: 'opinion' }] }) });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    expect(eventOf(events, 'error')).toBeUndefined();
+    expect(eventOf(events, 'revised')).toBeUndefined();
+    expect(eventOf(events, 'done')!.review.revisions).toBe(0);
+    expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(DRAFT);
+  });
+
+  // 抓：没有核对阶段就保存；没问题时也发 revised；done.review 缺字段；章节或整篇专项请求漏了对应原文、整段字幕
+  it('事件里有 reviewing、没有 revised；每章和整篇专项带对应原文及完整字幕', async () => {
     const upstream = mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
 
@@ -32,16 +43,22 @@ describe('对照字幕核对：没有问题', () => {
     expect(reviewedMs!).toBeLessThanOrEqual(savedMs);
 
     const reviews = upstream.gemini('review');
-    expect(reviews).toHaveLength(2);
-    expect(reviews.map((r) => modelOf(r.url))).toEqual(['test-model', 'test-model']);
-    const [first, second] = reviews.map((r) => promptOf(r.body).user);
+    expect(reviews).toHaveLength(3);
+    expect(reviews.map((r) => modelOf(r.url))).toEqual(['test-model', 'test-model', 'test-model']);
+    const chapters = reviews.filter((r) => !isFidelityReview(r.body));
+    const fidelity = reviews.filter((r) => isFidelityReview(r.body));
+    expect(chapters).toHaveLength(2);
+    expect(fidelity).toHaveLength(1);
+    const [first, second] = chapters.map((r) => promptOf(r.body).user);
+    const whole = promptOf(fidelity[0]!.body).user;
+    expect(whole).toContain(`<section>\n${DRAFT}\n</section>`);
     expect(first).toContain(`<section>\n${SECTION_1}\n</section>`);
     expect(second).toContain(`<section>\n${SECTION_2}\n</section>`);
     expect(first).not.toContain('现在有五到六家被投公司');
     expect(second).not.toContain('那家基金投资了');
-    for (const user of [first, second]) expect(user).toContain(`<transcript>\n${TRANSCRIPT_TEXT}\n</transcript>`);
+    for (const user of [first, second, whole]) expect(user).toContain(`<transcript>\n${TRANSCRIPT_TEXT}\n</transcript>`);
     // 核对用主模型和它的思考档
-    expect(reviews.map((r) => promptOf(r.body).generationConfig.thinkingConfig)).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'high' }]);
+    expect(reviews.map((r) => promptOf(r.body).generationConfig.thinkingConfig)).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'high' }, { thinkingLevel: 'high' }]);
 
     const saved = await openStore(env, eventOf(events, 'meta')!.generationId).load();
     expect(saved!.article.markdown).toBe(DRAFT);
@@ -102,7 +119,7 @@ describe('对照字幕核对：有修订', () => {
     ['quote 在这一章里找不到', { ...TIME_ISSUE, quote: '2004 年那家基金投资了 Alpha、Beta 和 Gamma。' }],
     ['quote 在这一章里出现两次', { ...TIME_ISSUE, quote: '基金', replacement: '基金会' }],
   ])('%s：文章不变，没有 revised，照常 done 并保存初稿', async (_label, issue) => {
-    mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM, reviewJson: (body) => geminiJson({ issues: promptOf(body).user.includes('<section>\n# 柏林与基金') ? [issue] : [] }) });
+    mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM, reviewJson: (body) => geminiJson({ issues: !isFidelityReview(body) && promptOf(body).user.includes('<section>\n# 柏林与基金') ? [issue] : [] }) });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
     expect(events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'stage', 'done']);
     expect(eventOf(events, 'done')!.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: [] });
@@ -113,6 +130,53 @@ describe('对照字幕核对：有修订', () => {
 });
 
 describe('对照字幕核对：模型失败', () => {
+  it.each([[{}], [{ issues: null }], [{ issues: '没有问题' }]])('核对返回合法 JSON 但整体结构无效（%j）：报错，不保存', async (raw) => {
+    mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM, reviewJson: geminiJson(raw) });
+    const save = vi.spyOn(GenerationStore.prototype, 'save');
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    expect(events.at(-1)).toEqual({
+      event: 'error',
+      data: { code: 'review_failed', message: '内容核对没有完成，这次生成没有保存（对照字幕核对没有完成：模型返回的格式无效（核对结果不是有效的问题列表））', partial: true },
+    });
+    expect(eventOf(events, 'done')).toBeUndefined();
+    expect(eventOf(events, 'revised')).toBeUndefined();
+    expect(save).not.toHaveBeenCalled();
+    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
+  });
+
+  it('两章核对成功但整篇专项协议无效：SSE error、无 done/revised，DO 不保存', async () => {
+    const successfulChapterSections: string[] = [];
+    const upstream = mockUpstream({
+      captions: CAPTIONS,
+      geminiStream: DRAFT_STREAM,
+      geminiOverride: ({ purpose, body }) => {
+        if (purpose !== 'review') return undefined;
+        if (isFidelityReview(body)) return Response.json(geminiJson({ issues: null }));
+        successfulChapterSections.push(promptOf(body).user);
+        return Response.json(geminiJson({ issues: [] }));
+      },
+    });
+    const save = vi.spyOn(GenerationStore.prototype, 'save');
+    const { status, events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    expect(status).toBe(200); // SSE 已开始，失败通过 error 事件返回。
+    expect(successfulChapterSections).toHaveLength(2);
+    expect(successfulChapterSections[0]).toContain(`<section>\n${SECTION_1}\n</section>`);
+    expect(successfulChapterSections[1]).toContain(`<section>\n${SECTION_2}\n</section>`);
+    const fidelity = upstream.gemini('review').filter((r) => isFidelityReview(r.body));
+    expect(fidelity).toHaveLength(1);
+    expect(promptOf(fidelity[0]!.body).user).toContain(`<section>\n${DRAFT}\n</section>`);
+    expect(upstream.gemini('review')).toHaveLength(3);
+    expect(upstream.gemini('summary')).toHaveLength(0);
+    expect(events.at(-1)).toEqual({
+      event: 'error',
+      data: { code: 'review_failed', message: '内容核对没有完成，这次生成没有保存（对照字幕核对没有完成：模型返回的格式无效（核对结果不是有效的问题列表））', partial: true },
+    });
+    expect(eventOf(events, 'done')).toBeUndefined();
+    expect(eventOf(events, 'revised')).toBeUndefined();
+    expect(save).not.toHaveBeenCalled();
+    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
+  });
+
   // 抓：核对没做成也保存并发 done，没核对过的文章被当成已完成
   it('核对请求主备模型都 503：error review_failed，partial 为 true，不保存', async () => {
     const upstream = mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM, geminiOverride: ({ purpose }) => (purpose === 'review' ? busyResponse() : undefined) });
@@ -124,12 +188,18 @@ describe('对照字幕核对：模型失败', () => {
       data: { code: 'review_failed', message: '内容核对没有完成，这次生成没有保存（对照字幕核对没有完成：Gemini 模型繁忙，请稍后重试（HTTP 503））', partial: true },
     });
     expect(eventOf(events, 'done')).toBeUndefined();
-    // 每章：主模型两次（503 重试一次），再换备用模型。先失败的那一章让整次核对失败时，另一章的备用模型第二次请求
-    // 还在 1.5 秒的重试间隔里；实测这一次请求不会再发出（请求上下文结束后定时器不再触发），所以备用模型是 3 或 4 次
-    const models = upstream.gemini('review').map((r) => modelOf(r.url));
-    expect(models.filter((m) => m === 'test-model')).toHaveLength(4);
-    expect(models.filter((m) => m === 'test-fallback').length).toBeGreaterThanOrEqual(3);
+    // 两章加整篇专项：每路主模型请求两次，再换备用。首路失败结束请求上下文时，其他路的第二次备用请求可能尚在重试间隔中。
+    const reviews = upstream.gemini('review');
+    const models = reviews.map((r) => modelOf(r.url));
+    expect(models.filter((m) => m === 'test-model')).toHaveLength(6);
+    expect(models.filter((m) => m === 'test-fallback').length).toBeGreaterThanOrEqual(4);
+    expect(models.filter((m) => m === 'test-fallback').length).toBeLessThanOrEqual(6);
     expect(models).toHaveLength(models.filter((m) => m === 'test-model' || m === 'test-fallback').length);
+    for (const section of [SECTION_1, SECTION_2, DRAFT]) {
+      const scope = reviews.filter((r) => promptOf(r.body).user.includes(`<section>\n${section}\n</section>`));
+      expect(scope.filter((r) => modelOf(r.url) === 'test-model')).toHaveLength(2);
+      expect(scope.filter((r) => modelOf(r.url) === 'test-fallback').length).toBeGreaterThanOrEqual(1);
+    }
     expect(save).not.toHaveBeenCalled();
     expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
   }, 10_000);
@@ -147,11 +217,11 @@ describe('对照字幕核对：模型失败', () => {
   });
 
   // 抓：核对时预付额度用完被包成 review_failed，或者重试、换同一账单下的备用模型
-  it('核对时 402：error gemini_billing，每章只请求一次，不换备用模型', async () => {
+  it('核对时 402：error gemini_billing，两章及整篇专项各请求一次，不换备用模型', async () => {
     const upstream = mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM, geminiOverride: ({ purpose }) => (purpose === 'review' ? billingResponse() : undefined) });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
     expect(events.at(-1)).toEqual({ event: 'error', data: { code: 'gemini_billing', message: 'Gemini 账户的预付额度已用完，暂时无法生成', partial: true } });
-    expect(upstream.gemini('review').map((r) => modelOf(r.url))).toEqual(['test-model', 'test-model']);
+    expect(upstream.gemini('review').map((r) => modelOf(r.url))).toEqual(['test-model', 'test-model', 'test-model']);
     expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
   });
 
@@ -172,11 +242,20 @@ describe('对照字幕核对：模型失败', () => {
       ['test-model', { thinkingLevel: 'high' }],
       ['test-model', { thinkingLevel: 'high' }],
       ['test-model', { thinkingLevel: 'high' }],
+      ['test-model', { thinkingLevel: 'high' }],
+      ['test-model', { thinkingLevel: 'high' }],
     ]);
     expect(requests.filter(([model]) => model === 'test-fallback')).toEqual([
       ['test-fallback', { thinkingLevel: 'low' }],
       ['test-fallback', { thinkingLevel: 'low' }],
+      ['test-fallback', { thinkingLevel: 'low' }],
     ]);
+    // 每路均独立执行主备切换，整篇专项不能漏掉或误路由为 5W1H。
+    for (const section of [SECTION_1, SECTION_2, DRAFT]) {
+      const scope = upstream.gemini('review').filter((r) => promptOf(r.body).user.includes(`<section>\n${section}\n</section>`));
+      expect(scope.map((r) => modelOf(r.url))).toEqual(['test-model', 'test-model', 'test-fallback']);
+    }
+    expect(upstream.gemini('summary')).toHaveLength(0);
     // 写文章仍是主模型：核对换备用模型不影响 done.model
     expect(eventOf(events, 'done')!.model).toBe('test-model');
   });
@@ -206,11 +285,11 @@ describe('对照字幕核对：客户端断开', () => {
       received += decoder.decode(value, { stream: true });
     }
     const generationId = /"generationId":"([0-9a-f]{64})"/.exec(received)![1]!;
-    await vi.waitFor(() => expect(signals).toHaveLength(2));
-    expect(signals.map((s) => s.aborted)).toEqual([false, false]);
+    await vi.waitFor(() => expect(signals).toHaveLength(3));
+    expect(signals.map((s) => s.aborted)).toEqual([false, false, false]);
 
     await reader.cancel('user closed the tab');
-    await vi.waitFor(() => expect(signals.map((s) => s.aborted)).toEqual([true, true]), { timeout: 1_000 });
+    await vi.waitFor(() => expect(signals.map((s) => s.aborted)).toEqual([true, true, true]), { timeout: 1_000 });
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(save).not.toHaveBeenCalled();
     expect(await openStore(env, generationId).load()).toBeNull();

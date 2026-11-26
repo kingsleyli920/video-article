@@ -1,0 +1,51 @@
+[
+  {
+    "type": "unsupported",
+    "before": "适合在数据量大时预览表头部分内容。",
+    "after": "适合在数据量大时预览数据集开头部分内容。",
+    "reason": "字幕中讲的是用 LIMIT 预览数据集开头部分（前几行）内容，而非“表头”。",
+    "evidence": "Like, imagine if we had millions of rows in this column, but only to give back some. Take a peek of what's inside this database. … Handy for peeking in at the top of my data set here too."
+  },
+  {
+    "type": "unsupported",
+    "before": "讲师在演示精确匹配时，口头与输入先后出现 `4.92`、`4.932` 与 `4.392`（字幕前后口径不一致，未作统一）",
+    "after": "讲师在转述问题和演示精确匹配时，先后说出 `4.92`、`4.932` 与 `4.392`（字幕前后口径不一致，未作统一）",
+    "reason": "字幕全是讲师口头表述，并未说明哪个数值属于屏幕输入，且 4.92 出现在转述学生问题时而非演示精确匹配查询中。",
+    "evidence": "how can we select a rating or try to find a rating that's like equal to 4.92 or things like that. … I could say then WHERE this rating is equal to, let's say, 4.932 Semicolon. If this book exists, it will get it back here. So I'll hit Enter. And I see there's no book with this particular rating, 4.392."
+  },
+  {
+    "type": "attribution",
+    "before": "- **学生:** 像 `AVG`、`COUNT`、`SUM` 这类命令是否有专门的名称？",
+    "after": "- **学生:** 这类命令是否有专门的名称？",
+    "reason": "`AVG`、`COUNT`、`SUM` 是讲师 Carter Zenke 为澄清学生问题而列举的具体函数，原提问的学生并未说出这些函数名。",
+    "evidence": "SPEAKER: I'm wondering, do these sorts of commands have a funct-- are these commands encode something like data types or just encode something? Do these commands also have a name? … CARTER ZENKE: Yeah. And can I ask are you referring to the AVG like COUNT like SUM those kinds of things, or?"
+  },
+  {
+    "type": "attribution",
+    "before": "在信息时代，Google 会记录用户点击和搜索的网站，智能手机与智能手表会追踪健康信息、邮件和短信，YouTube 也会记录平台上的视频、创作者以及评论。",
+    "after": "讲师举例提到，在信息时代，例如 Google 可能记录用户点击和搜索的网站，智能手机与智能手表可能追踪健康信息、邮件和短信，YouTube 也可能记录平台上的视频、创作者乃至观众留下的评论。",
+    "reason": "字幕中讲师是以“可以设想/或许”举例说明，文章省略了该句的来源归属与举例语气，将其写成了无条件的事实陈述。",
+    "evidence": "You might think of, let's say, Google keeping track of the sites you click on or the sites you search for. You could think of maybe the smartphone in your pocket or the smartwatch on your wrist keeping track of health information, emails, text messages, and so on. You might even think of YouTube, where you might be watching this same video keeping track of all the videos on their platform, the creators of those videos, and even the comment you might leave on this video."
+  },
+  {
+    "type": "attribution",
+    "before": "但相比电子表格，数据库具备以下优势：",
+    "after": "讲师提出，相比电子表格，数据库可能具备以下优势：",
+    "reason": "该句缺少来源限定，字幕中这是讲师个人列举的迁移到数据库的几条原因。",
+    "evidence": "But there are a few other ideas which I think about too for why we might move beyond spreadsheets and go towards databases."
+  },
+  {
+    "type": "unsupported",
+    "before": "1. 数据规模（scale）：面对 Google 或 Instagram 级别的百万甚至数十亿级用户数据时，数据库更适合存储如此庞大的信息量。",
+    "after": "1. 数据规模（scale）：面对 Google 或 Instagram 级别的百万甚至数十亿级用户数据时，使用数据库可能更适合存储如此庞大的信息量。",
+    "reason": "字幕使用的是不确定的“may be better served”（可能更适合），文章改写时加强为确定的“更适合”。",
+    "evidence": "And with that kind of scale may be better served by a database to store that much information."
+  },
+  {
+    "type": "unsupported",
+    "before": "由此可见，`MAX` 和 `MIN` 对字符串并非比较长度，而是按字母顺序比较：`MIN` 返回字母序最靠前（以 A 开头）的书名，`MAX` 返回字母序最靠后（以 W 开头）的书名。",
+    "after": "讲师由此推测，`MAX` 和 `MIN` 对字符串可能并非比较长度，而似乎是按字母顺序比较：`MIN` 返回字母序最靠前（以 A 开头）的书名，`MAX` 返回字母序最靠后（以 W 开头）的书名。",
+    "reason": "字幕中讲师以“probably not”“seems to”等不确定语气推测测试结果，文章改写成了完全肯定的结论。",
+    "evidence": "So it's probably not that MAX gives us the length of the string, but what do you notice? … So MAX seems to give us the lowest alphabetically, which is kind of contradictory with titles here or strings. And MIN gives us the earliest in the alphabet using this A as well."
+  }
+]

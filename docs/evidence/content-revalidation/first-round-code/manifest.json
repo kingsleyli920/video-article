@@ -1,0 +1,13 @@
+{
+  "purpose": "首轮真实模型运行绑定的原始提示规则源码；正式实现随后修订，不覆盖首轮证据",
+  "files": {
+    "src/worker/prompts.ts": {
+      "file": "prompts.ts",
+      "sha256": "2997fa091cc7f39b5cd0bfd803be56bbbdc1911bc48d1f453e74032a0a91e220"
+    },
+    "src/worker/review.ts": {
+      "file": "review.ts",
+      "sha256": "8a68f8a160555440be591fa4b9d25688464dee0bcf53d0c1d90dac768dd48e3b"
+    }
+  }
+}

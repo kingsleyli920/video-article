@@ -1,0 +1,13 @@
+
+ RUN  v4.1.12 <repo>
+
+ ❯ |be-e2e| test/be-e2e/review.test.ts (8 tests | 3 failed) 14606ms
+     × 第二章的残缺数字被修订：revised 是最终全文，保存的就是它，5W1H 用修订后的句子 153ms
+     × 核对进行中中止 fetch：上游的核对请求被中止，该生成不保存 2110ms
+     × 核对主备模型都不响应：在缩短后的预算内（主模型 7.5 秒、合计 10.5 秒）报 review_failed，不保存 10621ms
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 5 passed (8)
+   Start at  20:20:58
+   Duration  14.76s (transform 49ms, setup 0ms, import 71ms, tests 14.61s, environment 0ms)
+

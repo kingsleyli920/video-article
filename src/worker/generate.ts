@@ -4,7 +4,7 @@ import { parseVideoId } from '../shared/video-id';
 import { AppError, isBusy, toAppError } from './app-error';
 import { fallbackConfig, geminiOptions, timeoutScale, transcriptOptions } from './config';
 import { ClientGone, EventStream } from './event-stream';
-import { finalizeArticle } from './finalize';
+import { assertArticleLength, finalizeArticle } from './finalize';
 import { streamText, type FallbackConfig, type GeminiOptions, type GeminiStats } from './gemini';
 import { generateJsonWithFallback, scaleBudget } from './json-model';
 import { checkDamagedNumbers } from './number-check';
@@ -125,7 +125,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
         async (text) => {
           firstTokenMs ??= since();
           markdown += text;
-          if (markdown.length > LIMITS.articleChars) throw new AppError('article_too_long');
+          assertArticleLength(markdown);
           await events.send('delta', { text });
           lastDeltaMs = since();
           if (firstParagraphMs === null && hasReadableParagraph(markdown)) firstParagraphMs = lastDeltaMs;
@@ -177,7 +177,16 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
         rewrite: async (prompt) => {
           let text = '';
           const s: GeminiStats = {};
-          const reason = await streamText(gemini, prompt, async (chunk) => void (text += chunk), events.signal, s);
+          const reason = await streamText(
+            gemini,
+            prompt,
+            async (chunk) => {
+              text += chunk;
+              assertArticleLength(text);
+            },
+            events.signal,
+            s,
+          );
           usage.rewrite = { model: gemini.model, usage: s.usage ?? null };
           assertFinished(reason);
           return text;

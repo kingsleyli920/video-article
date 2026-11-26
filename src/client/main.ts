@@ -18,7 +18,7 @@ const STAGE_TEXT: Record<GenerationStage, string> = {
   transcript: '正在获取字幕',
   waiting: '字幕已获取，等待模型输出',
   writing: '正在生成文章',
-  revising: '初稿没有满足生成要求，正在修订',
+  revising: '正在修订初稿',
   reviewing: '正文已写完，正在对照字幕核对',
 };
 

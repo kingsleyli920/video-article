@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkRequirements, describeRequirements, NO_REQUIREMENTS, numbersIn, parseChineseNumber, parseRequirements, type Requirements } from '../../src/worker/requirements';
+import { checkRequirements, describeRequirements, NO_REQUIREMENTS, numbersIn, parseChineseNumber, parseRequirements, rewritePrompt, type Requirements } from '../../src/worker/requirements';
 
 const req = (patch: Partial<Requirements>): Requirements => ({ ...NO_REQUIREMENTS, sectionTitles: [], ...patch });
 
@@ -244,6 +244,43 @@ describe('checkRequirements', () => {
     expect(checkRequirements(withSuffix, req({ sectionsPerChapter: 2, sectionTitles: ['核心观点', '原话依据'] }))).toEqual([]);
   });
 
+  it('一个合并标题不能同时充当三个指定小节', () => {
+    const article = '# 标题\n\n## 一\n\n### 核心观点、原话依据、给你的启发\n\n正文。\n\n### 其他一\n\n正文。\n\n### 其他二\n\n正文。';
+    expect(checkRequirements(article, req({ sectionsPerChapter: 3, sectionTitles: ['核心观点', '原话依据', '给你的启发'] }))).toEqual([
+      { kind: 'sections', message: '第 1 章的小节须分别按顺序列出：核心观点、原话依据、给你的启发' },
+    ]);
+  });
+
+  it('指定小节必须按要求的顺序出现，不仅是名称都存在', () => {
+    const article = '# 标题\n\n## 一\n\n### 原话依据\n\n依据。\n\n### 核心观点\n\n观点。';
+    expect(checkRequirements(article, req({ sectionTitles: ['核心观点', '原话依据'] }))).toEqual([
+      { kind: 'sections', message: '第 1 章的小节须分别按顺序列出：核心观点、原话依据' },
+    ]);
+  });
+
+  it('未限制小节数时允许其他小节，指定的小节仍各自独立且有序', () => {
+    const article = '# 标题\n\n## 一\n\n### 背景\n\n背景。\n\n### 核心观点：例子\n\n观点。\n\n### 补充\n\n补充。\n\n### 原话依据（字幕）\n\n依据。';
+    expect(checkRequirements(article, req({ sectionTitles: ['核心观点', '原话依据'] }))).toEqual([]);
+  });
+
+  it.each([
+    ['空白', '   \n'],
+    ['只有更低级标题', '#### 尚未填写'],
+    ['只有注释和图片', '<!-- 待补正文 -->\n\n![示意图](https://example.com/image.png)'],
+  ])('小节%s不算正文，不能靠空标题满足数量要求', (_name, body) => {
+    const article = `# 标题\n\n## 一\n\n### 核心观点\n\n观点。\n\n### 原话依据\n\n${body}`;
+    expect(checkRequirements(article, req({ sectionsPerChapter: 2, sectionTitles: ['核心观点', '原话依据'] }))).toEqual([
+      { kind: 'sections', message: '第 1 章的第 2 个小节没有正文' },
+    ]);
+  });
+
+  it('小节可以通过更低级标题组织正文，且逐章检查空小节', () => {
+    const article = '# 标题\n\n## 一\n\n### 观点\n\n#### 说明\n\n有正文。\n\n## 二\n\n### 观点';
+    expect(checkRequirements(article, req({ sectionsPerChapter: 1 }))).toEqual([
+      { kind: 'sections', message: '第 2 章的第 1 个小节没有正文' },
+    ]);
+  });
+
   // 抓：代码块里的 "### 原话依据" 被当成小节
   it('代码块里的 ### 不算小节', () => {
     const article = '# 标题\n\n## 一\n\n### 核心观点\n\n正文。\n\n```\n### 原话依据\n```';
@@ -282,5 +319,30 @@ describe('describeRequirements', () => {
     ['没有约束', {}, []],
   ])('%s', (_label, patch, lines) => {
     expect(describeRequirements(ARTICLE_3, req(patch))).toEqual(lines);
+  });
+});
+
+
+describe('rewritePrompt：原约束与内部预留', () => {
+  const base = { video: { id: 'mockvideo01', title: '讲座', channel: '频道', description: '', lengthSeconds: 60 }, transcriptText: '原始字幕', instructions: '全文不超过50字，正好3章', markdown: ARTICLE_3 };
+
+  it('真实违约仍用原上限检查；预留40字另列，原始要求、字幕、草稿不被改写', () => {
+    const violations = checkRequirements(ARTICLE_3, req({ maxChars: 50, chaptersMin: 3, chaptersMax: 3 }));
+    const prompt = rewritePrompt({ ...base, violations, reserveChars: 40 });
+    expect(violations).toEqual([{ kind: 'max_chars', message: '全文 56 字，要求不超过 50 字' }]);
+    expect(prompt.user).toContain('<unmet_requirements note="程序按统一口径算出来的，以它为准">\n- 全文 56 字，要求不超过 50 字\n</unmet_requirements>');
+    expect(prompt.user).toContain('<review_headroom note="内部预留目标，不是用户硬性上限">\n请尽量将核对前全文压缩至不超过 40 字');
+    expect(prompt.user).toContain(`<user_requirements>\n${base.instructions}\n</user_requirements>`);
+    expect(prompt.user).toContain(`<transcript>\n${base.transcriptText}\n</transcript>`);
+    expect(prompt.user).toContain(`<draft>\n${ARTICLE_3}\n</draft>`);
+  });
+
+  it('无真实违约时如实列无；未传内部目标的既有调用不生成预留块', () => {
+    const violations = checkRequirements(ARTICLE_20, req({ maxChars: 50 }));
+    const prompt = rewritePrompt({ ...base, markdown: ARTICLE_20, violations, reserveChars: 40 });
+    expect(violations).toEqual([]);
+    expect(prompt.user).toContain('<unmet_requirements note="程序按统一口径算出来的，以它为准">\n无\n</unmet_requirements>');
+    expect(prompt.system).not.toContain('没有满足用户提出的硬性要求');
+    expect(rewritePrompt({ ...base, violations }).user).not.toContain('<review_headroom');
   });
 });

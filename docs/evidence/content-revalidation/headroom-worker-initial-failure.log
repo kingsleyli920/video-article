@@ -1,0 +1,46 @@
+
+ RUN  v4.1.12 <repo>
+
+console warning; message = An event handler returned a value of type "number" that will be ignored. Event handlers should not have a return value.
+stdout | test/be-ft/requirements.test.ts > 用户要求"不超过 N 字" > 初稿超出上限：stage revising，发一次修订请求，保存修订稿
+{"event":"generation","videoId":"dQw4w9WgXcQ","source":"live","transcriptVia":null,"transcriptAttempts":[{"client":"ANDROID 21.26.364","ok":true,"ms":1,"from":"local"}],"transcriptChars":245,"damagedNumbers":[],"model":"test-model","transcriptMs":1,"modelVersion":"test-model","serviceTier":null,"usage":null,"finishReason":"STOP","firstTokenMs":3,"firstParagraphMs":3,"modelDoneMs":3,"draftChars":61,"articleChars":36,"review":{"sections":2,"revisions":0,"rewritten":{"unmet":["全文 61 字，要求不超过 50 字"],"charsBefore":61,"charsAfter":36},"checks":["全文 36 字，上限 50 字"]},"reviewRejected":{},"requirements":{"maxChars":50,"minChars":null,"chaptersMin":null,"chaptersMax":null,"sectionsPerChapter":null,"sectionTitles":[]},"reviewUsage":{"requirements":{"model":"test-model","usage":null,"dropped":[]},"rewrite":{"model":"test-model","usage":null},"review":[{"model":"test-model","usage":null},{"model":"test-model","usage":null},{"model":"test-model","usage":null}]},"reviewedMs":22,"ok":true,"chapters":2,"savedMs":28,"numberWarnings":0,"totalMs":30}
+
+ ❯ |be-ft| test/be-ft/requirements.test.ts (11 tests | 1 failed) 403ms
+     × 初稿超出上限：stage revising，发一次修订请求，保存修订稿 233ms
+console warning; message = An event handler returned a value of type "number" that will be ignored. Event handlers should not have a return value.
+uncaught exception; source = Uncaught (in promise); stack = Error: disk full
+    at GenerationStore.<anonymous> (<repo>/test/be-ft/generate.test.ts:269:13)
+    at GenerationStore.save (file://<repo>/node_modules/@vitest/spy/dist/index.js:332:34)
+    at file://<repo>/node_modules/@cloudflare/vitest-plugin/dist/worker/lib/cloudflare/test-internal.mjs:375:47
+console warning; message = An event handler returned a value of type "number" that will be ignored. Event handlers should not have a return value.
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |be-ft| test/be-ft/requirements.test.ts > 用户要求"不超过 N 字" > 初稿超出上限：stage revising，发一次修订请求，保存修订稿
+AssertionError: expected [ true, false, true ] to deeply equal [ true, false ]
+
+- Expected
++ Received
+
+  [
+    true,
+    false,
++   true,
+  ]
+
+ ❯ test/be-ft/requirements.test.ts:72:97
+     70|     expect(done.review).toEqual({ sections: 2, revisions: 0, rewritten…
+     71|     // 核对的是修订稿
+     72|     expect(upstream.gemini('review').map((r) => promptOf(r.body).user.…
+       |                                                                                                 ^
+     73|
+     74|     const saved = await openStore(env, eventOf(events, 'meta')!.genera…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 51 passed (52)
+   Start at  20:33:51
+   Duration  7.74s (transform 357ms, setup 0ms, import 665ms, tests 12.52s, environment 0ms)
+

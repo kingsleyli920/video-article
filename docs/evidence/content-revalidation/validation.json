@@ -1,0 +1,340 @@
+{
+  "runs": [
+    {
+      "round": "first",
+      "case": "V13",
+      "requests": 5,
+      "fidelityRequests": 0,
+      "chars": 1339,
+      "chapters": 3,
+      "revisions": 1,
+      "savedMs": 82230,
+      "totalTokenCount": 54147,
+      "modelVersions": [
+        "gemini-4-hydrogen"
+      ],
+      "artifactFiles": 9,
+      "runtime": {
+        "node": "v22.15.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": true,
+      "expectedFailure": null
+    },
+    {
+      "round": "first",
+      "case": "V15",
+      "requests": 5,
+      "fidelityRequests": 0,
+      "chars": 8306,
+      "chapters": 3,
+      "revisions": 3,
+      "savedMs": 144017,
+      "totalTokenCount": 130537,
+      "modelVersions": [
+        "gemini-4-hydrogen"
+      ],
+      "artifactFiles": 9,
+      "runtime": {
+        "node": "v26.9.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": true,
+      "expectedFailure": null
+    },
+    {
+      "round": "round2",
+      "case": "V13",
+      "requests": 5,
+      "fidelityRequests": 0,
+      "chars": 1484,
+      "chapters": 3,
+      "revisions": 5,
+      "savedMs": 102763,
+      "totalTokenCount": 67691,
+      "modelVersions": [
+        "gemini-4-hydrogen"
+      ],
+      "artifactFiles": 8,
+      "runtime": {
+        "node": "v22.15.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": true,
+      "expectedFailure": null
+    },
+    {
+      "round": "round2",
+      "case": "V15",
+      "requests": 6,
+      "fidelityRequests": 0,
+      "chars": 7339,
+      "chapters": 4,
+      "revisions": 5,
+      "savedMs": 135859,
+      "totalTokenCount": 154184,
+      "modelVersions": [
+        "gemini-4-hydrogen"
+      ],
+      "artifactFiles": 8,
+      "runtime": {
+        "node": "v22.15.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": true,
+      "expectedFailure": null
+    },
+    {
+      "round": "round3",
+      "case": "V13",
+      "requests": 6,
+      "fidelityRequests": 1,
+      "chars": 1421,
+      "chapters": 3,
+      "revisions": 4,
+      "savedMs": 107422,
+      "totalTokenCount": 79251,
+      "modelVersions": [
+        "gemini-4-hydrogen"
+      ],
+      "artifactFiles": 8,
+      "runtime": {
+        "node": "v22.15.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": true,
+      "expectedFailure": null
+    },
+    {
+      "round": "round3",
+      "case": "V15",
+      "requests": 7,
+      "fidelityRequests": 1,
+      "chars": 7393,
+      "chapters": 4,
+      "revisions": 5,
+      "savedMs": 176076,
+      "totalTokenCount": 196167,
+      "modelVersions": [
+        "gemini-4-hydrogen"
+      ],
+      "artifactFiles": 8,
+      "runtime": {
+        "node": "v22.15.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": true,
+      "expectedFailure": null
+    },
+    {
+      "round": "round4",
+      "case": "V13",
+      "requests": 6,
+      "fidelityRequests": 1,
+      "chars": null,
+      "chapters": null,
+      "revisions": 0,
+      "savedMs": null,
+      "totalTokenCount": 87844,
+      "modelVersions": [
+        "gemini-4-hydrogen"
+      ],
+      "artifactFiles": 7,
+      "runtime": {
+        "node": "v22.15.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": false,
+      "expectedFailure": {
+        "code": "requirements_unmet",
+        "message": "文章没有满足生成要求里的硬性约束，修订后仍不满足（全文 1,511 字，要求不超过 1,500 字）",
+        "partial": true
+      }
+    },
+    {
+      "round": "round4",
+      "case": "V15",
+      "requests": 7,
+      "fidelityRequests": 1,
+      "chars": 8166,
+      "chapters": 4,
+      "revisions": 7,
+      "savedMs": 142177,
+      "totalTokenCount": 200727,
+      "modelVersions": [
+        "gemini-4-hydrogen"
+      ],
+      "artifactFiles": 8,
+      "runtime": {
+        "node": "v22.15.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": true,
+      "expectedFailure": null
+    },
+    {
+      "round": "round5",
+      "case": "V13",
+      "requests": 2,
+      "fidelityRequests": 0,
+      "chars": null,
+      "chapters": null,
+      "revisions": 0,
+      "savedMs": null,
+      "totalTokenCount": null,
+      "modelVersions": [],
+      "artifactFiles": 7,
+      "runtime": {
+        "node": "v22.15.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": false,
+      "expectedFailure": {
+        "code": "gemini_billing",
+        "message": "Gemini 账户的预付额度已用完，暂时无法生成",
+        "partial": false
+      }
+    },
+    {
+      "round": "round5",
+      "case": "V15",
+      "requests": 2,
+      "fidelityRequests": 0,
+      "chars": null,
+      "chapters": null,
+      "revisions": 0,
+      "savedMs": null,
+      "totalTokenCount": null,
+      "modelVersions": [],
+      "artifactFiles": 7,
+      "runtime": {
+        "node": "v22.15.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "flowSucceeded": false,
+      "expectedFailure": {
+        "code": "gemini_billing",
+        "message": "Gemini 账户的预付额度已用完，暂时无法生成",
+        "partial": false
+      }
+    }
+  ],
+  "scannedPayloads": 185,
+  "decodedModelResponses": 51,
+  "credentialMatches": 0,
+  "format": "video-article-content-validation-v1",
+  "overallVerdict": "implemented-not-final-content-verified",
+  "blocker": {
+    "kind": "external_dependency",
+    "observed": "Round5 both cases received official HTTP402; single availability check at 2026-11-26T04:49:07.350Z again received HTTP402/RESOURCE_EXHAUSTED: prepaid credits depleted",
+    "needed": "Existing Gemini account restores available prepaid credit; rerun V13 and V15 into fresh directories",
+    "retryAttempted": false
+  },
+  "checks": [
+    {
+      "scope": "headroom unit and frontend functional",
+      "files": 6,
+      "tests": 214,
+      "exitCode": 0,
+      "log": "headroom-unit-ui-validation.log"
+    },
+    {
+      "scope": "headroom Workers functional",
+      "files": 3,
+      "tests": 52,
+      "exitCode": 0,
+      "log": "headroom-worker-validation.log"
+    },
+    {
+      "scope": "headroom local HTTP",
+      "files": 1,
+      "tests": 8,
+      "exitCode": 0,
+      "log": "headroom-http-validation.log"
+    },
+    {
+      "scope": "headroom Chromium controlled fullstack",
+      "files": 1,
+      "tests": 5,
+      "exitCode": 0,
+      "log": "headroom-browser-validation.log"
+    },
+    {
+      "scope": "Worker/client/Node types",
+      "exitCode": 0,
+      "log": "headroom-typecheck-validation.log"
+    }
+  ],
+  "limitations": [
+    "Only stored subtitles replace YouTube; metadata description absent in saved preflight and left empty",
+    "Final rules have no successful real-model content run after headroom and latest fidelity changes",
+    "No new manual visual review of screenshots or video",
+    "Current review.zip is previous-stage package and unchanged",
+    "No deployment, push or online data mutation"
+  ],
+  "codeSha256": {
+    "src/worker/prompts.ts": "278cbe495377ff769b0f1611c1c15edffe6ea3973dc0c37e9dd9f396f7550989",
+    "src/worker/review.ts": "73e69e466bce194b4080dca5cfe5874eb01789cf8c6243a3bfb6a3027a760cb3",
+    "src/worker/finalize.ts": "719efd7f4eaa1dd31281e5781f5c05a61ca8743d73527029dd859ef95ac76cce",
+    "src/worker/requirements.ts": "951961cd89471341000114d0d63fdeb6730560fedf36d0c3b1819f6e14cdc886",
+    "src/shared/limits.ts": "b026125d8f09b30cae36eac72580130dbf08632c71e561d7bee60b4e03e61012",
+    "src/shared/types.ts": "89e5d077084a79d36edb6b4b40cb07afb9264365a817d461b484452969593129",
+    "src/client/main.ts": "d51afa56d3bda0403d3ec55fca3ce087ce238b037f9780f2bec3714026d4e038",
+    "src/client/article-view.ts": "e14056cde4d534b0fdd5e0318134ec883835752c6cc8cd1dec55b6a4fb23952d"
+  },
+  "logSha256": {
+    "rules-validation.log": "8eff469b6a39ab88a239806fd66c2524dea73f38bc0d76c4cd6a385e5a87d21f",
+    "headroom-unit-ui-validation.log": "c473c4a2cd4417592953201b98d149c059ed28361322acfcd811a7582312200c",
+    "focused-worker-initial-failure.log": "4b5433612b5a6045e1887695230220cb153a495bd8c0f1bf71d39677b74d049c",
+    "focused-unit-validation.log": "8c5f19dfcbfcd7416b9bd918a795a076baae8acdb4cbf0b952ed351e3bdb45a9",
+    "headroom-browser-cli-error.log": "24a2553ea85fc2e4b1834bf5bbff40163d2df2b6d73d74c948288297c94fb38c",
+    "headroom-worker-validation.log": "44510a7fd6ff13aab0f3fef32c56249cf2d1f780e169e135b22b3fcac624df8f",
+    "headroom-typecheck-validation.log": "c5f8182e4ba8725e984d5db3c375ad44f6f190c7277cc1e040e20f927d37db54",
+    "focused-worker-validation.log": "8c2ab0fba1a49311d28e3480efd5ad940170d3b63c2661c78f2156c63f01dd97",
+    "headroom-worker-initial-failure.log": "5159b386168b5eb10d84f9a1e8be84526af6e5d6b15b9170370f1a058b6f0df0",
+    "focused-http-validation.log": "049601e5fbb52c174a6b8458d01f8414854abaa051a0ebee96c1657f8c3d438b",
+    "headroom-browser-validation.log": "929454767e021696ee73f98138429be94d4d6ef99388b41b14b924977f101778",
+    "final-unit-validation.log": "d7d969604df59d49270a9b02b4f3862f07dc2bcad1b7eeaafc6bedbf1f0e41a1",
+    "focused-http-initial-failure.log": "cca2a43b22b8ed79e583cc55a0a9086ae33e5833ae44cf7e69a020f08f6f774d",
+    "headroom-browser-start-error.log": "20da5fcf39be71808fc2652e94d3d6110572e9d19054191c00500236f7ef48e6",
+    "headroom-http-validation.log": "0d7b68f8f2ae7a91f66b487473d695d47031a6a392224b571608002884c4eb95"
+  },
+  "documentLinksChecked": 149,
+  "documentFilesChecked": 11,
+  "cleanup": {
+    "httpBrowserPortsClosed": [
+      8798,
+      8799,
+      8888,
+      8890
+    ],
+    "temporaryRunsRemoved": true,
+    "temporaryBrowserAssetsAndTestStorageRemoved": true,
+    "formalEvidenceRetained": true
+  },
+  "availabilityCheck": {
+    "evidence": "availability-check.json",
+    "sha256": "6968354633c42808f547d7d205e92e3ff728af6c3ae1c06dbe0432e10ccc4943",
+    "startedAt": "2026-11-26T04:49:07.350Z",
+    "finishedAt": "2026-11-26T04:49:07.592Z",
+    "requestCount": 1,
+    "httpStatus": 402,
+    "model": "gemini-4-hydrogen",
+    "durationMs": 241,
+    "availableForRealRevalidation": false,
+    "contentRun": false,
+    "engineeringTestsRepeated": false,
+    "limitation": "Availability evidence only; final V13/V15 content acceptance remains incomplete"
+  },
+  "documentLinkCheckScope": "The 149 links across 11 documents were checked at the previous engineering handoff; the new availability-check.json link is separately checked in this follow-up."
+}

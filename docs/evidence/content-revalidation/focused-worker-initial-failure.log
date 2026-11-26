@@ -1,0 +1,51 @@
+
+ RUN  v4.1.12 <repo>
+
+console warning; message = An event handler returned a value of type "number" that will be ignored. Event handlers should not have a return value.
+stdout | test/be-ft/review.test.ts > 对照字幕核对：没有问题 > 事件里有 stage: reviewing、没有 revised；每章一个核对请求，带这一章原文和整段字幕
+{"event":"generation","videoId":"dQw4w9WgXcQ","source":"live","transcriptVia":null,"transcriptAttempts":[{"client":"ANDROID 21.26.364","ok":true,"ms":0,"from":"local"}],"transcriptChars":245,"damagedNumbers":[],"model":"test-model","transcriptMs":0,"modelVersion":"test-model","serviceTier":null,"usage":null,"finishReason":"STOP","firstTokenMs":1,"firstParagraphMs":1,"modelDoneMs":1,"draftChars":61,"articleChars":61,"review":{"sections":2,"revisions":0,"rewritten":null,"checks":[]},"reviewRejected":{},"requirements":{"maxChars":null,"minChars":null,"chaptersMin":null,"chaptersMax":null,"sectionsPerChapter":null,"sectionTitles":[]},"reviewUsage":{"requirements":null,"rewrite":null,"review":[{"model":"test-model","usage":null},{"model":"test-model","usage":null},{"model":"test-model","usage":null}]},"reviewedMs":2,"ok":true,"chapters":2,"savedMs":6,"numberWarnings":0,"totalMs":6}
+
+stdout | test/be-ft/review.test.ts > 对照字幕核对：模型失败 > 核对请求主备模型都 503：error review_failed，partial 为 true，不保存
+{"event":"review_fallback","from":"test-model","to":"test-fallback","thinkingLevel":"low","reason":"HTTP 503","remainingMs":208498}
+
+stdout | test/be-ft/review.test.ts > 对照字幕核对：模型失败 > 核对请求主备模型都 503：error review_failed，partial 为 true，不保存
+{"event":"review_fallback","from":"test-model","to":"test-fallback","thinkingLevel":"low","reason":"HTTP 503","remainingMs":208497}
+
+stdout | test/be-ft/review.test.ts > 对照字幕核对：模型失败 > 核对请求主备模型都 503：error review_failed，partial 为 true，不保存
+{"event":"review_fallback","from":"test-model","to":"test-fallback","thinkingLevel":"low","reason":"HTTP 503","remainingMs":208497}
+
+stdout | test/be-ft/review.test.ts > 对照字幕核对：模型失败 > 核对请求主备模型都 503：error review_failed，partial 为 true，不保存
+{"event":"generation","videoId":"dQw4w9WgXcQ","source":"live","transcriptVia":null,"transcriptAttempts":[{"client":"ANDROID 21.26.364","ok":true,"ms":0,"from":"local"}],"transcriptChars":245,"damagedNumbers":[],"model":"test-model","transcriptMs":0,"modelVersion":"test-model","serviceTier":null,"usage":null,"finishReason":"STOP","firstTokenMs":1,"firstParagraphMs":1,"modelDoneMs":1,"draftChars":61,"ok":false,"code":"review_failed","totalMs":3007}
+
+stdout | test/be-ft/review.test.ts > 对照字幕核对：模型失败 > 核对时 402：error gemini_billing，每章只请求一次，不换备用模型
+{"event":"generation","videoId":"dQw4w9WgXcQ","source":"live","transcriptVia":null,"transcriptAttempts":[{"client":"ANDROID 21.26.364","ok":true,"ms":1,"from":"local"}],"transcriptChars":245,"damagedNumbers":[],"model":"test-model","transcriptMs":1,"modelVersion":"test-model","serviceTier":null,"usage":null,"finishReason":"STOP","firstTokenMs":1,"firstParagraphMs":1,"modelDoneMs":1,"draftChars":61,"ok":false,"code":"gemini_billing","totalMs":2}
+
+stdout | test/be-ft/review.test.ts > 对照字幕核对：模型失败 > 核对时主模型 503、备用正常：照常完成，备用请求用备用模型自己的思考档 low
+{"event":"review_fallback","from":"test-model","to":"test-fallback","thinkingLevel":"low","reason":"HTTP 503","remainingMs":208497}
+
+stdout | test/be-ft/review.test.ts > 对照字幕核对：模型失败 > 核对时主模型 503、备用正常：照常完成，备用请求用备用模型自己的思考档 low
+{"event":"review_fallback","from":"test-model","to":"test-fallback","thinkingLevel":"low","reason":"HTTP 503","remainingMs":208496}
+
+stdout | test/be-ft/review.test.ts > 对照字幕核对：模型失败 > 核对时主模型 503、备用正常：照常完成，备用请求用备用模型自己的思考档 low
+{"event":"review_fallback","from":"test-model","to":"test-fallback","thinkingLevel":"low","reason":"HTTP 503","remainingMs":208496}
+
+stdout | test/be-ft/review.test.ts > 对照字幕核对：模型失败 > 核对时主模型 503、备用正常：照常完成，备用请求用备用模型自己的思考档 low
+{"event":"generation","videoId":"dQw4w9WgXcQ","source":"live","transcriptVia":null,"transcriptAttempts":[{"client":"ANDROID 21.26.364","ok":true,"ms":0,"from":"local"}],"transcriptChars":245,"damagedNumbers":[],"model":"test-model","transcriptMs":0,"modelVersion":"test-model","serviceTier":null,"usage":null,"finishReason":"STOP","firstTokenMs":0,"firstParagraphMs":0,"modelDoneMs":0,"draftChars":61,"articleChars":74,"review":{"sections":2,"revisions":1,"rewritten":null,"checks":[]},"reviewRejected":{"quote_not_found":1},"requirements":{"maxChars":null,"minChars":null,"chaptersMin":null,"chaptersMax":null,"sectionsPerChapter":null,"sectionTitles":[]},"reviewUsage":{"requirements":null,"rewrite":null,"review":[{"model":"test-fallback","usage":null},{"model":"test-fallback","usage":null},{"model":"test-fallback","usage":null}]},"reviewedMs":1506,"ok":true,"chapters":2,"savedMs":1509,"numberWarnings":0,"totalMs":1509}
+
+ ❯ |be-ft| test/be-ft/review.test.ts (14 tests | 5 failed) 5798ms
+     × 事件里有 stage: reviewing、没有 revised；每章一个核对请求，带这一章原文和整段字幕 11ms
+     × 核对请求主备模型都 503：error review_failed，partial 为 true，不保存 3009ms
+     × 核对时 402：error gemini_billing，每章只请求一次，不换备用模型 4ms
+     × 核对时主模型 503、备用正常：照常完成，备用请求用备用模型自己的思考档 low 1513ms
+     × 核对进行中断开：核对请求被中止，不保存 1005ms
+uncaught exception; source = Uncaught (in promise); stack = Error: disk full
+    at GenerationStore.<anonymous> (<repo>/test/be-ft/generate.test.ts:269:13)
+    at GenerationStore.save (file://<repo>/node_modules/@vitest/spy/dist/index.js:332:34)
+    at file://<repo>/node_modules/@cloudflare/vitest-plugin/dist/worker/lib/cloudflare/test-internal.mjs:375:47
+console warning; message = An event handler returned a value of type "number" that will be ignored. Event handlers should not have a return value.
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  5 failed | 35 passed (40)
+   Start at  20:20:58
+   Duration  7.70s (transform 213ms, setup 0ms, import 496ms, tests 12.63s, environment 0ms)
+

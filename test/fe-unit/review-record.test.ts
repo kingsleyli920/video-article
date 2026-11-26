@@ -113,6 +113,12 @@ describe('buildReviewRecord 的组合', () => {
     expect(record.querySelector('details')).toBeNull();
   });
 
+  it('仅为字幕核对预留篇幅：说明压缩原因，不虚报用户要求未满足', () => {
+    const record = build({ review: { ...NO_REVIEW, rewritten: { unmet: [], charsBefore: 1400, charsAfter: 1100 } }, revisions: [] });
+    expect(read(record).lines).toEqual(['为后续字幕核对预留篇幅，已压缩初稿，全文从 1,400 字改为 1,100 字。']);
+    expect(record.textContent).not.toContain('没有满足生成要求');
+  });
+
   // 抓：三者同时存在时顺序乱（读者先看到修订列表再看到为什么修订）或者某一项被覆盖
   it('三者都有：按要求修订 → 约束核对 → 修订列表，顺序固定', () => {
     const record = build({

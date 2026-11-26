@@ -1,0 +1,23 @@
+[
+  {
+    "type": "language",
+    "before": "提供额外 Implementing 支持",
+    "after": "提供额外的实现支持",
+    "reason": "中文句子中夹杂未翻译的英文单词“Implementing”，属于中英混杂。",
+    "evidence": "What you get for that money is additional support to actually implement your own database."
+  },
+  {
+    "type": "unsupported",
+    "before": "而书中后续会用到的评分（rating）和投票数（votes）数据则来自图书评论聚合网站 Goodreads。",
+    "after": "而表中后续还会看到的这些图书的评分（rating）和投票数（votes）数据则来自图书评论聚合网站 Goodreads。",
+    "reason": "字幕说的是“这张表”后续会包含这些图书的评分和投票数数据，并未提到“书中”后续会用到。",
+    "evidence": "We'll also see later on this table has data on the ratings of those books and the number of votes that were given to those books. That data is from Goodreads, the site that aggregates reviews from people like you, people like me who rate books online."
+  },
+  {
+    "type": "unsupported",
+    "before": "判断值是否为空不能用普通的等于号，而应使用 `IS NULL` 或 `IS NOT NULL`：",
+    "after": "判断值是否为空，可以使用 `IS NULL` 或 `IS NOT NULL`：",
+    "reason": "字幕只说明了可以使用 IS NULL 或 IS NOT NULL 来判断空值，并未提及“不能用普通的等于号”。",
+    "evidence": "We can actually put together a condition around this idea of null, something not being there. We could use IS NULL to figure out if a value is null. … I could conversely find those books that do have translators using IS NOT NULL."
+  }
+]

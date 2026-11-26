@@ -148,10 +148,10 @@ describe('核对阶段的状态条', () => {
 
     backend.stream.event('stage', { stage: 'revising' });
     await settle();
-    expect(page.status).toEqual({ hidden: false, tone: 'busy', text: '初稿没有满足生成要求，正在修订 · 已用时 0 秒', detail: '', hasRetry: false });
+    expect(page.status).toEqual({ hidden: false, tone: 'busy', text: '正在修订初稿 · 已用时 0 秒', detail: '', hasRetry: false });
     expect(page.toggles.map((b) => b.disabled)).toEqual([true, true]);
     await advance(12_000);
-    expect(page.status.text).toBe('初稿没有满足生成要求，正在修订 · 已用时 12 秒');
+    expect(page.status.text).toBe('正在修订初稿 · 已用时 12 秒');
 
     backend.stream.event('stage', { stage: 'reviewing' });
     await settle();
@@ -246,7 +246,7 @@ describe('revised：最终全文替换初稿', () => {
     await streamDraft();
     backend.stream.event('stage', { stage: 'revising' });
     await settle();
-    expect(page.status.text).toBe('初稿没有满足生成要求，正在修订 · 已用时 0 秒');
+    expect(page.status.text).toBe('正在修订初稿 · 已用时 0 秒');
     backend.stream.event('stage', { stage: 'reviewing' });
     backend.stream.event('revised', { markdown: FINAL_MD, revisions: [] });
     backend.stream.event('done', reviewedDone({ chars: 1018, review: { sections: 2, revisions: 0, rewritten: { unmet: ['全文 1,432 字，要求不超过 1,200 字'], charsBefore: 1432, charsAfter: 1018 }, checks: ['全文 1,018 字，上限 1,200 字'] } }));

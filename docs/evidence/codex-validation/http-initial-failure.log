@@ -1,0 +1,45 @@
+
+ RUN  v4.1.12 /private$VALIDATION_ROOT
+
+
+> build
+> tsx scripts/build-client.ts
+
+前端已构建到 dist/client
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对出修订 > 第二章的残缺数字被修订：revised 是最终全文，保存的就是它，5W1H 用修订后的句子 186ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 超字数 → 修订 → 完成 > "全文不超过 50 字"而初稿 68 字：revising，一次修订请求，保存 46 字的修订稿 169ms
+ × |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 主备核对响应不是 JSON：经 HTTP 发 review_failed，不发 done，也不保存 114ms
+   → expected false to be true // Object.is equality
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 主备核对响应缺少 issues：经 HTTP 发 review_failed，不发 done，也不保存 121ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 主备核对响应issues 不是数组：经 HTTP 发 review_failed，不发 done，也不保存 118ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 重写稿超过全局长度上限：经 HTTP 报 article_too_long，5W1H 查不到未保存的上下文 115ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 核对进行中中止 fetch：上游的核对请求被中止，该生成不保存 5012ms
+ ✓ |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 核对主备模型都不响应：在缩短后的预算内（主模型 7.5 秒、合计 10.5 秒）报 review_failed，不保存 10627ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |be-e2e| test/be-e2e/review.test.ts > 核对阶段的失败和断开 > 主备核对响应不是 JSON：经 HTTP 发 review_failed，不发 done，也不保存
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ test/be-e2e/review.test.ts:124:95
+    122|     expect(reviews.some((r) => r.model === 'mock-primary')).toBe(true);
+    123|     // 非 JSON 在模型层尝试备用；协议形状错误在收尾校验层直接失败。
+    124|     if (behavior.kind === 'invalid') expect(reviews.some((r) => r.mode…
+       |                                                                                               ^
+    125|     else expect(reviews.every((r) => r.model === 'mock-primary')).toBe…
+    126|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  19:22:56
+   Duration  18.22s (transform 37ms, setup 0ms, import 59ms, tests 18.06s, environment 0ms)
+

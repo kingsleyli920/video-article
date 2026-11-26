@@ -1,0 +1,11 @@
+HTTP 200 text/event-stream; charset=utf-8，响应头到达 19 ms
+字幕来源：live（manual，26211 字符），模型：gemini-4-hydrogen
+网络分块 106 个，delta 事件 39 个，正文 1547 字符
+探针：来源信息 24 ms，首个正文文本 48645 ms，首个可读段落 48851 ms，最后一段正文 51839 ms，流结束 107444 ms
+服务端：字幕就绪 7 ms，模型首个 token 48628 ms，模型结束 52026 ms，保存完成 107422 ms
+结果：done，共 3 章、1421 字
+核对：3 个单元，修订 4 处；全文 1,421 字，上限 1,500 字；共 3 章，要求正好 3 章；核对结束 107416 ms
+阶段：transcript@19  generating@24  reviewing@52057
+第一段正文比模型结束早到 3381 ms
+正文增长（毫秒 → 字符数）：48645→23  48851→150  49135→298  49386→405  49656→538  49877→659  50187→771  50438→885  50706→993  50980→1110  51244→1227  51438→1341  51664→1447  51839→1524
+已写入 <repo>/docs/evidence/content-revalidation/round3/V13/（input.json、raw.sse、timeline.json、article.md）

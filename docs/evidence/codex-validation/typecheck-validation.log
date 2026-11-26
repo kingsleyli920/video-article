@@ -1,0 +1,4 @@
+
+> typecheck
+> tsc -p tsconfig.worker.json && tsc -p tsconfig.client.json && tsc -p tsconfig.node.json
+

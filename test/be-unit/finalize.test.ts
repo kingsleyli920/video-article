@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { LIMITS } from '../../src/shared/limits';
 import { AppError } from '../../src/worker/app-error';
 import { ClientGone } from '../../src/worker/event-stream';
 import { finalizeArticle, groupSections, type FinalizeInput, type FinalizeModel } from '../../src/worker/finalize';
 import type { Prompt } from '../../src/worker/gemini';
 import { NO_REQUIREMENTS, type Requirements } from '../../src/worker/requirements';
+import { fidelityReviewPrompt, REVIEW_SCHEMA } from '../../src/worker/review';
 
 const VIDEO = { id: 'mockvideo01', title: 'Maria Lopez on Berlin and the fund', channel: '测试频道', description: '', lengthSeconds: 600 };
 
@@ -41,19 +43,26 @@ const req = (patch: Partial<Requirements>): Requirements => ({ ...NO_REQUIREMENT
 
 /** 核对请求里 <section> 的内容 */
 const sectionOf = (prompt: Prompt) => /<section>\n([\s\S]*)\n<\/section>/.exec(prompt.user)![1]!;
+const FIDELITY_SYSTEM = fidelityReviewPrompt({ video: VIDEO, transcriptText: TRANSCRIPT, instructions: '', outline: [], section: DRAFT }).system;
+const isFidelity = (prompt: Prompt) => prompt.system === FIDELITY_SYSTEM;
 
 /**
  * 手写的模型替身：json（核对）按这一单元的原文返回结果，没给 review 时返回"没有问题"；
  * rewrite 没给时被调用就报错（用例因此能证明"不该修订时没有修订"）。
  */
-function fakeModel(options: { review?: (section: string) => unknown; rewrite?: (prompt: Prompt) => Promise<string> } = {}) {
+function fakeModel(options: { review?: (section: string) => unknown; fidelity?: (section: string) => unknown; rewrite?: (prompt: Prompt) => Promise<string> } = {}) {
   const reviewPrompts: Prompt[] = [];
+  const fidelityPrompts: Prompt[] = [];
   const schemas: object[] = [];
   const rewritePrompts: Prompt[] = [];
   const model: FinalizeModel = {
     async json(prompt, schema) {
-      reviewPrompts.push(prompt);
       schemas.push(schema);
+      if (isFidelity(prompt)) {
+        fidelityPrompts.push(prompt);
+        return options.fidelity ? options.fidelity(sectionOf(prompt)) : { issues: [] };
+      }
+      reviewPrompts.push(prompt);
       return options.review ? options.review(sectionOf(prompt)) : { issues: [] };
     },
     async rewrite(prompt) {
@@ -62,7 +71,7 @@ function fakeModel(options: { review?: (section: string) => unknown; rewrite?: (
       return options.rewrite(prompt);
     },
   };
-  return { model, reviewPrompts, schemas, rewritePrompts };
+  return { model, reviewPrompts, fidelityPrompts, schemas, rewritePrompts };
 }
 
 function input(patch: Partial<FinalizeInput> = {}): FinalizeInput {
@@ -87,8 +96,8 @@ async function rejection(work: Promise<unknown>): Promise<AppError> {
 
 describe('finalizeArticle：正常路径', () => {
   // 抓：没有约束、没有问题时也改动了文章，或者白白调用一次整篇修订
-  it('没有约束、核对没有问题：原样返回，不调用 rewrite，每章一个核对请求', async () => {
-    const { model, reviewPrompts, schemas, rewritePrompts } = fakeModel();
+  it('没有约束、核对没有问题：原样返回，每章一次核对并额外整篇复核一次，不调用 rewrite', async () => {
+    const { model, reviewPrompts, fidelityPrompts, schemas, rewritePrompts } = fakeModel();
     const { seen, onStage } = stages();
     const result = await finalizeArticle(input(), model, onStage);
     expect(result).toEqual({
@@ -109,16 +118,17 @@ describe('finalizeArticle：正常路径', () => {
       expect(prompt.user).toContain(`<transcript>\n${TRANSCRIPT}\n</transcript>`);
       expect(prompt.user).toContain('<article_outline note="整篇文章的章节标题，只用来了解这一部分在全文里的位置">\n1. 柏林岁月\n2. 现在的组合\n</article_outline>');
     }
-    expect(schemas.map((s) => (s as { required: string[] }).required)).toEqual([['issues'], ['issues']]);
+    expect(fidelityPrompts.map(sectionOf)).toEqual([DRAFT]);
+    expect(schemas).toEqual([REVIEW_SCHEMA, REVIEW_SCHEMA, REVIEW_SCHEMA]);
   });
 
-  // 抓：约束已经满足时还去修订；核对结果里没有给用户看的实际数值
-  it('有约束且初稿满足：不修订，checks 写出实际字数和上限', async () => {
+  // 抓：已有足够篇幅余量时仍改写；核对结果里没有给用户看的实际数值
+  it('有约束且初稿已有两成余量：不修订，checks 写出原上限', async () => {
     const { model, rewritePrompts } = fakeModel();
     const { seen, onStage } = stages();
-    const result = await finalizeArticle(input({ requirements: Promise.resolve(req({ maxChars: 61 })) }), model, onStage);
+    const result = await finalizeArticle(input({ requirements: Promise.resolve(req({ maxChars: 80 })) }), model, onStage);
     expect(result.markdown).toBe(DRAFT);
-    expect(result.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: ['全文 61 字，上限 61 字'] });
+    expect(result.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: ['全文 61 字，上限 80 字'] });
     expect(rewritePrompts).toHaveLength(0);
     expect(seen).toEqual(['reviewing']);
   });
@@ -143,7 +153,7 @@ describe('finalizeArticle：正常路径', () => {
 
   // 抓：初稿超字数时直接报错或截断，而不是让模型修订一次；修订后核对的还是初稿；阶段顺序错
   it('初稿超出上限 → 修订一次后满足：返回修订稿，rewritten 记录前后字数，阶段 revising → reviewing', async () => {
-    const { model, rewritePrompts, reviewPrompts } = fakeModel({ rewrite: async () => REWRITTEN });
+    const { model, rewritePrompts, reviewPrompts, fidelityPrompts } = fakeModel({ rewrite: async () => REWRITTEN });
     const { seen, onStage } = stages();
     const result = await finalizeArticle(input({ instructions: '全文不超过 50 字', requirements: Promise.resolve(req({ maxChars: 50 })) }), model, onStage);
     expect(seen).toEqual(['revising', 'reviewing']);
@@ -160,9 +170,57 @@ describe('finalizeArticle：正常路径', () => {
     expect(rewritePrompts[0]!.user).toContain('<user_requirements>\n全文不超过 50 字\n</user_requirements>');
     // 核对的是修订稿，不是初稿
     expect(reviewPrompts.map(sectionOf)).toEqual(['# 柏林与基金\n\n## 柏林岁月\n\n**嘉宾:** 2003 年搬到柏林。\n\n', '## 现在的组合\n\n**嘉宾:** 现在约五家。']);
+    expect(fidelityPrompts.map(sectionOf)).toEqual([REWRITTEN]);
   });
 
-  // 抓：章节多于 6 个时并行请求数超过 Workers 的出站连接上限，或者合并时丢了章节
+  it('初稿满足原上限但余量不足：仅改写一次，真实 unmet 为空，全部核对使用压缩稿', async () => {
+    const requirements = req({ maxChars: 70, chaptersMin: 2, chaptersMax: 2 });
+    const { model, rewritePrompts, reviewPrompts, fidelityPrompts } = fakeModel({ rewrite: async () => REWRITTEN });
+    const { seen, onStage } = stages();
+    const result = await finalizeArticle(input({ instructions: '不超过70字，正好2章', requirements: Promise.resolve(requirements) }), model, onStage);
+    expect(seen).toEqual(['revising', 'reviewing']);
+    expect(rewritePrompts).toHaveLength(1);
+    expect(rewritePrompts[0]!.user).toContain('不超过 56 字');
+    expect(rewritePrompts[0]!.user).toContain('<unmet_requirements note="程序按统一口径算出来的，以它为准">\n无\n</unmet_requirements>');
+    expect(result.requirements).toEqual(requirements);
+    expect(result.review.rewritten).toEqual({ unmet: [], charsBefore: 61, charsAfter: 36 });
+    expect(result.review.checks).toEqual(['全文 36 字，上限 70 字', '共 2 章，要求正好 2 章']);
+    expect(reviewPrompts.map(sectionOf).join('')).toBe(REWRITTEN);
+    expect(fidelityPrompts.map(sectionOf)).toEqual([REWRITTEN]);
+  });
+
+  it('预留目标不低于用户下限；模型未达到内部目标但满足原约束时继续，不重复改写', async () => {
+    const { model, rewritePrompts } = fakeModel({ rewrite: async () => DRAFT });
+    const result = await finalizeArticle(input({ requirements: Promise.resolve(req({ minChars: 60, maxChars: 70 })) }), model, stages().onStage);
+    expect(rewritePrompts).toHaveLength(1);
+    expect(rewritePrompts[0]!.user).toContain('不超过 60 字');
+    expect(result.markdown).toBe(DRAFT);
+    expect(result.review.rewritten).toEqual({ unmet: [], charsBefore: 61, charsAfter: 61 });
+    expect(result.review.checks).toEqual(['全文 61 字，要求 60 到 70 字']);
+  });
+
+  it('用户要求精确字数时不另行压缩，内部目标不能取代用户下限', async () => {
+    const { model, rewritePrompts } = fakeModel();
+    const result = await finalizeArticle(input({ requirements: Promise.resolve(req({ minChars: 61, maxChars: 61 })) }), model, stages().onStage);
+    expect(result.markdown).toBe(DRAFT);
+    expect(rewritePrompts).toHaveLength(0);
+  });
+
+  it('只为预留篇幅改写也不得低于用户下限或破坏原章节要求', async () => {
+    for (const [requirements, revised] of [
+      [req({ maxChars: 70, minChars: 40 }), REWRITTEN],
+      [req({ maxChars: 70, chaptersMin: 2, chaptersMax: 2 }), '# 标题\n\n## 内容\n\n正文。'],
+    ] as const) {
+      const { model, rewritePrompts, reviewPrompts, fidelityPrompts } = fakeModel({ rewrite: async () => revised });
+      const err = await rejection(finalizeArticle(input({ requirements: Promise.resolve(requirements) }), model, stages().onStage));
+      expect(err.code).toBe('requirements_unmet');
+      expect(rewritePrompts).toHaveLength(1);
+      expect(reviewPrompts).toHaveLength(0);
+      expect(fidelityPrompts).toHaveLength(0);
+    }
+  });
+
+  // 抓：为整篇复核预留连接后，合并时丢了章节或把复核算成额外章节单元
   it('7 章的文章：合并成 4 个核对单元，拼回去等于原文', async () => {
     const draft = `# 七章\n\n${Array.from({ length: 7 }, (_, i) => `## 第${i + 1}章\n\n**嘉宾:** 第${i + 1}章正文。`).join('\n\n')}`;
     const { model, reviewPrompts } = fakeModel();
@@ -171,25 +229,92 @@ describe('finalizeArticle：正常路径', () => {
     expect(reviewPrompts.map(sectionOf).join('')).toBe(draft);
     expect(reviewPrompts.map((p) => sectionOf(p).match(/^## .+$/gm))).toEqual([['## 第1章', '## 第2章'], ['## 第3章', '## 第4章'], ['## 第5章', '## 第6章'], ['## 第7章']]);
   });
+
+  it('10章占满逐章预算时，连同整篇复核也不超过6个并行请求', async () => {
+    const draft = `# 十章\n\n${Array.from({ length: 10 }, (_, i) => `## 第${i + 1}章\n\n第${i + 1}章正文。`).join('\n\n')}`;
+    const { model, reviewPrompts, fidelityPrompts, schemas } = fakeModel();
+    const result = await finalizeArticle(input({ draft }), model, stages().onStage);
+    expect(result.review.sections).toBe(5);
+    expect(reviewPrompts.map(sectionOf).join('')).toBe(draft);
+    expect(fidelityPrompts.map(sectionOf)).toEqual([draft]);
+    expect(schemas).toHaveLength(6);
+  });
 });
 
 describe('finalizeArticle：并行', () => {
   // 抓：各单元串行核对，等待时间是所有章节之和（高档思考每章 30 到 60 秒）
-  it('第二个单元的核对请求在第一个返回之前就已发出', async () => {
-    const pending: { section: string; resolve: (value: unknown) => void }[] = [];
+  it('两章与整篇复核都在任何一个请求返回前发出，完成顺序不影响合并', async () => {
+    const pending: { section: string; fidelity: boolean; resolve: (value: unknown) => void }[] = [];
     const model: FinalizeModel = {
-      json: (prompt) => new Promise((resolve) => pending.push({ section: sectionOf(prompt), resolve })),
+      json: (prompt) => new Promise((resolve) => pending.push({ section: sectionOf(prompt), fidelity: isFidelity(prompt), resolve })),
       rewrite: async () => {
         throw new Error('不该调用 rewrite');
       },
     };
     const work = finalizeArticle(input(), model, stages().onStage);
-    // 两个都还没返回：串行实现在这里只会有一个请求
-    await vi.waitFor(() => expect(pending).toHaveLength(2), { timeout: 500, interval: 5 });
-    expect(pending.map((p) => p.section.match(/^## .+$/m)![0])).toEqual(['## 柏林岁月', '## 现在的组合']);
+    await vi.waitFor(() => expect(pending).toHaveLength(3), { timeout: 500, interval: 5 });
+    expect(pending.map((p) => p.fidelity)).toEqual([false, false, true]);
+    expect(pending[2]!.section).toBe(DRAFT);
+    pending[2]!.resolve({ issues: [QUANTITY_ISSUE] });
     pending[1]!.resolve({ issues: [] });
-    pending[0]!.resolve({ issues: [] });
-    expect((await work).markdown).toBe(DRAFT);
+    pending[0]!.resolve({ issues: [TIME_ISSUE] });
+    const result = await work;
+    expect(result.markdown).toBe(DRAFT.replace(TIME_ISSUE.quote, TIME_ISSUE.replacement).replace(QUANTITY_ISSUE.quote, QUANTITY_ISSUE.replacement));
+    expect(result.revisions.map((r) => r.before)).toEqual([TIME_ISSUE.quote, QUANTITY_ISSUE.quote]);
+    expect(result.review.sections).toBe(2);
+  });
+});
+
+describe('finalizeArticle：整篇语义限定复核', () => {
+  it('先保留逐章修订，再应用仍可定位的整篇建议，过时引文拒绝并留痕', async () => {
+    const { model } = fakeModel({
+      review: (section) => ({ issues: section.includes('柏林岁月') ? [TIME_ISSUE] : [] }),
+      fidelity: () => ({ issues: [TIME_ISSUE, QUANTITY_ISSUE, { type: 'opinion' }] }),
+    });
+    const result = await finalizeArticle(input(), model, stages().onStage);
+    expect(result.markdown).toBe(DRAFT.replace(TIME_ISSUE.quote, TIME_ISSUE.replacement).replace(QUANTITY_ISSUE.quote, QUANTITY_ISSUE.replacement));
+    expect(result.revisions.map((r) => r.before)).toEqual([TIME_ISSUE.quote, QUANTITY_ISSUE.quote]);
+    expect(result.rejected).toEqual({ quote_not_found: 1, malformed: 1 });
+    expect(result.review).toEqual({ sections: 2, revisions: 2, rewritten: null, checks: [] });
+  });
+
+  it('整篇建议仍受唯一定位、字幕依据与局部结构校验，不会改动别处', async () => {
+    const { model } = fakeModel({ fidelity: () => ({ issues: [
+      { ...QUANTITY_ISSUE, quote: '**嘉宾:** ', replacement: '**讲者:** ' },
+      { ...QUANTITY_ISSUE, evidence: 'There are precisely six companies in the portfolio.' },
+      { ...QUANTITY_ISSUE, replacement: '现在大约五家。\n\n### 新标题\n预计更多。' },
+    ] }) });
+    const result = await finalizeArticle(input(), model, stages().onStage);
+    expect(result.markdown).toBe(DRAFT);
+    expect(result.revisions).toEqual([]);
+    expect(result.rejected).toEqual({ quote_not_unique: 1, evidence_not_in_transcript: 1, structure: 1 });
+  });
+
+  it('整篇复核补字后仍须满足用户字数上限，失败不返回可保存结果', async () => {
+    const { model, rewritePrompts } = fakeModel({ fidelity: () => ({ issues: [QUANTITY_ISSUE] }), rewrite: async () => DRAFT });
+    const save = vi.fn();
+    const work = finalizeArticle(input({ requirements: Promise.resolve(req({ maxChars: 61 })) }), model, stages().onStage).then(save);
+    expect((await rejection(work)).code).toBe('requirements_unmet');
+    expect(rewritePrompts).toHaveLength(1);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { issues: null }, { issues: '没有问题' }])('仅整篇复核返回无效协议（%j）也失败，不继续保存', async (raw) => {
+    const { model } = fakeModel({ fidelity: () => raw });
+    const save = vi.fn();
+    const err = await rejection(finalizeArticle(input(), model, stages().onStage).then(save));
+    expect(err.code).toBe('review_failed');
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('仅整篇复核请求失败时，已完成的逐章结果不能用于保存', async () => {
+    const { model } = fakeModel({
+      review: () => ({ issues: [TIME_ISSUE] }),
+      fidelity: () => { throw new AppError('gemini_busy', 'HTTP 503'); },
+    });
+    const save = vi.fn();
+    expect((await rejection(finalizeArticle(input(), model, stages().onStage).then(save))).code).toBe('review_failed');
+    expect(save).not.toHaveBeenCalled();
   });
 });
 
@@ -213,7 +338,7 @@ describe('finalizeArticle：约束不满足', () => {
   // 抓：局部修订之后不再复查约束，替换让文章超出上限也照样保存
   it('初稿正好在上限上，局部修订后超出：requirements_unmet', async () => {
     // 替换把 29 字的句子换成 42 字的句子：61 - 29 + 42 = 74
-    const { model } = fakeModel({ review: (section) => ({ issues: section.includes('柏林岁月') ? [TIME_ISSUE] : [] }) });
+    const { model } = fakeModel({ review: (section) => ({ issues: section.includes('柏林岁月') ? [TIME_ISSUE] : [] }), rewrite: async () => DRAFT });
     const err = await rejection(finalizeArticle(input({ requirements: Promise.resolve(req({ maxChars: 61 })) }), model, stages().onStage));
     expect({ code: err.code, message: err.message }).toEqual({ code: 'requirements_unmet', message: '文章没有满足生成要求里的硬性约束，修订后仍不满足（全文 74 字，要求不超过 61 字）' });
   });
@@ -229,7 +354,53 @@ describe('finalizeArticle：约束不满足', () => {
   });
 });
 
+describe('finalizeArticle：全局文章长度保护', () => {
+  const prefix = '# 标题\n\n## 内容\n\n';
+  const atLimit = `${prefix}句${'a'.repeat(LIMITS.articleChars - prefix.length - 1)}`;
+
+  it('没有用户字数要求时，恰好达到全局上限的文章仍可完成', async () => {
+    const { model } = fakeModel();
+    const result = await finalizeArticle(input({ draft: atLimit }), model, stages().onStage);
+    expect(result.markdown).toBe(atLimit);
+  });
+
+  it('全文重写满足章数要求但超过全局长度上限：拒绝，不再核对', async () => {
+    const oversized = `# 标题\n\n## 一\n\n${'a'.repeat(LIMITS.articleChars)}\n\n## 二\n\n正文。\n\n## 三\n\n正文。`;
+    const { model, reviewPrompts } = fakeModel({ rewrite: async () => oversized });
+    const err = await rejection(finalizeArticle(input({ requirements: Promise.resolve(req({ chaptersMin: 3, chaptersMax: 3 })) }), model, stages().onStage));
+    expect(err.code).toBe('article_too_long');
+    expect(reviewPrompts).toHaveLength(0);
+  });
+
+  it('局部修订把文章推过全局长度上限：拒绝最终稿', async () => {
+    const { model } = fakeModel({ review: () => ({ issues: [{ ...TIME_ISSUE, quote: '句', replacement: '句子' }] }) });
+    const err = await rejection(finalizeArticle(input({ draft: atLimit }), model, stages().onStage));
+    expect(err.code).toBe('article_too_long');
+  });
+
+  it('整篇语义限定复核把文章推过全局长度上限：也拒绝最终稿', async () => {
+    const { model } = fakeModel({ fidelity: () => ({ issues: [{ ...TIME_ISSUE, quote: '句', replacement: '句子' }] }) });
+    const save = vi.fn();
+    const err = await rejection(finalizeArticle(input({ draft: atLimit }), model, stages().onStage).then(save));
+    expect(err.code).toBe('article_too_long');
+    expect(save).not.toHaveBeenCalled();
+  });
+});
+
 describe('finalizeArticle：模型调用失败', () => {
+  it.each([[{}], [{ issues: null }], [{ issues: '没有问题' }]])('核对结果整体结构无效（%j）：review_failed，不能当作没有问题', async (raw) => {
+    const { model } = fakeModel({ review: () => raw });
+    const err = await rejection(finalizeArticle(input(), model, stages().onStage));
+    expect(err.code).toBe('review_failed');
+    expect(err.message).toContain('核对结果不是有效的问题列表');
+  });
+
+  it('重写流触发全局长度保护：保留 article_too_long 错误', async () => {
+    const original = new AppError('article_too_long');
+    const { model } = fakeModel({ rewrite: () => Promise.reject(original) });
+    expect(await rejection(finalizeArticle(input({ requirements: Promise.resolve(req({ maxChars: 50 })) }), model, stages().onStage))).toBe(original);
+  });
+
   // 抓：约束提取失败时当成"没有约束"放过去，或者报成和核对无关的错误
   it('约束提取失败：review_failed，说明是哪一步', async () => {
     const { model, reviewPrompts } = fakeModel();

@@ -1,0 +1,292 @@
+event: stage
+data: {"stage":"transcript"}
+
+event: meta
+data: {"generationId":"71f2accdab0f4176af407a42c9ca723cce8d7127bc984ed577da2d9c6e94b5a6","video":{"id":"PHe0bXAIuk0","title":"How The Economic Machine Works by Ray Dalio","channel":"Principles by Ray Dalio","lengthSeconds":1860},"transcript":{"source":"live","language":"en","kind":"manual","chars":26211,"preview":[{"time":"00:00","text":"How the economic machine works, in 30 minutes. The economy works like a simple machine. But many people don't understand it — or they don't agree on how it works"},{"time":"09:32","text":"You just created credit. Out of thin air. It's not until you pay the bar tab later that the asset and liability disappear, the debt goes away and the transaction is settled."},{"time":"19:24","text":"2. debts are reduced through defaults and restructurings. 3. wealth is redistributed from the 'haves' to the 'have nots'. and finally, 4. the central bank prints new money."}]},"model":"gemini-4-hydrogen"}
+
+event: stage
+data: {"stage":"generating"}
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+event: delta
+data: {"text":"# Ray Dalio经济机器运行原理笔记\n\n## 一、经济基础：交易与核心概念"}
+
+event: delta
+data: {"text":"\nRay Dalio分享了其沿用30余年的简化经济框架：经济如同一台由无数**"}
+
+event: delta
+data: {"text":"交易**构成的机器，受人性驱动形成三股动力——**生产率增长**（长期最关键，波动"}
+
+event: delta
+data: {"text":"小）、**短期债务周期**（约5至8年）和**长期债务周期**（约75"}
+
+event: delta
+data: {"text":"至100年）。\n\n每次交易是买方用**货币**或**信用**换取商品、"}
+
+event: delta
+data: {"text":"服务或金融资产，总支出（货币与信用之和）除以销量即得价格。分析经济需区分："}
+
+event: delta
+data: {"text":"\n- **货币**：用于立即结算交易（如现金买啤酒）。\n- **信用**：借款人承诺还本付息且"}
+
+event: delta
+data: {"text":"放贷人相信时“凭空”创造的购买力（如酒吧赊账）。视频中讲者提到，人们常说的“钱"}
+
+event: delta
+data: {"text":"”大多是信用，当时美国信用总额约50万亿美元，货币总额仅约3万亿美元。\n- **债务**：信用一旦创造"}
+
+event: delta
+data: {"text":"便立即转为债务，是放贷人的资产、借款人的负债；还清本息后资产与负债消失，"}
+
+event: delta
+data: {"text":"交易才结算。\n- **收入**：一人的支出即另一人的收入。高收入与可售抵押品提升信用度，促成"}
+
+event: delta
+data: {"text":"更多借贷与支出，形成自我强化增长。\n\n借款是提前透支未来支出，必然产生周期。"}
+
+event: delta
+data: {"text":"信用用于无法创收的过度消费（如买大电视）有害；用于生产性资源（如买拖拉机创收还债"}
+
+event: delta
+data: {"text":"）则有益。\n\n## 二、短期与长期债务周期\n经济波动主要由信贷而非创新或努力决定"}
+
+event: delta
+data: {"text":"。\n1. **短期债务周期（通常5至8年）**：主要由央行通过利率控制。信贷宽松带动扩张，若支出与"}
+
+event: delta
+data: {"text":"收入增速快于商品生产，物价上涨引发**通胀**。央行随即加息，抑制借贷并"}
+
+event: delta
+data: {"text":"推高现有债务还款额，导致支出与收入下降、物价走低（**通缩**），进入**衰退**；衰退严重且"}
+
+event: delta
+data: {"text":"无通胀问题时，央行降息重启扩张。因人性倾向借贷消费而非还债，每个周期结束"}
+
+event: delta
+data: {"text":"时的增长和债务常高于前一次。\n2. **长期债务周期（约75至100年）**：数十年间"}
+
+event: delta
+data: {"text":"债务增速快于收入，但收入上升与资产飙升（甚至泡沫）掩盖了风险，使**债务与收入比率**（"}
+
+event: delta
+data: {"text":"债务负担）看似可控。当还债额增速超过收入时，人们被迫削减支出，引发收入下降、信用枯竭及"}
+
+event: delta
+data: {"text":"恐慌抛售资产、抵押品贬值的恶性循环，债务见顶并步入**去杠杆**（"}
+
+event: delta
+data: {"text":"如1929年美国、1989年日本及2008年美欧等地）。去杠杆不同于普通衰退：此时"}
+
+event: delta
+data: {"text":"利率已低并很快降至0%（如20世纪30年代与2008年的美国），降息失去刺激作用"}
+
+event: delta
+data: {"text":"。\n\n## 三、去杠杆路径与经验法则\n现代历史上每次去杠杆都包含四种降债方法，前三者具"}
+
+event: delta
+data: {"text":"通缩与痛苦性，第四者具通胀与刺激性：\n1. **削减支出（紧缩）**：节支还债使"}
+
+event: delta
+data: {"text":"他人收入降得比还债更快，反而加重债务负担并推高失业。\n2. **减少债务（违约与重组）"}
+
+event: delta
+data: {"text":"**：违约引发银行挤兑与萧条；减债、展期或降息虽消债，但"}
+
+event: delta
+data: {"text":"资产与收入同步蒸发，债务负担仍恶化。\n3. **财富再分配**：经济萎缩致"}
+
+event: delta
+data: {"text":"税收减少而救济与刺激支出激增，赤字迫使政府向富人加税，加剧阶层对立、"}
+
+event: delta
+data: {"text":"国际紧张乃至极端政治剧变（如20世纪30年代希特勒上台、欧洲战争与"}
+
+event: delta
+data: {"text":"美国萧条）。\n4. **央行印钞**：利率近0%后，央行凭空印钞买"}
+
+event: delta
+data: {"text":"金融资产和国债，配合不能印钞但可花钱买商品服务的中央政府推行救济与刺激（视频提到2"}
+
+event: delta
+data: {"text":"008年美联储印钞超2万亿美元）。\n\n演讲者指出，平衡通缩与通胀手段可"}
+
+event: delta
+data: {"text":"实现**漂亮的去杠杆**：印钞只要仅抵消消失的信用便不推高通胀。演讲者假设，若一国债务收入"}
+
+event: delta
+data: {"text":"比为100%、债务利率2%而收入仅增约1%，债务负担无法下降，须印钞"}
+
+event: delta
+data: {"text":"使收入增速超过债务利率，但切忌像20世纪20年代德国那样印钞过多引发高"}
+
+event: delta
+data: {"text":"通胀。平衡得当时，债务相对收入下降、实际增长为正且通胀可控，通常需约十年或"}
+
+event: delta
+data: {"text":"更久（“失去的十年”）恢复正常。\n\n最后，Ray Dalio面向个人和政策制定者提出三条经验"}
+
+event: delta
+data: {"text":"法则：不要让债务增速超过收入，以免被债务压垮；不要让收入增速超过生产率，以免丧失竞争力；全力提高生产率"}
+
+event: delta
+data: {"text":"，因为长期来看这最为重要。"}
+
+event: stage
+data: {"stage":"reviewing"}
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+event: error
+data: {"code":"requirements_unmet","message":"文章没有满足生成要求里的硬性约束，修订后仍不满足（全文 1,511 字，要求不超过 1,500 字）","partial":true}
+

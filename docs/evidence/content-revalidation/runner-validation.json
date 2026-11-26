@@ -1,0 +1,317 @@
+{
+  "format": "video-article-runner-validation-v1",
+  "recordedAt": "2026-11-26T03:53:32.429417+00:00",
+  "scope": "仅复验入口工程烟测；未调用真实模型，不能证明V13/V15语义问题已修复",
+  "runnerSha256": "bc635767aa5e832e7a983e21891ea8baccc8eb7b261d8c2e57a0e577a6184c9d",
+  "runtime": {
+    "node": "v22.15.0",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "typecheck": {
+    "command": "node_modules/.bin/tsc -p tsconfig.node.json",
+    "exitCode": 0
+  },
+  "checks": [
+    {
+      "check": "V13 full smoke",
+      "exit_code": 0,
+      "requests": 5,
+      "transcriptChars": 26211,
+      "inputFiles": 4,
+      "boundCodeFiles": 34,
+      "savedFinalMatches": true,
+      "noSummaryRequests": true,
+      "temporaryRemoved": true
+    },
+    {
+      "check": "V15 full smoke",
+      "exit_code": 0,
+      "requests": 5,
+      "transcriptChars": 67749,
+      "inputFiles": 4,
+      "boundCodeFiles": 34,
+      "savedFinalMatches": true,
+      "noSummaryRequests": true,
+      "temporaryRemoved": true
+    },
+    {
+      "check": "explicit mode required",
+      "exit_code": 1,
+      "expected_rejection": true
+    },
+    {
+      "check": "existing output refused",
+      "exit_code": 1,
+      "expected_rejection": true
+    },
+    {
+      "check": "invalid port refused",
+      "exit_code": 1,
+      "expected_rejection": true
+    },
+    {
+      "check": "occupied port startup cleanup",
+      "exit_code": 1,
+      "expected_rejection": true,
+      "temporaryRemoved": true,
+      "requests": 0,
+      "seconds": 1.42
+    },
+    {
+      "check": "SIGTERM cancellation cleanup",
+      "exit_code": 1,
+      "expected_rejection": true,
+      "temporaryRemoved": true,
+      "requests": 0,
+      "seconds": 1.35
+    }
+  ],
+  "cases": [
+    {
+      "caseId": "V13",
+      "startedAt": "2026-11-26T03:52:03.774Z",
+      "finishedAt": "2026-11-26T03:52:05.708Z",
+      "smoke": true,
+      "success": true,
+      "checks": {
+        "everyTranscriptMatches": true,
+        "savedFinalMatches": true,
+        "temporaryRemoved": true,
+        "noSummaryRequests": true
+      },
+      "preparedChars": 26211,
+      "inputSha256": {
+        "evidence/final2/online-cases-2/V13/input.json": "5891747b80a7f2a3d0479bed8aeb2ec7e804b93b54ac997fa3b2ff0b88d2ef25",
+        "evidence/additional/preflight/PHe0bXAIuk0/preflight.json": "01ce6dd7953d0b6db512beb32351699b356832839339e8e10be3c3018c5da2bd",
+        "evidence/additional/preflight/PHe0bXAIuk0/raw-cues.json": "d283b39f942bc33df7a5e5640e311ad854005b3f63cbda72beae2a237f0d85b0",
+        "evidence/additional/preflight/PHe0bXAIuk0/prepared.txt": "8286e97e521af40000b09d320401736e14a22b8a6d0229d713c1032fd5b9d063"
+      },
+      "codeSha256": {
+        "scripts/lib/env-file.ts": "89cebee91bc4608c5ab59342db49d68a6f2f0fe70cefc0d5265d6f4e3e12c959",
+        "scripts/revalidate-content.ts": "bc635767aa5e832e7a983e21891ea8baccc8eb7b261d8c2e57a0e577a6184c9d",
+        "scripts/stream-probe.ts": "eeed9248eca889711bd4b68bb5037aa42b9ce1079a7467a5bb23c43ca36564b0",
+        "src/shared/article.ts": "d925288ba67e377a55e3a1b6c8da6097d7406c416aaf01c95644ec7206255874",
+        "src/shared/errors.ts": "e258549b93d35bc1f859b9e73bcb9a74b06ff228f3036663edd83854305d6106",
+        "src/shared/limits.ts": "e659cb0b20435a37c191fd2bbc8146eac197d9d96d6ba396c6d26a314fd29d56",
+        "src/shared/sse.ts": "7a2b04109c37dfa7df67a595bb998aa96cf8601a3e70c5afd58e65430d83d246",
+        "src/shared/types.ts": "10a46163fe424cd407230ed2f4de2d4aec7c4cf0aa3d7b657a7dae88bc7fe18b",
+        "src/shared/video-id.ts": "f6641842d666b202826f9fb85756a9d1739c422bc1da8e90064f8f1d2bd15729",
+        "src/worker/app-error.ts": "02afb0a99df95f217e69d3df7ac4d661c2a9bc9f362cf5fe7a5be43ea38ac452",
+        "src/worker/config.ts": "8103978867d2cc3080f2b0f85d8edde47de4111ac73a9013a86fb238350dc22c",
+        "src/worker/env.d.ts": "e6658913986ad98c714f6298439e0f1c23e4c817c077f4bc497934b81eb1fb6a",
+        "src/worker/event-stream.ts": "dbb21e188f95b834c014e910c91369587d691c7546abdd122ce0dd43e1f66af9",
+        "src/worker/finalize.ts": "e161aed4012d8ec0020f95b5f743d4756e4ca0dd3a144f140f45f84afd9628bc",
+        "src/worker/gemini.ts": "d85e81e8e7d1dab4e027bcadb5844e4254ef365567a6a397ce7e60a830044024",
+        "src/worker/generate.ts": "177b5b54ec9fd840ba76f3b15d216a413824609d053bd21319c1db1d4ffcd540",
+        "src/worker/index.ts": "7f5704faaa9dd5342d4fe7e06208a344acd654ecf47c364660659f925358a035",
+        "src/worker/json-model.ts": "82acc386317b5c627d179c18120bccc70d026532077ea4182899d60f8e4aa8f0",
+        "src/worker/number-check.ts": "ade46d92af6f279851917da931889ed9d6eeebce382a28d87ee14534c9967f6b",
+        "src/worker/prompts.ts": "2997fa091cc7f39b5cd0bfd803be56bbbdc1911bc48d1f453e74032a0a91e220",
+        "src/worker/requirements.ts": "e008d1960b49b8ad3fef788ddae64b55bc63a94447c53e2f6017ab482e462e54",
+        "src/worker/review.ts": "8a68f8a160555440be591fa4b9d25688464dee0bcf53d0c1d90dac768dd48e3b",
+        "src/worker/store.ts": "076a686488075124446974c10c559798f2810f318b002cbe6bdc7f3e8946291f",
+        "src/worker/summary-model.ts": "5cd3449cdc4c835f73ab2dad3d8a333808c4c6c273899fe75806b987fff2c8b2",
+        "src/worker/summary-schema.ts": "dab39699d25755b382a08121705c07ff365532ab4d82d4346a3cb7255dc539b1",
+        "src/worker/summary.ts": "14b8874374df0e180376a988a964ee9a0c4c99d0e9a59826b53345a021ad5ed5",
+        "src/worker/transcript-preview.ts": "72203d083e86317d5fe5efd07f045fa211d65c2b9ab01621029b0f30e0dda484",
+        "src/worker/transcript-relay.ts": "dd85ac07f1cfd12d7272ae8aa4ddebc4272680565f96efa02b3ef2ca7ab1b4c7",
+        "src/worker/transcripts.ts": "01c70a7bf63b22e161444946957457b38c6144ba3d15382c659be6c4cdc8f24f",
+        "src/worker/transcripts/xRh2sVcNXQ8.json": "f44a8fada60cabe7afd47b093622333b4ee0cce0fcf3ad99bfeb257ed81c4982",
+        "src/worker/youtube.ts": "e1c6ede1a9e85eee3858f90fc322eb4c0d3701c081d27fd268d24ea57d73b116",
+        "test/fixtures/upstream.ts": "00cee481497217dca201614e1c2bbbc680e06c16c1abeebb8581330885c0b56f",
+        "test/harness/mock-upstream.ts": "92ac4a76357b5ae77f50823c12b95276d3a1b19d9c9d4f2cec997b4cfd7ce7b9",
+        "wrangler.jsonc": "1de5c9c048d1a8385c352bba7d5fd2d878df4fd76bd5344621a11e7ddb421c6e"
+      },
+      "metadataLimitation": "已存preflight未记录视频简介；本轮简介为空，不联网补取",
+      "workerPortClosed": true,
+      "requests": [
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "requirements",
+          "requestBodySha256": "cd83eece0cdf8cebe56ece35705775b8976e4bcb50d8e067cadd51b3ccfeead6",
+          "transcriptSha256": null,
+          "transcriptMatches": null,
+          "status": 200,
+          "ms": 3,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "2aaf3944c6c97f2d49d36467599326f037220abea6d692e78eef6fd5010c6e6d"
+        },
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "article",
+          "requestBodySha256": "ffa3bf57f8e84dfb881fd2b1d2fad751a5010486eac8aa093f562223c1618f9a",
+          "transcriptSha256": "8286e97e521af40000b09d320401736e14a22b8a6d0229d713c1032fd5b9d063",
+          "transcriptMatches": true,
+          "status": 200,
+          "ms": 3,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "df1bc2abb6ed6f343e91f3a2f13451c44f4043743a734a6139373a424bc2c22c"
+        },
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "review",
+          "requestBodySha256": "a110bd55c25d49a49860b58dc42c1c48d75246ec77b3df4db3182b607ac8cc2c",
+          "transcriptSha256": "8286e97e521af40000b09d320401736e14a22b8a6d0229d713c1032fd5b9d063",
+          "transcriptMatches": true,
+          "status": 200,
+          "ms": 4,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "74e46dd8ea0d3a1e2d884585dcd98acb64b24c059d2a82b09634cad804a0e55e"
+        },
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "review",
+          "requestBodySha256": "ceaa7b7baf21d5299896a6df3f23ae7a4fd4f99a93c562656e5af135e0a403bf",
+          "transcriptSha256": "8286e97e521af40000b09d320401736e14a22b8a6d0229d713c1032fd5b9d063",
+          "transcriptMatches": true,
+          "status": 200,
+          "ms": 4,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "74e46dd8ea0d3a1e2d884585dcd98acb64b24c059d2a82b09634cad804a0e55e"
+        },
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "review",
+          "requestBodySha256": "2465f4df01ea3c53142a3352c730f7aaaa1460b072ca9859bebc424bcb98540f",
+          "transcriptSha256": "8286e97e521af40000b09d320401736e14a22b8a6d0229d713c1032fd5b9d063",
+          "transcriptMatches": true,
+          "status": 200,
+          "ms": 4,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "74e46dd8ea0d3a1e2d884585dcd98acb64b24c059d2a82b09634cad804a0e55e"
+        }
+      ]
+    },
+    {
+      "caseId": "V15",
+      "startedAt": "2026-11-26T03:52:03.775Z",
+      "finishedAt": "2026-11-26T03:52:05.709Z",
+      "smoke": true,
+      "success": true,
+      "checks": {
+        "everyTranscriptMatches": true,
+        "savedFinalMatches": true,
+        "temporaryRemoved": true,
+        "noSummaryRequests": true
+      },
+      "preparedChars": 67749,
+      "inputSha256": {
+        "evidence/final2/online-cases-2/V15/input.json": "d4993a0f78a508eaaeaf290ab99dd0aba835a519cc407a6b5504d0c69c6e55b7",
+        "evidence/additional/preflight/vHYeChEf2lA/preflight.json": "e6f782b6606c4eda029d6b88222523ce7aac4195819d62a9c5634260a283bd87",
+        "evidence/additional/preflight/vHYeChEf2lA/raw-cues.json": "e83a5e55b254e62dc0eedc02ec84c6a5ac5636b7196d9cf4950b1e76915ef983",
+        "evidence/additional/preflight/vHYeChEf2lA/prepared.txt": "62352be8cef2874bc0cf474777f7fb70413d97169ef94404377c8c165f508d51"
+      },
+      "codeSha256": {
+        "scripts/lib/env-file.ts": "89cebee91bc4608c5ab59342db49d68a6f2f0fe70cefc0d5265d6f4e3e12c959",
+        "scripts/revalidate-content.ts": "bc635767aa5e832e7a983e21891ea8baccc8eb7b261d8c2e57a0e577a6184c9d",
+        "scripts/stream-probe.ts": "eeed9248eca889711bd4b68bb5037aa42b9ce1079a7467a5bb23c43ca36564b0",
+        "src/shared/article.ts": "d925288ba67e377a55e3a1b6c8da6097d7406c416aaf01c95644ec7206255874",
+        "src/shared/errors.ts": "e258549b93d35bc1f859b9e73bcb9a74b06ff228f3036663edd83854305d6106",
+        "src/shared/limits.ts": "e659cb0b20435a37c191fd2bbc8146eac197d9d96d6ba396c6d26a314fd29d56",
+        "src/shared/sse.ts": "7a2b04109c37dfa7df67a595bb998aa96cf8601a3e70c5afd58e65430d83d246",
+        "src/shared/types.ts": "10a46163fe424cd407230ed2f4de2d4aec7c4cf0aa3d7b657a7dae88bc7fe18b",
+        "src/shared/video-id.ts": "f6641842d666b202826f9fb85756a9d1739c422bc1da8e90064f8f1d2bd15729",
+        "src/worker/app-error.ts": "02afb0a99df95f217e69d3df7ac4d661c2a9bc9f362cf5fe7a5be43ea38ac452",
+        "src/worker/config.ts": "8103978867d2cc3080f2b0f85d8edde47de4111ac73a9013a86fb238350dc22c",
+        "src/worker/env.d.ts": "e6658913986ad98c714f6298439e0f1c23e4c817c077f4bc497934b81eb1fb6a",
+        "src/worker/event-stream.ts": "dbb21e188f95b834c014e910c91369587d691c7546abdd122ce0dd43e1f66af9",
+        "src/worker/finalize.ts": "e161aed4012d8ec0020f95b5f743d4756e4ca0dd3a144f140f45f84afd9628bc",
+        "src/worker/gemini.ts": "d85e81e8e7d1dab4e027bcadb5844e4254ef365567a6a397ce7e60a830044024",
+        "src/worker/generate.ts": "177b5b54ec9fd840ba76f3b15d216a413824609d053bd21319c1db1d4ffcd540",
+        "src/worker/index.ts": "7f5704faaa9dd5342d4fe7e06208a344acd654ecf47c364660659f925358a035",
+        "src/worker/json-model.ts": "82acc386317b5c627d179c18120bccc70d026532077ea4182899d60f8e4aa8f0",
+        "src/worker/number-check.ts": "ade46d92af6f279851917da931889ed9d6eeebce382a28d87ee14534c9967f6b",
+        "src/worker/prompts.ts": "2997fa091cc7f39b5cd0bfd803be56bbbdc1911bc48d1f453e74032a0a91e220",
+        "src/worker/requirements.ts": "e008d1960b49b8ad3fef788ddae64b55bc63a94447c53e2f6017ab482e462e54",
+        "src/worker/review.ts": "8a68f8a160555440be591fa4b9d25688464dee0bcf53d0c1d90dac768dd48e3b",
+        "src/worker/store.ts": "076a686488075124446974c10c559798f2810f318b002cbe6bdc7f3e8946291f",
+        "src/worker/summary-model.ts": "5cd3449cdc4c835f73ab2dad3d8a333808c4c6c273899fe75806b987fff2c8b2",
+        "src/worker/summary-schema.ts": "dab39699d25755b382a08121705c07ff365532ab4d82d4346a3cb7255dc539b1",
+        "src/worker/summary.ts": "14b8874374df0e180376a988a964ee9a0c4c99d0e9a59826b53345a021ad5ed5",
+        "src/worker/transcript-preview.ts": "72203d083e86317d5fe5efd07f045fa211d65c2b9ab01621029b0f30e0dda484",
+        "src/worker/transcript-relay.ts": "dd85ac07f1cfd12d7272ae8aa4ddebc4272680565f96efa02b3ef2ca7ab1b4c7",
+        "src/worker/transcripts.ts": "01c70a7bf63b22e161444946957457b38c6144ba3d15382c659be6c4cdc8f24f",
+        "src/worker/transcripts/xRh2sVcNXQ8.json": "f44a8fada60cabe7afd47b093622333b4ee0cce0fcf3ad99bfeb257ed81c4982",
+        "src/worker/youtube.ts": "e1c6ede1a9e85eee3858f90fc322eb4c0d3701c081d27fd268d24ea57d73b116",
+        "test/fixtures/upstream.ts": "00cee481497217dca201614e1c2bbbc680e06c16c1abeebb8581330885c0b56f",
+        "test/harness/mock-upstream.ts": "92ac4a76357b5ae77f50823c12b95276d3a1b19d9c9d4f2cec997b4cfd7ce7b9",
+        "wrangler.jsonc": "1de5c9c048d1a8385c352bba7d5fd2d878df4fd76bd5344621a11e7ddb421c6e"
+      },
+      "metadataLimitation": "已存preflight未记录视频简介；本轮简介为空，不联网补取",
+      "workerPortClosed": true,
+      "requests": [
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "requirements",
+          "requestBodySha256": "39323fa09ce233f758dbcdb0940c267350a60f473ebe75cb5fbc798ba7cb1dd1",
+          "transcriptSha256": null,
+          "transcriptMatches": null,
+          "status": 200,
+          "ms": 4,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "2aaf3944c6c97f2d49d36467599326f037220abea6d692e78eef6fd5010c6e6d"
+        },
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "article",
+          "requestBodySha256": "81d06605b8a15b3fee2569a754425e812e3c1fadb43989bb90c561fd6635b42f",
+          "transcriptSha256": "62352be8cef2874bc0cf474777f7fb70413d97169ef94404377c8c165f508d51",
+          "transcriptMatches": true,
+          "status": 200,
+          "ms": 3,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "df1bc2abb6ed6f343e91f3a2f13451c44f4043743a734a6139373a424bc2c22c"
+        },
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "review",
+          "requestBodySha256": "1c8cb455860b05e83158f661b8f6e7c2732c884593fe4f14cf0dc04857fba46a",
+          "transcriptSha256": "62352be8cef2874bc0cf474777f7fb70413d97169ef94404377c8c165f508d51",
+          "transcriptMatches": true,
+          "status": 200,
+          "ms": 3,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "74e46dd8ea0d3a1e2d884585dcd98acb64b24c059d2a82b09634cad804a0e55e"
+        },
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "review",
+          "requestBodySha256": "895d084eb52ea0bf55cb539d4251d5d07521189e9b53e7024b0ecc7c4acc819a",
+          "transcriptSha256": "62352be8cef2874bc0cf474777f7fb70413d97169ef94404377c8c165f508d51",
+          "transcriptMatches": true,
+          "status": 200,
+          "ms": 3,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "74e46dd8ea0d3a1e2d884585dcd98acb64b24c059d2a82b09634cad804a0e55e"
+        },
+        {
+          "model": "gemini-4-hydrogen",
+          "purpose": "review",
+          "requestBodySha256": "5cd785dce32f6e0021aafa0b7560eb19d3588d516caa09ae82f54f19c828dcc1",
+          "transcriptSha256": "62352be8cef2874bc0cf474777f7fb70413d97169ef94404377c8c165f508d51",
+          "transcriptMatches": true,
+          "status": 200,
+          "ms": 3,
+          "aborted": false,
+          "error": null,
+          "responseSha256": "74e46dd8ea0d3a1e2d884585dcd98acb64b24c059d2a82b09634cad804a0e55e"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "smoke的约束提取返回无约束，仅验证流程连通；实际用户约束由后续真实模型运行验证",
+    "已存预检没有视频简介，本轮用空简介并显式记录，不能声称与历史线上请求完全相同"
+  ],
+  "review": "根Agent自查；子任务只实现入口及静态检查，根Agent实际完成两例运行和失败清理检查"
+}

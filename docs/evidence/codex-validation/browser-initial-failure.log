@@ -1,0 +1,105 @@
+[WebServer] (node:99590) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:99591) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:99593) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:99595) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 4 tests using 1 worker
+
+(node:99613) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+reviewing 之前的中间长度采样 43 条，正文 0 → 101 字符
+  ✘  1 [fullstack] › test/e2e/fullstack/review.spec.ts:96:1 › 正文在 stage: reviewing 之前就在页面上逐步增长，核对中显示初稿、5W1H 不可点 (4.3s)
+(node:99948) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  2 [fullstack] › test/e2e/fullstack/review.spec.ts:135:1 › 对照字幕修订一处：初稿先流式显示 → 核对后正文换成最终版本并列出修订 → 5W1H 用的是修订后的句子 (4.1s)
+  ✘  3 [fullstack] › test/e2e/fullstack/review.spec.ts:231:1 › 初稿超出字数上限：页面经历"正在修订"，最终显示修订稿和"生成要求核对：全文 56 字，上限 60 字" (4.0s)
+(node:808) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  4 [fullstack] › test/e2e/fullstack/review.spec.ts:281:1 › 修订稿仍超出字数上限：页面显示"未通过核对"和具体字数，没有可用的 5W1H，可以重新生成 (1.5s)
+
+
+  1) [fullstack] › test/e2e/fullstack/review.spec.ts:96:1 › 正文在 stage: reviewing 之前就在页面上逐步增长，核对中显示初稿、5W1H 不可点 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 1
+
+      Array [
+    -   "正在获取字幕",
+        "正在生成文章",
+        "正文已写完，正在对照字幕核对",
+    -   StringMatching /^已完成/,
+    +   "已完成，共 2 章、84 字，用时 3 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。",
+      ]
+
+      127 |   // 7 段、每段间隔 300 毫秒、每 40 毫秒采一次：中间长度至少应有十几条，这里只要求 3 条，避免机器忙时偶发失败
+      128 |   expect(growth.intermediateSamples).toBeGreaterThanOrEqual(3);
+    > 129 |   expect(stagesSeen(list)).toEqual(['正在获取字幕', '正在生成文章', '正文已写完，正在对照字幕核对', expect.stringMatching(/^已完成/)]);
+          |                            ^
+      130 |   // 核对中 5W1H 一直不可点：所有完成之前的采样里，文章都还没到 done（流式中是 streaming，核对中是 reviewing）
+      131 |   expect([...new Set(list.filter((s) => s.t < reviewingAt + 1_000).map((s) => s.state))].sort()).toEqual(['', 'reviewing', 'streaming']);
+      132 | });
+        at /private$VALIDATION_ROOT/test/e2e/fullstack/review.spec.ts:129:28
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/codex-browser/review-正文在-stage-reviewing-之前就在页面上逐步增长，核对中显示初稿、5W1H-不可点-fullstack/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/codex-browser/review-正文在-stage-reviewing-之前就在页面上逐步增长，核对中显示初稿、5W1H-不可点-fullstack/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/codex-browser/review-正文在-stage-reviewing-之前就在页面上逐步增长，核对中显示初稿、5W1H-不可点-fullstack/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/codex-browser/review-正文在-stage-reviewing-之前就在页面上逐步增长，核对中显示初稿、5W1H-不可点-fullstack/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [fullstack] › test/e2e/fullstack/review.spec.ts:231:1 › 初稿超出字数上限：页面经历"正在修订"，最终显示修订稿和"生成要求核对：全文 56 字，上限 60 字" 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 1
+
+      Array [
+    -   "正在获取字幕",
+        "正在生成文章",
+        "初稿没有满足生成要求，正在修订",
+        "正文已写完，正在对照字幕核对",
+    -   StringMatching /^已完成/,
+    +   "已完成，共 2 章、56 字，用时 3 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。",
+      ]
+
+      249 |   await expect(status).toHaveAttribute('data-tone', 'ok', { timeout: 15_000 });
+      250 |   expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、56 字，用时 \d+ 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。$/);
+    > 251 |   expect(stagesSeen(await samples(page))).toEqual([
+          |                                           ^
+      252 |     '正在获取字幕',
+      253 |     '正在生成文章',
+      254 |     '初稿没有满足生成要求，正在修订',
+        at /private$VALIDATION_ROOT/test/e2e/fullstack/review.spec.ts:251:43
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/codex-browser/review-初稿超出字数上限：页面经历-正在修订-，最终显示修订稿和-生成要求核对：全文-56-字，上限-60-字--fullstack/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/codex-browser/review-初稿超出字数上限：页面经历-正在修订-，最终显示修订稿和-生成要求核对：全文-56-字，上限-60-字--fullstack/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/codex-browser/review-初稿超出字数上限：页面经历-正在修订-，最终显示修订稿和-生成要求核对：全文-56-字，上限-60-字--fullstack/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/codex-browser/review-初稿超出字数上限：页面经历-正在修订-，最终显示修订稿和-生成要求核对：全文-56-字，上限-60-字--fullstack/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    [fullstack] › test/e2e/fullstack/review.spec.ts:96:1 › 正文在 stage: reviewing 之前就在页面上逐步增长，核对中显示初稿、5W1H 不可点 
+    [fullstack] › test/e2e/fullstack/review.spec.ts:231:1 › 初稿超出字数上限：页面经历"正在修订"，最终显示修订稿和"生成要求核对：全文 56 字，上限 60 字" 
+  2 passed (17.1s)

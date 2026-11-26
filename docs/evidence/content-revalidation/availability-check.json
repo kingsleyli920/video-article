@@ -1,0 +1,35 @@
+{
+  "format": "video-article-model-availability-v1",
+  "purpose": "single-account-availability-check-not-content-validation",
+  "startedAt": "2026-11-26T04:49:07.350Z",
+  "finishedAt": "2026-11-26T04:49:07.592Z",
+  "durationMs": 241,
+  "requestCount": 1,
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-hydrogen:generateContent",
+  "model": "gemini-4-hydrogen",
+  "thinkingLevel": "high",
+  "maxOutputTokens": 128,
+  "sourceConfigSha256": "1de5c9c048d1a8385c352bba7d5fd2d878df4fd76bd5344621a11e7ddb421c6e",
+  "runtime": {
+    "node": "v26.9.0",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "httpStatus": 402,
+  "availableForRealRevalidation": false,
+  "response": {
+    "errorCode": 402,
+    "errorStatus": "RESOURCE_EXHAUSTED",
+    "errorMessage": "Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing. Learn more at https://ai.google.dev/gemini-api/docs/billing#prepay. "
+  },
+  "transportFailure": null,
+  "checks": {
+    "singleRequest": true,
+    "noRetry": true,
+    "noFallback": true,
+    "productionConfigurationUnchanged": true,
+    "credentialSourceUnchanged": true,
+    "noCredentialsInEvidence": true
+  },
+  "limitation": "HTTP 200仅表示本次模型请求被接受，不表示V13/V15内容验收通过；其他状态不触发重试、充值或凭据替换。"
+}

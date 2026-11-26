@@ -1,0 +1,685 @@
+event: stage
+data: {"stage":"transcript"}
+
+event: meta
+data: {"generationId":"f7a70e2ebe314e0a0973ad305f49817812f00f90e1988620ebceb1ba43542791","video":{"id":"vHYeChEf2lA","title":"CS50 SQL - Lecture 0 - Querying","channel":"CS50","lengthSeconds":4753},"transcript":{"source":"live","language":"en","kind":"manual","chars":67749,"preview":[{"time":"00:00","text":"[MUSIC PLAYING] CARTER ZENKE: Well, hello, one and all, and welcome to CS50's Introduction to Databases with SQL. My name is Carter Zenke."},{"time":"25:42","text":"And now I'll say, WHERE the \"format\" is not equal to hardcover Semicolon. So notice here I'm using single quotes for hardcover. This is a string. It's not a table name or a column name."},{"time":"52:17","text":"Now I'll hit Enter. And I'll see I do get back Pyre. So even though I said WHERE \"title\" is LIKE lowercase 'pyre', I got back capital Pyre."}]},"model":"gemini-4-hydrogen"}
+
+event: stage
+data: {"stage":"generating"}
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+event: delta
+data: {"text":"# CS50 SQL 第 "}
+
+event: delta
+data: {"text":"0 课笔记：查询（Querying）\n\n## 查询：数据库概念、SQLite 与 SELECT 基础\n\n###"}
+
+event: delta
+data: {"text":" 数据库与 DBMS 基础概念\n- 讲师 Carter Zenke 在课程《CS50's Introduction to Databases"}
+
+event: delta
+data: {"text":" with SQL》开篇指出，信息时代每天都在产生大量数据（如 Google 记录点击和搜索的网站、手机或手表记录的健康信息"}
+
+event: delta
+data: {"text":"与消息、YouTube 记录的视频与评论），本课将学习如何表示、组织、管理并向数据提问。"}
+
+event: delta
+data: {"text":"\n- 表（table）：如同几千年前记录神庙工人津贴的图表，表用于存储一组信息，每一行（row）"}
+
+event: delta
+data: {"text":"代表集合中的一个条目，每一列（column）代表该条目的一项属性。例如图书馆整理书目时，每"}
+
+event: delta
+data: {"text":"行对应一本书（如 Toni Morrison 所著《Song of Solomon》、Margaret Wise Brown 所著《Goodnight Moon》），两列分别为书名"}
+
+event: delta
+data: {"text":"（title）和作者（author）。\n- 相比电子表格软件（如 Apple Numbers、Google Sheets、Microsoft"}
+
+event: delta
+data: {"text":" Excel），转向数据库主要有三个原因：\n  1. 规模：Google 或 Instagram 等应用需要存储数百万甚至数十亿用户"}
+
+event: delta
+data: {"text":"的数据，数据库更适合承载此类规模。\n  2. 更新频率：如 Twitter 上用户每秒发送多条推文，数据库比电子"}
+
+event: delta
+data: {"text":"表格更能胜任高频数据更新。\n  3. 检索速度：电子表格中使用 Command-F 或 Control-F "}
+
+event: delta
+data: {"text":"只能逐行查找，而数据库提供更多搜索算法，能显著提升查询速度。\n- 数据库与数据库管理系统（DBMS"}
+
+event: delta
+data: {"text":"）：数据库是一种组织数据的方式，支持创建（create）、更新（update）、读取（read）和删除（delete）数据。DBMS"}
+
+event: delta
+data: {"text":" 是用于与数据库交互的软件（可通过图形界面或文本语言操作），课堂举例包括 MySQL、Oracle、Postgre"}
+
+event: delta
+data: {"text":"SQL、SQLite，以及学生提到的 Microsoft Access 和 MongoDB。\n- 选择 DBMS 时的权衡：\n  1."}
+
+event: delta
+data: {"text":" 专有软件与开源/免费软件：专有软件需要付费，但能获得实施数据库的额外支持；开源或"}
+
+event: delta
+data: {"text":"免费软件（如 PostgreSQL、MySQL、SQLite）则需由使用者自行负责实施。\n  2. 重量"}
+
+event: delta
+data: {"text":"级与轻量级：MySQL 和 PostgreSQL 功能更全面，但相对更重、需要更多计算资源；SQL"}
+
+event: delta
+data: {"text":"ite 更轻量，但能完成大部分相同的工作。本课程先使用 SQLite，后续逐步过渡到 MySQL 和 PostgreSQL。"}
+
+event: delta
+data: {"text":"SQLite 也广泛应用于内存较低的手机应用、桌面应用以及存储网页表单提交的数据。\n- SQL 的含义："}
+
+event: delta
+data: {"text":"Structured Query Language（结构化查询语言），是一种带有关键字的结构化语言，可用于向数据库提问（查询），也可"}
+
+event: delta
+data: {"text":"用于创建、读取、更新和删除数据。现实中可用它回答诸如 Instagram 或 Facebook 哪类帖子获"}
+
+event: delta
+data: {"text":"赞最多、初创公司日活用户是在增长还是萎缩、Spotify 如何推荐相似歌曲等问题。\n\n### 工具准备与"}
+
+event: delta
+data: {"text":"课程数据集\n- 本课在 Visual Studio Code（简称 VS Code，集成开发环境）的终端中使用 SQLite（DBMS）。"}
+
+event: delta
+data: {"text":"\n- 课程数据集 `longlist.db` 存储国际布克奖（International Booker Prize，授予世界各国作家"}
+
+event: delta
+data: {"text":"虚构类作品的奖项）的入围长名单书籍。关于数据范围，讲师先说明评委"}
+
+event: delta
+data: {"text":"每年选出 13 本书、数据库包含“五年”的入围名单，随后在回答提问时说明数据涵盖 201"}
+
+event: delta
+data: {"text":"8 至 2023 年，后文查询总行数时返回 78 本（字幕前后口径"}
+
+event: delta
+data: {"text":"不一致，未作统一）。\n- 打开环境与基本操作：\n  1. 输入 `ls` 查看当前目录"}
+
+event: delta
+data: {"text":"中的文件，可看到 `longlist.db`。\n  2. 运行 `sqlite3 longlist.db"}
+
+event: delta
+data: {"text":"`（SQLite 第 3 版软件）打开数据库，终端提示符由 `$` 变为 `sqlite`。\n  3. 按 `Control-"}
+
+event: delta
+data: {"text":"L` 可清空终端屏幕。\n\n### 使用 SELECT 与 LIMIT 查询数据\n- 查询所有列与所有行：`SELECT * FROM \"longlist"}
+
+event: delta
+data: {"text":"\";`。`*` 表示全部行与全部列，分号 `;` 表示查询结束。\n- 查询指定列"}
+
+event: delta
+data: {"text":"：\n  1. 查询单列书名：`SELECT \"title\" FROM \"longlist\";`。\n  2. 查询多列："}
+
+event: delta
+data: {"text":"可用逗号分隔多个列名。讲师首次演示时口述选择 `title` 和 `authors`（后文其余查询均口述为"}
+
+event: delta
+data: {"text":" `author`，字幕列名口径略有不一致，未作统一）。\n- 限制返回行数（`LIMIT`）：面对"}
+
+event: delta
+data: {"text":"包含大量数据的表，可用 `LIMIT` 预览前几条记录，返回顺序为数据写入表的顺序。"}
+
+event: delta
+data: {"text":"\n  1. `SELECT \"title\" FROM \"longlist\" LIMIT 10;` 仅返回前 10 行书"}
+
+event: delta
+data: {"text":"名。\n  2. `SELECT \"title\" FROM \"longlist\" LIMIT 5;` 仅返回前"}
+
+event: delta
+data: {"text":" 5 行书名。\n\n### 课堂问答：引号、数据来源与大小写\n- **学生:**"}
+
+event: delta
+data: {"text":" 必须像演示中那样给词加上引号吗？\n  **Carter Zenke:** 在表名和列名"}
+
+event: delta
+data: {"text":"（称为 SQL 标识符）外加双引号是良好的书写习惯。后续还会用到字符串（字符集合），届"}
+
+event: delta
+data: {"text":"时会用单引号包裹字符串，以区分字符串与列名。\n- **学生:** 这份书单的数据来自"}
+
+event: delta
+data: {"text":"哪里？\n  **Carter Zenke:** 数据整合自多个公开来源：2018 至 20"}
+
+event: delta
+data: {"text":"23 年的入围书籍来自布克奖官网，而书籍评分和投票数来自在线书评聚合网站 Goodreads。"}
+
+event: delta
+data: {"text":"\n- **Vinayak:** SQLite 3 是否区分大小写？演示时语法用了大写字母，能否改用小写？\n  "}
+
+event: delta
+data: {"text":"**Carter Zenke:** 演示运行小写的 `select title from longlist;` 同样能执行，但不建议这么做"}
+
+event: delta
+data: {"text":"。将 SQL 关键字大写、表名和列名小写是更好的代码风格，尤其在长查询中能让读者分"}
+
+event: delta
+data: {"text":"清哪些是 SQL 关键字、哪些是标识符。\n\n## 筛选：WHERE 条件、空值与模糊匹配\n\n### WHERE 基本"}
+
+event: delta
+data: {"text":"条件与否定写法\n- `WHERE` 用于筛选行，只返回满足指定条件的结果。\n- 相等条件"}
+
+event: delta
+data: {"text":"（`=`）：`SELECT \"title\", \"author\" FROM \"longlist\" WHERE \"year\" = 202"}
+
+event: delta
+data: {"text":"3;` 返回 2023 年提名的书籍。因 `2023` 是整数，无需"}
+
+event: delta
+data: {"text":"加引号；演示中也同样查询了 `2022` 年和 `2021` 年。"}
+
+event: delta
+data: {"text":"\n- 不等条件（`!=`、`<>`、`NOT`）：\n  1. `SELECT \"title\", \"format\" FROM \""}
+
+event: delta
+data: {"text":"longlist\" WHERE \"format\" != 'hardcover';` 过滤掉精装本（`'hardcover'` 为"}
+
+event: delta
+data: {"text":"字符串，使用单引号），结果仅剩平装本（paperback）。\n  2. 将 `!="}
+
+event: delta
+data: {"text":"` 换成 `<>` 效果相同，但 `!=` 更常见。\n  3. 也可在 `WHERE` 后"}
+
+event: delta
+data: {"text":"使用关键字 `NOT` 对条件取反，例如对 `\"format\"` 等于 `'hardcover'` 取反，结果完全"}
+
+event: delta
+data: {"text":"一致。\n\n### 组合条件与括号优先级\n- 使用 `AND`、`OR` 可将多个条件连接成复合条件，"}
+
+event: delta
+data: {"text":"括号 `()` 用于标明先执行括号内的条件。长查询在输入分号 `;` 前可以换行书写"}
+
+event: delta
+data: {"text":"。\n- 筛选多个年份：`SELECT \"title\", \"author\" FROM \"longlist\" WHERE \"year\" = 202"}
+
+event: delta
+data: {"text":"2 OR \"year\" = 2023;` 返回 2022 年或 202"}
+
+event: delta
+data: {"text":"3 年提名的书籍。\n- 括号与多条件组合：在查询 `\"title\"` 和 `\"format\"` 时"}
+
+event: delta
+data: {"text":"，结合 `WHERE (\"year\" = 2022 OR \"year\" = 2023)` 以及 `\""}
+
+event: delta
+data: {"text":"format\"` 不等于 `'hardcover'` 的条件，只返回 2022 和 2023"}
+
+event: delta
+data: {"text":" 年的平装书。\n\n### 缺失值判断：NULL、IS NULL 与 IS NOT NULL\n- `NULL` 表示该"}
+
+event: delta
+data: {"text":"值在数据库中不存在或缺失（如部分入围书籍原本就是英文或没有单独译者）。\n- 查找没有"}
+
+event: delta
+data: {"text":"译者记录的书：`SELECT \"title\", \"translator\" FROM \"longlist\" WHERE \"translator\" IS NULL;` 返回 "}
+
+event: delta
+data: {"text":"2 本书（《The Perfect Nine》等），其译者列为空。\n- 查找有译者记录"}
+
+event: delta
+data: {"text":"的书：`SELECT \"title\", \"translator\" FROM \"longlist\" WHERE \"translator\" IS NOT NULL;` 返回"}
+
+event: delta
+data: {"text":"所有存在译者的书籍。\n\n### 模糊匹配：LIKE、% 与 _\n- `LIKE` 用于对"}
+
+event: delta
+data: {"text":"字符串进行近似模式匹配，配合两个通配符使用：\n  1. `%` 匹配任意数量的字符：\n     -"}
+
+event: delta
+data: {"text":" `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE '%love%';` 返回书名任意位置包含 `love` 的 4"}
+
+event: delta
+data: {"text":" 本书（包括《Love in the Big City》《More Than I Love My Life》等）。\n     - "}
+
+event: delta
+data: {"text":"`SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE 'The%';` 查找以 `The` 开"}
+
+event: delta
+data: {"text":"头的书名（演示时讲师先误用了双引号，随后修正为单引号）。讲师指出 `'The%'` "}
+
+event: delta
+data: {"text":"理论上也会匹配 `There` 或 `They` 等词，更严谨的设计应写成 `'The %'`（`The` 后带"}
+
+event: delta
+data: {"text":"空格）。\n  2. `_` 匹配任意单个字符：\n     - 若不确定《Pyre》的"}
+
+event: delta
+data: {"text":"第二个字母是 `i` 还是 `y`，可用 `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE '"}
+
+event: delta
+data: {"text":"P_re';` 查出《Pyre》。\n\n### 范围筛选：比较运算符与 BETWEEN\n-"}
+
+event: delta
+data: {"text":" 当需要筛选连续区间（如 2019 至 2022 年）时，相比连写多个 `OR`，"}
+
+event: delta
+data: {"text":"范围写法更简洁：\n  1. 比较运算符（`>`、`<`、`>=`、`<=`）：`SELECT \"title\", \""}
+
+event: delta
+data: {"text":"year\" FROM \"longlist\" WHERE \"year\" >= 2019 AND \"year\" <= 2"}
+
+event: delta
+data: {"text":"022;`。\n  2. `BETWEEN ... AND ...`（包含边界值）：`SELECT \"title\", \""}
+
+event: delta
+data: {"text":"year\" FROM \"longlist\" WHERE \"year\" BETWEEN 2019 AND 2022;` 返回相同结果。\n-"}
+
+event: delta
+data: {"text":" 筛选评分、投票数与页数：\n  1. 讲师提出查找评分“4.0"}
+
+event: delta
+data: {"text":" 及以上”的书籍，口述演示的代码使用了严格大于号：`SELECT \"title\", \"rating\" FROM \"longlist\" WHERE \"rating\""}
+
+event: delta
+data: {"text":" > 4.0;`。\n  2. 结合投票数筛选高分热门书：`SELECT \"title\", \"rating"}
+
+event: delta
+data: {"text":"\", \"votes\" FROM \"longlist\" WHERE \"rating\" > 4.0 AND \"votes\" > "}
+
+event: delta
+data: {"text":"10000;` 返回 4 本书。\n  3. 按页数筛选：`SELECT \"title\","}
+
+event: delta
+data: {"text":" \"pages\" FROM \"longlist\" WHERE \"pages\" < 300;` 返回首次出版时少于"}
+
+event: delta
+data: {"text":" 300 页的书籍。\n\n### 课堂问答：SQL 子集、通配符组合与数据类型\n- **学生:**"}
+
+event: delta
+data: {"text":" 为什么存在不同的 SQL 子集？\n  **Carter Zenke:** SQL 语言由标准机构 ANSI 定义官方版本，不同数据库管理系统会使用其中的"}
+
+event: delta
+data: {"text":"某个子集，例如 SQLite、PostgreSQL 和 MySQL 各自支持对应的 SQL 子集。\n- **"}
+
+event: delta
+data: {"text":"Tayas:** 能否在终端中同时筛选 2022 年和 2021 年？"}
+
+event: delta
+data: {"text":"\n  **Carter Zenke:** 可以，随后课程中演示了如何在 `WHERE` 中结合多个条件实现。\n- **学生:** 我们"}
+
+event: delta
+data: {"text":"如何预先知道表中有 `title` 和 `author` 这些列名？\n  **Carter Zenke:** 后续课程会讲解"}
+
+: keep-alive
+
+event: delta
+data: {"text":"如何查看数据库的模式（schema）以了解表结构与列名；本节课因讲师事先构建了数据库，所以已知道"}
+
+event: delta
+data: {"text":"列名。\n- **学生:** 能否在两个词之间使用两个 `%`？\n  **Carter Zenke:**"}
+
+event: delta
+data: {"text":" 可以。演示了 `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE 'The%love%';`（以 `The` "}
+
+event: delta
+data: {"text":"开头并在后文中包含 `love`），结果本数据库中没有符合该条件的书。\n- **学生:** 能否使用"}
+
+event: delta
+data: {"text":"多个 `_` 来匹配多个字符？\n  **Carter Zenke:** 可以。演示 `SELECT \"title\" FROM \"longlist\" WHERE \"title"}
+
+event: delta
+data: {"text":"\" LIKE 'T___';`（`T` 后跟 3 个下划线）返回了《Tyll》；又"}
+
+event: delta
+data: {"text":"演示 `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE 'Ty____';`（`Ty"}
+
+event: delta
+data: {"text":"` 后跟 4 个下划线），返回无匹配结果。\n- **学生:** （1）做范围"}
+
+event: delta
+data: {"text":"运算的列在数据库中必须是整数吗？（2）匹配字符串时是否区分大小写？\n  **Carter Zenke:** （1"}
+
+event: delta
+data: {"text":"）这取决于数据库设计时的列类型（课程后续会讲解如何选择列类型）；在本数据库中，`year` 和 `votes` 为整数"}
+
+event: delta
+data: {"text":"，`rating` 为实数或浮点数。（2）`=` 区分大小写，例如 `SELECT \"title\" FROM \"longlist\""}
+
+event: delta
+data: {"text":" WHERE \"title\" = 'pyre';` 返回空；而 `LIKE` 不区分大小写，`SELECT \"title\" FROM \"long"}
+
+event: delta
+data: {"text":"list\" WHERE \"title\" LIKE 'pyre';` 能返回《Pyre》。\n\n## 排序：ORDER BY 与多列排序"}
+
+event: delta
+data: {"text":"\n\n### 升序（ASC）与降序（DESC）\n- `ORDER BY` 用于按指定列"}
+
+event: delta
+data: {"text":"对查询结果进行排序，默认按升序（`ASC`，即从小到大或按字母表正序）排列。\n- 默认升"}
+
+event: delta
+data: {"text":"序：`SELECT \"title\", \"rating\" FROM \"longlist\" ORDER BY \"rating\" LIMIT 10;` 返回评分"}
+
+event: delta
+data: {"text":"最低的前 10 本书（如 3.05、3.42 等）。\n- 指定降序（"}
+
+event: delta
+data: {"text":"`DESC`，从大到小）：`SELECT \"title\", \"rating\" FROM \"longlist\" ORDER BY \""}
+
+event: delta
+data: {"text":"rating\" DESC LIMIT 10;` 返回评分最高的前 10 本书，例如《The Eighth Life》（"}
+
+event: delta
+data: {"text":"4.52）和《The Books of Jacob》（4.06）。\n\n### 多列排序打破平"}
+
+event: delta
+data: {"text":"局\n- 在评分前 10 的结果中，《Still Born》与《When We Cease to Understand the World》的评分"}
+
+event: delta
+data: {"text":"同为 4.14。\n- 在 `ORDER BY` 后用逗号分隔多个排序列，可先按 "}
+
+event: delta
+data: {"text":"`rating` 降序、再按 `votes` 降序打破平局：`SELECT \"title\", \"rating"}
+
+event: delta
+data: {"text":"\", \"votes\" FROM \"longlist\" ORDER BY \"rating\" DESC, \"votes\" DESC LIMIT 10"}
+
+event: delta
+data: {"text":";`。结果显示《When We Cease to Understand the World》因投票数更多而排在更前面。\n\n### 课堂问答：特定"}
+
+event: delta
+data: {"text":"评分查询与文本排序\n- **学生:** 能否写条件把评分查到 4.93 到 4.9？\n  "}
+
+event: delta
+data: {"text":"**Carter Zenke:** 讲师理解其意为查询某一特定评分，演示了 `SELECT \"title\", \"rating\" FROM \"long"}
+
+event: delta
+data: {"text":"list\" WHERE \"rating\" = 4.932;`（后文口述结果时说成 "}
+
+event: delta
+data: {"text":"4.392，字幕前后数字不一致，未作统一），结果没有匹配的书籍。\n- **学生"}
+
+event: delta
+data: {"text":":** `DESC` 对字符串会按字母表排序吗，还是需要特殊条件？\n  **Carter Zenke"}
+
+event: delta
+data: {"text":":** 可以直接用于文本。演示 `SELECT \"title\" FROM \"longlist\" ORDER BY \"title\";` 默认"}
+
+event: delta
+data: {"text":"按字母表正序排列；`SELECT \"title\" FROM \"longlist\" ORDER BY \"title\" DESC;"}
+
+event: delta
+data: {"text":"` 则按字母表逆序排列。\n\n## 聚合：统计函数、去重与退出\n\n### 聚合函数基础：AVG、MAX"}
+
+event: delta
+data: {"text":"、MIN、SUM\n- 聚合函数（aggregate functions）把多行数据汇总并计算为单个结果。"}
+
+event: delta
+data: {"text":"\n- `AVG`（求平均值）：`SELECT AVG(\"rating\") FROM \"longlist\";` 返回所有书籍的平均评分"}
+
+event: delta
+data: {"text":" `3.7537179471795`。\n- `ROUND`（四"}
+
+event: delta
+data: {"text":"舍五入）与 `AS`（重命名列）：\n  1. `SELECT ROUND(AVG(\"rating"}
+
+event: delta
+data: {"text":"\"), 2) FROM \"longlist\";` 接受两个参数（待舍入数值与小数位数），将平均分保留两位"}
+
+event: delta
+data: {"text":"小数，返回 `3.75`。\n  2. `SELECT ROUND(AVG(\"rating\"), 2)"}
+
+event: delta
+data: {"text":" AS \"average rating\" FROM \"longlist\";` 用 `AS` 将输出结果的列名由复杂的函数写法重"}
+
+event: delta
+data: {"text":"命名为 `average rating`。\n- `MAX`（最大值）与 `MIN`（最小值）：\n  1."}
+
+event: delta
+data: {"text":" `SELECT MAX(\"rating\") FROM \"longlist\";` 返回最高评分 `4.52`。\n  2"}
+
+event: delta
+data: {"text":". `SELECT MIN(\"rating\") FROM \"longlist\";` 返回最低评分 `3.05`。\n-"}
+
+event: delta
+data: {"text":" `SUM`（求和）：`SELECT SUM(\"votes\") FROM \"longlist\";` 计算所有书籍的总投票数，结果超过 "}
+
+event: delta
+data: {"text":"60 万。\n\n### 计数与去重：COUNT 与 DISTINCT\n- `COUNT(*)` 统计表"}
+
+event: delta
+data: {"text":"中的全部行数：`SELECT COUNT(*) FROM \"longlist\";` 返回 `78`。\n- `COUNT(列名"}
+
+event: delta
+data: {"text":")` 仅统计该列中非 `NULL` 的记录数：`SELECT COUNT(\"translator\") FROM \"longlist\";`（讲师"}
+
+event: delta
+data: {"text":"先口述为 `translators`，后文口述为 `translator`）返回 `76`，因为有"}
+
+event: delta
+data: {"text":" 2 本书的译者为 `NULL`。\n- `DISTINCT` 去除重复值：直接执行 `SELECT \"publisher\" FROM \"long"}
+
+event: delta
+data: {"text":"list\";` 会发现部分出版商名称重复出现（如 Harvill Secker 和 MacLehose Press）。演示中讲"}
+
+event: delta
+data: {"text":"师先误拼为 `SELECT \"pubsliher\" FROM \"longlist\";`，因该列不存在，SQLite 直接"}
+
+event: delta
+data: {"text":"按拼写输出了对应数据；修正拼写后使用 `SELECT DISTINCT \"publisher\" FROM \"longlist\";"}
+
+event: delta
+data: {"text":"` 获取不重复的出版商列表，再用 `SELECT COUNT(DISTINCT \"publisher\") FROM \"longlist\";` 统计"}
+
+event: delta
+data: {"text":"出共有 `33` 家不同的出版商。\n\n### 退出 SQLite 与课程小结\n- 退出提示符：输入"}
+
+event: delta
+data: {"text":" `.quit` 可退出 SQLite 返回终端；`.quit` 属于 SQLite 命令，而非 SQL 关键字。\n- 本课"}
+
+event: delta
+data: {"text":"围绕单表介绍了 `SELECT`、聚合函数、`WHERE` 条件筛选、`ORDER BY` 排序及 `LIMIT"}
+
+event: delta
+data: {"text":"` 限制行数等查询基础；下一课将介绍如何把书籍、出版商与作者拆分到多张表中以"}
+
+event: delta
+data: {"text":"表达实体之间的关系。\n\n### 课堂问答：聚合函数命名与字符串极值\n- **学生:** `AVG`、`COUNT"}
+
+event: delta
+data: {"text":"`、`SUM` 这类命令有专门的名称吗？\n  **Carter Zenke:** 它们叫做聚合函数（aggregate functions），因为它们"}
+
+event: delta
+data: {"text":"将多行数据合并、聚合成单一单元格的值。\n- **学生:** `MAX` 和 `MIN` 函数"}
+
+event: delta
+data: {"text":"能否用来查找最长或最短的字符串？\n  **Carter Zenke:** 演示 `SELECT MAX(\"title\"), MIN"}
+
+event: delta
+data: {"text":"(\"title\") FROM \"longlist\";` 后，返回 `Wretchedness`（`MAX`）和 "}
+
+event: delta
+data: {"text":"`A New Name: Septology VI-VII`（`MIN`）。`MAX` 返回的书名反而更"}
+
+event: delta
+data: {"text":"短，说明它们不比较字符串长度，而是按字母表顺序比较：`MIN` 返回字母表最靠前的书名（`A"}
+
+event: delta
+data: {"text":"` 开头），`MAX` 返回字母表最靠后的书名（`W` 开头）。"}
+
+event: stage
+data: {"stage":"reviewing"}
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+event: revised
+data: {"markdown":"# CS50 SQL 第 0 课笔记：查询（Querying）\n\n## 查询：数据库概念、SQLite 与 SELECT 基础\n\n### 数据库与 DBMS 基础概念\n- 讲师 Carter Zenke 在课程《CS50's Introduction to Databases with SQL》开篇指出，信息时代每天都在产生大量数据（如 Google 记录点击和搜索的网站、手机或手表记录的健康信息与消息、YouTube 记录的视频与评论），本课将学习如何表示、组织、管理并向数据提问。\n- 表（table）：如同几千年前记录神庙工人津贴的图表，表用于存储一组信息，每一行（row）代表集合中的一个条目，每一列（column）代表该条目的一项属性。例如图书馆整理书目时，每行对应一本书（如 Toni Morrison 所著《Song of Solomon》、Margaret Wise Brown 所著《Goodnight Moon》），两列分别为书名（title）和作者（author）。\n- 相比电子表格软件（如 Apple Numbers、Google Sheets、Microsoft Excel），转向数据库主要有三个原因：\n  1. 规模：讲师举例假设若作为 Google 或 Instagram 等应用试图存储数百万甚至数十亿用户的数据，此类规模或许更适合由数据库来承载。\n  2. 更新频率：讲师以假设类似 Twitter 的场景为例，若试图让用户每秒发送多条推文，数据库比单独使用电子表格更能胜任这种高频数据更新。\n  3. 检索速度：电子表格中使用 Command-F 或 Control-F 只能逐行查找，而数据库提供更多搜索算法，能显著提升查询速度。\n- 数据库与数据库管理系统（DBMS）：数据库是一种组织数据的方式，支持创建（create）、更新（update）、读取（read）和删除（delete）数据。DBMS 是用于与数据库交互的软件（可通过图形界面或文本语言操作），课堂举例包括 MySQL、Oracle、PostgreSQL、SQLite，以及学生提到的 Microsoft Access 和 MongoDB。\n- 选择 DBMS 时的权衡：\n  1. 专有软件与开源/免费软件：专有软件需要付费，但能获得实施数据库的额外支持；开源或免费软件（如 PostgreSQL、MySQL、SQLite）则需由使用者自行负责实施。\n  2. 重量级与轻量级：MySQL 和 PostgreSQL 功能更全面，但相对更重、需要更多计算资源；SQLite 更轻量，但能完成大部分相同的工作。本课程先使用 SQLite，后续逐步过渡到 MySQL 和 PostgreSQL。SQLite 也广泛应用于内存较低的手机应用、桌面应用以及存储网页表单提交的数据。\n- SQL 的含义：Structured Query Language（结构化查询语言），是一种带有关键字的结构化语言，可用于向数据库提问（查询），也可用于创建、读取、更新和删除数据。现实中可用它回答诸如 Instagram 或 Facebook 哪类帖子获赞最多、初创公司日活用户是在增长还是萎缩、Spotify 如何推荐相似歌曲等问题。\n\n### 工具准备与课程数据集\n- 本课在 Visual Studio Code（简称 VS Code，集成开发环境）的终端中使用 SQLite（DBMS）。\n- 课程数据集 `longlist.db` 存储国际布克奖（International Booker Prize，授予世界各国作家虚构类作品的奖项）的入围长名单书籍。关于数据范围，讲师先说明评委每年选出 13 本书、数据库包含“五年”的入围名单，随后在回答提问时说明数据涵盖 2018 至 2023 年，后文查询总行数时返回 78 本（字幕前后口径不一致，未作统一）。\n- 打开环境与基本操作：\n  1. 输入 `ls` 查看当前目录中的文件，可看到 `longlist.db`。\n  2. 运行 `sqlite3 longlist.db`（SQLite 第 3 版软件）打开数据库，终端提示符由 `$` 变为 `sqlite`。\n  3. 按 `Control-L` 可清空终端屏幕。\n\n### 使用 SELECT 与 LIMIT 查询数据\n- 查询所有列与所有行：`SELECT * FROM \"longlist\";`。`*` 表示全部行与全部列，分号 `;` 表示查询结束。\n- 查询指定列：\n  1. 查询单列书名：`SELECT \"title\" FROM \"longlist\";`。\n  2. 查询多列：可用逗号分隔多个列名。讲师首次演示时口述选择 `title` 和 `authors`（后文其余查询均口述为 `author`，字幕列名口径略有不一致，未作统一）。\n- 限制返回行数（`LIMIT`）：面对包含大量数据的表，可用 `LIMIT` 预览前几条记录，返回顺序为数据写入表的顺序。\n  1. `SELECT \"title\" FROM \"longlist\" LIMIT 10;` 仅返回前 10 行书名。\n  2. `SELECT \"title\" FROM \"longlist\" LIMIT 5;` 仅返回前 5 行书名。\n\n### 课堂问答：引号、数据来源与大小写\n- **学生:** 必须像演示中那样给词加上引号吗？\n  **Carter Zenke:** 在表名和列名（称为 SQL 标识符）外加双引号是良好的书写习惯。后续还会用到字符串（字符集合），届时会用单引号包裹字符串，以区分字符串与列名。\n- **学生:** 这份书单的数据来自哪里？\n  **Carter Zenke:** 数据整合自多个公开来源：2018 至 2023 年的入围书籍来自布克奖官网，而书籍评分和投票数来自在线书评聚合网站 Goodreads。\n- **Vinayak:** SQLite 3 是否区分大小写？演示时语法用了大写字母，能否改用小写？\n  **Carter Zenke:** 演示运行小写的 `select title from longlist;` 同样能执行，但不建议这么做。将 SQL 关键字大写、表名和列名小写是更好的代码风格，尤其在长查询中能让读者分清哪些是 SQL 关键字、哪些是标识符。\n\n## 筛选：WHERE 条件、空值与模糊匹配\n\n### WHERE 基本条件与否定写法\n- `WHERE` 用于筛选行，只返回满足指定条件的结果。\n- 相等条件（`=`）：`SELECT \"title\", \"author\" FROM \"longlist\" WHERE \"year\" = 2023;` 返回 2023 年提名的书籍。因 `2023` 是整数，无需加引号；演示中也同样查询了 `2022` 年和 `2021` 年。\n- 不等条件（`!=`、`<>`、`NOT`）：\n  1. `SELECT \"title\", \"format\" FROM \"longlist\" WHERE \"format\" != 'hardcover';` 过滤掉精装本（`'hardcover'` 为字符串，使用单引号），结果仅剩平装本（paperback）。\n  2. 将 `!=` 换成 `<>` 效果相同，但 `!=` 更常见。\n  3. 也可在 `WHERE` 后使用关键字 `NOT` 对条件取反，例如对 `\"format\"` 等于 `'hardcover'` 取反，结果完全一致。\n\n### 组合条件与括号优先级\n- 使用 `AND`、`OR` 可将多个条件连接成复合条件，括号 `()` 用于标明先执行括号内的条件。长查询在输入分号 `;` 前可以换行书写。\n- 筛选多个年份：`SELECT \"title\", \"author\" FROM \"longlist\" WHERE \"year\" = 2022 OR \"year\" = 2023;` 返回 2022 年或 2023 年提名的书籍。\n- 括号与多条件组合：在查询 `\"title\"` 和 `\"format\"` 时，结合 `WHERE (\"year\" = 2022 OR \"year\" = 2023)` 以及 `\"format\"` 不等于 `'hardcover'` 的条件，只返回 2022 和 2023 年的平装书。\n\n### 缺失值判断：NULL、IS NULL 与 IS NOT NULL\n- `NULL` 表示该值在数据库中不存在或缺失（如部分入围书籍原本就是英文或没有单独译者）。\n- 查找没有译者记录的书：`SELECT \"title\", \"translator\" FROM \"longlist\" WHERE \"translator\" IS NULL;` 返回 2 本书（《The Perfect Nine》等），其译者列为空。\n- 查找有译者记录的书：`SELECT \"title\", \"translator\" FROM \"longlist\" WHERE \"translator\" IS NOT NULL;` 返回所有存在译者的书籍。\n\n### 模糊匹配：LIKE、% 与 _\n- `LIKE` 用于对字符串进行近似模式匹配，配合两个通配符使用：\n  1. `%` 匹配任意数量的字符：\n     - `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE '%love%';` 返回书名任意位置包含 `love` 的 4 本书（包括《Love in the Big City》《More Than I Love My Life》等）。\n     - `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE 'The%';` 查找以 `The` 开头的书名（演示时讲师先误用了双引号，随后修正为单引号）。讲师指出 `'The%'` 理论上也会匹配 `There` 或 `They` 等词，更严谨的设计应写成 `'The %'`（`The` 后带空格）。\n  2. `_` 匹配任意单个字符：\n     - 若不确定《Pyre》的第二个字母是 `i` 还是 `y`，可用 `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE 'P_re';` 查出《Pyre》。\n\n### 范围筛选：比较运算符与 BETWEEN\n- 当需要筛选连续区间（如 2019 至 2022 年）时，相比连写多个 `OR`，范围写法更简洁：\n  1. 比较运算符（`>`、`<`、`>=`、`<=`）：`SELECT \"title\", \"year\" FROM \"longlist\" WHERE \"year\" >= 2019 AND \"year\" <= 2022;`。\n  2. `BETWEEN ... AND ...`（包含边界值）：`SELECT \"title\", \"year\" FROM \"longlist\" WHERE \"year\" BETWEEN 2019 AND 2022;` 返回相同结果。\n- 筛选评分、投票数与页数：\n  1. 讲师提出查找评分“4.0 及以上”的书籍，口述演示的代码使用了严格大于号：`SELECT \"title\", \"rating\" FROM \"longlist\" WHERE \"rating\" > 4.0;`。\n  2. 结合投票数筛选高分热门书：`SELECT \"title\", \"rating\", \"votes\" FROM \"longlist\" WHERE \"rating\" > 4.0 AND \"votes\" > 10000;` 返回 4 本书。\n  3. 按页数筛选：`SELECT \"title\", \"pages\" FROM \"longlist\" WHERE \"pages\" < 300;` 返回首次出版时少于 300 页的书籍。\n\n### 课堂问答：SQL 子集、通配符组合与数据类型\n- **学生:** 为什么存在不同的 SQL 子集？\n  **Carter Zenke:** 我认为 SQL 语言由 ANSI 这类标准机构定义官方版本，不同数据库管理系统会使用其中的某个子集，例如 SQLite、PostgreSQL 和 MySQL 各自支持对应的 SQL 子集。\n- **Tayas:** 能否在终端中同时筛选 2022 年和 2021 年？\n  **Carter Zenke:** 可以，随后课程中演示了如何在 `WHERE` 中结合多个条件实现。\n- **学生:** 我们如何预先知道表中有 `title` 和 `author` 这些列名？\n  **Carter Zenke:** 后续课程会讲解如何查看数据库的模式（schema）以了解表结构与列名；本节课因讲师事先构建了数据库，所以已知道列名。\n- **学生:** 能否在两个词之间使用两个 `%`？\n  **Carter Zenke:** 可以。演示了 `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE 'The%love%';`（以 `The` 开头并在后文中包含 `love`），结果本数据库中没有符合该条件的书。\n- **学生:** 能否使用多个 `_` 来匹配多个字符？\n  **Carter Zenke:** 可以。演示 `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE 'T___';`（`T` 后跟 3 个下划线）返回了《Tyll》；又演示 `SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE 'Ty____';`（`Ty` 后跟 4 个下划线），返回无匹配结果。\n- **学生:** （1）做范围运算的列在数据库中必须是整数吗？（2）匹配字符串时是否区分大小写？\n  **Carter Zenke:** （1）这取决于数据库设计时的列类型（课程后续会讲解如何选择列类型）；在本数据库中，`year` 和 `votes` 为整数，`rating` 为实数或浮点数。（2）`=` 区分大小写，例如 `SELECT \"title\" FROM \"longlist\" WHERE \"title\" = 'pyre';` 返回空；而 `LIKE` 不区分大小写，`SELECT \"title\" FROM \"longlist\" WHERE \"title\" LIKE 'pyre';` 能返回《Pyre》。\n\n## 排序：ORDER BY 与多列排序\n\n### 升序（ASC）与降序（DESC）\n- `ORDER BY` 用于按指定列对查询结果进行排序，默认按升序（`ASC`，即从小到大或按字母表正序）排列。\n- 默认升序：`SELECT \"title\", \"rating\" FROM \"longlist\" ORDER BY \"rating\" LIMIT 10;` 返回评分最低的前 10 本书（如 3.05、3.42 等）。\n- 指定降序（`DESC`，从大到小）：`SELECT \"title\", \"rating\" FROM \"longlist\" ORDER BY \"rating\" DESC LIMIT 10;` 返回评分最高的前 10 本书，例如《The Eighth Life》（4.52）和《The Books of Jacob》（4.06）。\n\n### 多列排序打破平局\n- 在评分前 10 的结果中，《Still Born》与《When We Cease to Understand the World》的评分同为 4.14。\n- 在 `ORDER BY` 后用逗号分隔多个排序列，可先按 `rating` 降序、再按 `votes` 降序打破平局：`SELECT \"title\", \"rating\", \"votes\" FROM \"longlist\" ORDER BY \"rating\" DESC, \"votes\" DESC LIMIT 10;`。结果显示《When We Cease to Understand the World》因投票数更多而排在更前面。\n\n### 课堂问答：特定评分查询与文本排序\n- **学生:** 能否写条件把评分查到 4.93 到 4.9？\n  **Carter Zenke:** 讲师理解其意为查询某一特定评分，演示了 `SELECT \"title\", \"rating\" FROM \"longlist\" WHERE \"rating\" = 4.932;`（后文口述结果时说成 4.392，字幕前后数字不一致，未作统一），结果没有匹配的书籍。\n- **学生:** `DESC` 对字符串会按字母表排序吗，还是需要特殊条件？\n  **Carter Zenke:** 可以直接用于文本。演示 `SELECT \"title\" FROM \"longlist\" ORDER BY \"title\";` 默认按字母表正序排列；`SELECT \"title\" FROM \"longlist\" ORDER BY \"title\" DESC;` 则按字母表逆序排列。\n\n## 聚合：统计函数、去重与退出\n\n### 聚合函数基础：AVG、MAX、MIN、SUM\n- 聚合函数（aggregate functions）把多行数据汇总并计算为单个结果。\n- `AVG`（求平均值）：`SELECT AVG(\"rating\") FROM \"longlist\";` 返回所有书籍的平均评分 `3.7537179471795`。\n- `ROUND`（四舍五入）与 `AS`（重命名列）：\n  1. `SELECT ROUND(AVG(\"rating\"), 2) FROM \"longlist\";` 接受两个参数（待舍入数值与小数位数），将平均分保留两位小数，返回 `3.75`。\n  2. `SELECT ROUND(AVG(\"rating\"), 2) AS \"average rating\" FROM \"longlist\";` 用 `AS` 将输出结果的列名由复杂的函数写法重命名为 `average rating`。\n- `MAX`（最大值）与 `MIN`（最小值）：\n  1. `SELECT MAX(\"rating\") FROM \"longlist\";` 返回最高评分 `4.52`。\n  2. `SELECT MIN(\"rating\") FROM \"longlist\";` 返回最低评分 `3.05`。\n- `SUM`（求和）：`SELECT SUM(\"votes\") FROM \"longlist\";` 计算所有书籍的总投票数，结果超过 60 万。\n\n### 计数与去重：COUNT 与 DISTINCT\n- `COUNT(*)` 统计表中的全部行数：`SELECT COUNT(*) FROM \"longlist\";` 返回 `78`。\n- `COUNT(列名)` 仅统计该列中非 `NULL` 的记录数：`SELECT COUNT(\"translators\") FROM \"longlist\";` / `SELECT COUNT(\"translator\") FROM \"longlist\";`（讲师先口述为 `translators`，后文口述为 `translator`，字幕前后口径不一致，未作统一）返回 `76`，因为有 2 本书的译者为 `NULL`。\n- `DISTINCT` 去除重复值：直接执行 `SELECT \"publisher\" FROM \"longlist\";` 会发现部分出版商名称重复出现（如 Harvill Secker 和 MacLehose Press）。演示中讲师先误拼为 `SELECT \"pubsliher\" FROM \"longlist\";`，因该列不存在，SQLite 直接按拼写输出了对应数据；修正拼写后使用 `SELECT DISTINCT \"publisher\" FROM \"longlist\";` 获取不重复的出版商列表，再用 `SELECT COUNT(DISTINCT \"publisher\") FROM \"longlist\";` 统计出共有 `33` 家不同的出版商。\n\n### 退出 SQLite 与课程小结\n- 退出提示符：输入 `.quit` 可退出 SQLite 返回终端；`.quit` 属于 SQLite 命令，而非 SQL 关键字。\n- 本课围绕单表介绍了 `SELECT`、聚合函数、`WHERE` 条件筛选、`ORDER BY` 排序及 `LIMIT` 限制行数等查询基础；下一课将介绍如何把书籍、出版商与作者拆分到多张表中以表达实体之间的关系。\n\n### 课堂问答：聚合函数命名与字符串极值\n- **学生:** `AVG`、`COUNT`、`SUM` 这类命令有专门的名称吗？\n  **Carter Zenke:** 它们叫做聚合函数（aggregate functions），因为它们将多行数据合并、聚合成单一单元格的值。\n- **学生:** `MAX` 和 `MIN` 函数能否用来查找最长或最短的字符串？\n  **Carter Zenke:** 演示 `SELECT MAX(\"title\"), MIN(\"title\") FROM \"longlist\";` 后，返回 `Wretchedness`（`MAX`）和 `A New Name: Septology VI-VII`（`MIN`）。`MAX` 返回的书名反而更短，由此推测它们可能并不比较字符串长度，而是似乎按字母表顺序比较：`MIN` 返回字母表最靠前的书名（`A` 开头），`MAX` 似乎返回字母表最靠后的书名（`W` 开头）。","revisions":[{"type":"unsupported","before":"SQL 语言由标准机构 ANSI 定义官方版本","after":"我认为 SQL 语言由 ANSI 这类标准机构定义官方版本","reason":"原话讲者说“I believe it's the ANSI, like standard corporation”，带有不确定语气，文章删去了“I believe”将其变成了确定断言。","evidence":"In fact, S-Q-L or SQL was defined by the, I believe it's the ANSI, like standard corporation. They have a whole set of the SQL language that is like the official version of it."},{"type":"unsupported","before":"`SELECT COUNT(\"translator\") FROM \"longlist\";`（讲师先口述为 `translators`，后文口述为 `translator`）","after":"`SELECT COUNT(\"translators\") FROM \"longlist\";` / `SELECT COUNT(\"translator\") FROM \"longlist\";`（讲师先口述为 `translators`，后文口述为 `translator`，字幕前后口径不一致，未作统一）","reason":"字幕中讲师对列名先后使用了 translators 和 translator 两种口径，文章仅标注了先说与后说并直接选定一种写法，未明确说明字幕前后口径不一致且未作统一。","evidence":"I'll say SELECT, let's say, COUNT of \"translators\" FROM \"longlist\" Semicolon. Hit Enter. And now I see 76. … But if I do SELECT COUNT of \"translator\" from \"longlist,\" I get back 76."},{"type":"unsupported","before":"`MAX` 返回的书名反而更短，说明它们不比较字符串长度，而是按字母表顺序比较：`MIN` 返回字母表最靠前的书名（`A` 开头），`MAX` 返回字母表最靠后的书名（`W` 开头）。","after":"`MAX` 返回的书名反而更短，由此推测它们可能并不比较字符串长度，而是似乎按字母表顺序比较：`MIN` 返回字母表最靠前的书名（`A` 开头），`MAX` 似乎返回字母表最靠后的书名（`W` 开头）。","reason":"讲师在字幕中使用了“hypotheses”“probably not”“seems to”等推测和不确定的语气，文章将其强化成了确定断言。","evidence":"Now, there's a few hypotheses here. It does seem that our MAX \"title\" is shorter than our MIN \"title.\" So it's probably not that MAX gives us the length of the string, but what do you notice? Well, I see MIN is really early on in the alphabet. It has an A here, whereas MAX has a W, pretty low in the alphabet. And I would bet if we ordered these book titles, we would see a new name up at the very top and a Wretchedness, the book here, down at the bottom. So MAX seems to give us the lowest alphabetically, which is kind of contradictory with titles here or strings. And MIN gives us the earliest in the alphabet using this A as well."},{"type":"attribution","before":"Google 或 Instagram 等应用需要存储数百万甚至数十亿用户的数据，数据库更适合承载此类规模。","after":"讲师举例假设若作为 Google 或 Instagram 等应用试图存储数百万甚至数十亿用户的数据，此类规模或许更适合由数据库来承载。","reason":"字幕中讲师是以假设方式举例并提到“或许（may be）更适合”，原文去掉了讲者来源与假设语境，并加强了确定程度。","evidence":"Now one of these is this idea of scale. So let's say you are a Google or an Instagram. You're trying to store not just tens of thousands of users or hundreds of thousands but literally millions of users or billions of users. And with that kind of scale may be better served by a database to store that much information."},{"type":"attribution","before":"如 Twitter 上用户每秒发送多条推文，数据库比电子表格更能胜任高频数据更新。","after":"讲师以假设类似 Twitter 的场景为例，若试图让用户每秒发送多条推文，数据库比单独使用电子表格更能胜任这种高频数据更新。","reason":"字幕中讲师是在假设类似 Twitter 的场景，原文省略了讲者来源与假设语境，写成对 Twitter 的直接事实陈述。","evidence":"Another reason to move from spreadsheets to databases is the idea of being able to update data more frequently. Maybe you're a Twitter of the world, and you're trying to have others tweet multiple times per second. Well, a database can handle that kind of capacity much better than a spreadsheet could alone."}]}
+
+event: done
+data: {"chapters":[{"id":"1","title":"查询：数据库概念、SQLite 与 SELECT 基础"},{"id":"2","title":"筛选：WHERE 条件、空值与模糊匹配"},{"id":"3","title":"排序：ORDER BY 与多列排序"},{"id":"4","title":"聚合：统计函数、去重与退出"}],"chars":7393,"timing":{"transcriptMs":8,"firstTokenMs":78005,"firstParagraphMs":80940,"modelDoneMs":97476,"reviewedMs":176071,"savedMs":176076},"numberWarnings":[],"model":"gemini-4-hydrogen","review":{"sections":4,"revisions":5,"rewritten":null,"checks":[]}}
+

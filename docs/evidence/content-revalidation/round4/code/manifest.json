@@ -1,0 +1,11 @@
+{
+  "purpose": "第四轮实际源码，包含证据复制及澄清归属规则；V13因最终超限失败，未保存",
+  "codeSha256": {
+    "src/worker/prompts.ts": "ecfae3e884338ff018355ff210d9d9a6cdbecd4370a19d4b4161269e415297a5",
+    "src/worker/review.ts": "95105c1c89048f6e38f8fb980371419c0b2bb485fac9756f7d2ca3acac1ab77e",
+    "src/worker/finalize.ts": "a81e211aee53f1d0223632dcb3e90ce2a7fa896283ec30c7bacf0c1084e14c8f",
+    "src/shared/limits.ts": "b026125d8f09b30cae36eac72580130dbf08632c71e561d7bee60b4e03e61012",
+    "src/worker/requirements.ts": "e008d1960b49b8ad3fef788ddae64b55bc63a94447c53e2f6017ab482e462e54",
+    "src/shared/types.ts": "10a46163fe424cd407230ed2f4de2d4aec7c4cf0aa3d7b657a7dae88bc7fe18b"
+  }
+}

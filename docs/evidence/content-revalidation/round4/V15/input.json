@@ -1,0 +1,6 @@
+{
+  "base": "http://127.0.0.1:52446",
+  "url": "https://www.youtube.com/watch?v=vHYeChEf2lA",
+  "instructions": "给 SQL 初学者整理中文课程笔记，按查询、筛选、排序与聚合组织；只列字幕明确说出的代码和结果，不猜屏幕代码；保留学生提问与讲师回答的归属。",
+  "startedAt": "2026-11-26T04:27:20.829Z"
+}

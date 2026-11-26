@@ -1,0 +1,37 @@
+[
+  {
+    "type": "unsupported",
+    "before": "SQL 语言由标准机构 ANSI 定义官方版本",
+    "after": "我认为 SQL 语言由 ANSI 这类标准机构定义官方版本",
+    "reason": "原话讲者说“I believe it's the ANSI, like standard corporation”，带有不确定语气，文章删去了“I believe”将其变成了确定断言。",
+    "evidence": "In fact, S-Q-L or SQL was defined by the, I believe it's the ANSI, like standard corporation. They have a whole set of the SQL language that is like the official version of it."
+  },
+  {
+    "type": "unsupported",
+    "before": "`SELECT COUNT(\"translator\") FROM \"longlist\";`（讲师先口述为 `translators`，后文口述为 `translator`）",
+    "after": "`SELECT COUNT(\"translators\") FROM \"longlist\";` / `SELECT COUNT(\"translator\") FROM \"longlist\";`（讲师先口述为 `translators`，后文口述为 `translator`，字幕前后口径不一致，未作统一）",
+    "reason": "字幕中讲师对列名先后使用了 translators 和 translator 两种口径，文章仅标注了先说与后说并直接选定一种写法，未明确说明字幕前后口径不一致且未作统一。",
+    "evidence": "I'll say SELECT, let's say, COUNT of \"translators\" FROM \"longlist\" Semicolon. Hit Enter. And now I see 76. … But if I do SELECT COUNT of \"translator\" from \"longlist,\" I get back 76."
+  },
+  {
+    "type": "unsupported",
+    "before": "`MAX` 返回的书名反而更短，说明它们不比较字符串长度，而是按字母表顺序比较：`MIN` 返回字母表最靠前的书名（`A` 开头），`MAX` 返回字母表最靠后的书名（`W` 开头）。",
+    "after": "`MAX` 返回的书名反而更短，由此推测它们可能并不比较字符串长度，而是似乎按字母表顺序比较：`MIN` 返回字母表最靠前的书名（`A` 开头），`MAX` 似乎返回字母表最靠后的书名（`W` 开头）。",
+    "reason": "讲师在字幕中使用了“hypotheses”“probably not”“seems to”等推测和不确定的语气，文章将其强化成了确定断言。",
+    "evidence": "Now, there's a few hypotheses here. It does seem that our MAX \"title\" is shorter than our MIN \"title.\" So it's probably not that MAX gives us the length of the string, but what do you notice? Well, I see MIN is really early on in the alphabet. It has an A here, whereas MAX has a W, pretty low in the alphabet. And I would bet if we ordered these book titles, we would see a new name up at the very top and a Wretchedness, the book here, down at the bottom. So MAX seems to give us the lowest alphabetically, which is kind of contradictory with titles here or strings. And MIN gives us the earliest in the alphabet using this A as well."
+  },
+  {
+    "type": "attribution",
+    "before": "Google 或 Instagram 等应用需要存储数百万甚至数十亿用户的数据，数据库更适合承载此类规模。",
+    "after": "讲师举例假设若作为 Google 或 Instagram 等应用试图存储数百万甚至数十亿用户的数据，此类规模或许更适合由数据库来承载。",
+    "reason": "字幕中讲师是以假设方式举例并提到“或许（may be）更适合”，原文去掉了讲者来源与假设语境，并加强了确定程度。",
+    "evidence": "Now one of these is this idea of scale. So let's say you are a Google or an Instagram. You're trying to store not just tens of thousands of users or hundreds of thousands but literally millions of users or billions of users. And with that kind of scale may be better served by a database to store that much information."
+  },
+  {
+    "type": "attribution",
+    "before": "如 Twitter 上用户每秒发送多条推文，数据库比电子表格更能胜任高频数据更新。",
+    "after": "讲师以假设类似 Twitter 的场景为例，若试图让用户每秒发送多条推文，数据库比单独使用电子表格更能胜任这种高频数据更新。",
+    "reason": "字幕中讲师是在假设类似 Twitter 的场景，原文省略了讲者来源与假设语境，写成对 Twitter 的直接事实陈述。",
+    "evidence": "Another reason to move from spreadsheets to databases is the idea of being able to update data more frequently. Maybe you're a Twitter of the world, and you're trying to have others tweet multiple times per second. Well, a database can handle that kind of capacity much better than a spreadsheet could alone."
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "purpose": "第二轮运行绑定的源码快照；后续增加专项复核不覆盖本轮原始结果",
+  "files": {
+    "src/worker/prompts.ts": {
+      "file": "prompts.ts",
+      "sha256": "a9b318610c887aad8285674fbd4311139610ebd4764ff5329f7d7c39938af3d7"
+    },
+    "src/worker/review.ts": {
+      "file": "review.ts",
+      "sha256": "3012ac836179b6e93542b5096afd6a0524ed561eabf5cf0e4b5d0c5a30b3cc06"
+    },
+    "src/worker/finalize.ts": {
+      "file": "finalize.ts",
+      "sha256": "e161aed4012d8ec0020f95b5f743d4756e4ca0dd3a144f140f45f84afd9628bc"
+    },
+    "src/shared/limits.ts": {
+      "file": "limits.ts",
+      "sha256": "e659cb0b20435a37c191fd2bbc8146eac197d9d96d6ba396c6d26a314fd29d56"
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyRevisions, normalizeEvidence, parseIssues, splitForReview, type ReviewIssue } from '../../src/worker/review';
+import { applyRevisions, fidelityReviewPrompt, normalizeEvidence, parseIssues, reviewPrompt, splitForReview, type ReviewIssue } from '../../src/worker/review';
+import { geminiPurpose } from '../fixtures/upstream';
 
 /** 整理后的字幕（和 prepareTranscript 的输出同一种形状：段首时间戳、换人标记 >>、弯引号原样） */
 const TRANSCRIPT = [
@@ -8,6 +9,31 @@ const TRANSCRIPT = [
   '[01:05] we’re at about five portfolio companies now and I expect that to grow to five or six',
   '[02:10] we raised $500 million for the second fund',
 ].join('\n\n');
+
+describe('整篇语义限定复核输入', () => {
+  it('保留完整文章、整段字幕、要求和目录，使用独立系统任务但保持review接口分类', () => {
+    const markdown = '# 采访笔记\n\n## 现在\n\n当前大约五家。\n\n## 未来\n\n未来可能六家。';
+    const input = {
+      video: { id: 'mockvideo01', title: '采访', channel: '频道', description: '本期受访者 Maria Lopez', lengthSeconds: 120 },
+      transcriptText: TRANSCRIPT,
+      instructions: '保留说话人及不确定语气',
+      outline: ['现在', '未来'],
+      section: markdown,
+    };
+    const chapter = reviewPrompt(input);
+    const fidelity = fidelityReviewPrompt(input);
+    expect(fidelity.user).toBe(chapter.user);
+    expect(fidelity.user).toContain(`<section>\n${markdown}\n</section>`);
+    expect(fidelity.user).toContain(`<transcript>\n${TRANSCRIPT}\n</transcript>`);
+    expect(fidelity.user).toContain(input.instructions);
+    expect(fidelity.user).toContain('1. 现在\n2. 未来');
+    expect(fidelity.user).toContain(input.video.description);
+    expect(fidelity.system).not.toBe(chapter.system);
+    for (const prompt of [chapter, fidelity]) {
+      expect(geminiPurpose('/gemini/mock:generateContent', { systemInstruction: { parts: [{ text: prompt.system }] } })).toBe('review');
+    }
+  });
+});
 
 /** 一个核对单元：一章，两段嘉宾发言 */
 const SECTION = '## 柏林岁月\n\n**嘉宾:** 2003 年那家基金投资了 Alpha、Beta 和 Gamma。\n\n**嘉宾:** 现在有五到六家被投公司，以后还会更多。\n\n**嘉宾:** 第二期基金募资 5 亿元。\n\n';
@@ -62,9 +88,9 @@ describe('parseIssues', () => {
     });
   });
 
-  // 抓：模型返回的整体不是 { issues: [] } 时抛异常或当成"没有问题"而不留记录
-  it.each([[null], ['这不是 JSON'], [{}], [{ issues: '没有问题' }], [[TIME_ISSUE]]])('整体结构不对（%j）：没有问题条目，原始值记进 malformed', (raw) => {
-    expect(parseIssues(raw)).toEqual({ issues: [], malformed: [raw] });
+  // 整体没有合法的问题列表，不能和“列表有效但个别建议坏了”混为一谈。
+  it.each([[null], ['这不是 JSON'], [{}], [{ issues: null }], [{ issues: '没有问题' }], [[TIME_ISSUE]]])('整体结构不对（%j）：返回 null，调用方必须让核对失败', (raw) => {
+    expect(parseIssues(raw)).toBeNull();
   });
 
   // 抓：空数组被当成格式错误

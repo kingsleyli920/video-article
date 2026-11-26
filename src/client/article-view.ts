@@ -93,7 +93,8 @@ export function buildReviewRecord({ review, revisions }: ReviewRecord): HTMLElem
   box.setAttribute('role', 'note');
   if (review.rewritten) {
     const { unmet, charsBefore, charsAfter } = review.rewritten;
-    box.append(textElement('p', `初稿没有满足生成要求（${unmet.join('；')}），已按要求修订，全文从 ${charsBefore.toLocaleString('en-US')} 字改为 ${charsAfter.toLocaleString('en-US')} 字。`));
+    const reason = unmet.length ? `初稿没有满足生成要求（${unmet.join('；')}），已按要求修订` : '为后续字幕核对预留篇幅，已压缩初稿';
+    box.append(textElement('p', `${reason}，全文从 ${charsBefore.toLocaleString('en-US')} 字改为 ${charsAfter.toLocaleString('en-US')} 字。`));
   }
   if (review.checks.length) box.append(textElement('p', `生成要求核对：${review.checks.join('；')}。`));
   if (revisions.length) {
