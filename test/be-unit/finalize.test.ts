@@ -357,7 +357,7 @@ describe('finalizeArticle：整篇语义限定复核', () => {
           replacement: '我 2003 年搬到柏林，之后十年里那家基金先后投资了 Alpha、Beta 和 Gamma。',
           problem: '2003 年是嘉宾搬到柏林的时间，不是基金投资的时间',
           evidence: 'I moved to Berlin in 2003. Over the next ten years the fund backed Alpha, Beta and Gamma',
-          note: '另一条修订已写入相同的替换文字',
+          note: '这一处已由另一条修订改成相同的文字',
         },
       ],
     });
@@ -461,7 +461,7 @@ describe('finalizeArticle：重叠修订的合并处理', () => {
     expect(result.markdown).toBe(AFTER_CHAPTER);
     expect(result.revisions).toEqual([CHAPTER_REVISION]);
     expect(result.review.unapplied).toEqual([
-      { stage: 'article', disposition: 'covered', type: 'quantity', quote: '试点费用为200美元。', replacement: '试点费用约为20美元。', problem: '金额是约 20 美元', evidence: EVIDENCE, note: '另一条修订已写入相同的替换文字' },
+      { stage: 'article', disposition: 'covered', type: 'quantity', quote: '试点费用为200美元。', replacement: '试点费用约为20美元。', problem: '金额是约 20 美元', evidence: EVIDENCE, note: '这一处已由另一条修订改成相同的文字' },
     ]);
     expect(reconcilePrompts).toHaveLength(0);
   });
@@ -478,40 +478,85 @@ describe('finalizeArticle：重叠修订的合并处理', () => {
     expect(result.review.unapplied).toEqual([{ ...superseded(note), disposition: status }]);
   });
 
-  // 抓：合并处理给出的修订把逐章已改对的数字（200 → 约 20）又改回初稿写法，也被采用
-  it('合并处理的修订把初稿写法改回来：拒绝为 reverts_earlier，前一步的修正保留', async () => {
-    const { model } = pilot({ reconcile: () => ({ items: [verdict({ quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用为200美元。', note: '改归属' })] }) });
-    const result = await finalizeArticle(pilotInput(), model, stages().onStage);
-    expect(result.markdown).toBe(AFTER_CHAPTER);
-    expect(result.revisions).toEqual([CHAPTER_REVISION]);
-    expect(result.rejected).toEqual({ reverts_earlier: 1 });
-    expect(result.review.unapplied).toEqual([
-      superseded('改归属'),
-      { stage: 'reconcile', disposition: 'reverts_earlier', type: 'attribution', quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用为200美元。', problem: '这是主持人的估计，不是嘉宾的说法', evidence: EVIDENCE, note: '改归属' },
-    ]);
-  });
+  /** 合并处理替身：第 N 次请求（从 0 起）返回 responses[N]，超出部分用最后一个 */
+  const inSequence = (...responses: unknown[]) => {
+    let n = 0;
+    return () => responses[Math.min(n++, responses.length - 1)];
+  };
+  /** 第二轮给出的有效修订 */
+  const VALID = { items: [verdict({ quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。', note: '改归属' })] };
+  const FINAL = '# 试点\n\n## 费用\n\n主持人估计，试点费用约为20美元。';
+  const ATTRIBUTION_REVISION = { type: 'attribution', before: '嘉宾表示，试点费用约为20美元。', after: '主持人估计，试点费用约为20美元。', reason: '这是主持人的估计，不是嘉宾的说法', evidence: EVIDENCE };
 
-  // 抓：合并处理给出的修订绕过了逐章和整篇修订都要过的校验（定位、唯一、字幕依据）
-  it.each([
-    ['quote 在当前文章里找不到', { quote: '主持人表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。' }, 'quote_not_found', EVIDENCE, { quote_not_found: 1 }],
-    ['quote 在当前文章里出现两次', { quote: '试点', replacement: '试点项目' }, 'quote_not_unique', EVIDENCE, { quote_not_unique: 1 }],
+  /** 合并处理给出、但程序落实不了的四种修订：说明、修订内容、拒绝原因、记录里的 evidence、第二轮请求里应带的 previousAttempt */
+  const UNAPPLIABLE: [string, { quote: string; replacement: string; evidence?: string }, string, string, string][] = [
+    ['quote 在当前文章里找不到', { quote: '主持人表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。' }, 'quote_not_found', EVIDENCE, '上一次给出的 quote 在 <article> 里找不到：必须从当前的 <article> 逐字复制'],
+    ['quote 在当前文章里出现两次', { quote: '试点', replacement: '试点项目' }, 'quote_not_unique', EVIDENCE, '上一次给出的 quote 在 <article> 里出现不止一次：把 quote 取长一些，直到只出现一次'],
     [
       'evidence 不在字幕里',
       { quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。', evidence: 'The guest said the pilot cost 20 dollars.' },
       'evidence_not_in_transcript',
       'The guest said the pilot cost 20 dollars.',
-      { evidence_not_in_transcript: 1 },
+      '上一次给出的 evidence 不是字幕原文：必须从这条建议的 evidence 里逐字复制',
     ],
-  ])('合并处理的修订%s：拒绝，记 stage reconcile，文章不变', async (_label, patch, reason, evidence, rejected) => {
-    const { model } = pilot({ reconcile: () => ({ items: [verdict({ ...patch, note: '还要改' })] }) });
+    // 把逐章已改对的数字（200 → 约 20）又改回初稿写法
+    ['把初稿写法改回来', { quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用为200美元。' }, 'reverts_earlier', EVIDENCE, '上一次的修订把已经改掉的初稿写法又改了回来：必须保留已采用修订改对的内容'],
+  ];
+  /** 第一轮落实不了的那条修订留下的记录 */
+  const failedRecord = (patch: { quote: string; replacement: string }, reason: string, evidence: string) => ({
+    stage: 'reconcile',
+    disposition: reason,
+    type: 'attribution',
+    quote: patch.quote,
+    replacement: patch.replacement,
+    problem: '这是主持人的估计，不是嘉宾的说法',
+    evidence,
+    note: '还要改',
+  });
+
+  // 抓：合并处理给出的修订绕过了逐章和整篇修订都要过的校验（定位、唯一、字幕依据、不改回初稿）；
+  // 落实不了时不再处理一轮就把归属仍错的文章当成核对完成；第二轮请求没告诉模型上次为什么失败；第二轮的有效修订没被采用
+  it.each(UNAPPLIABLE)('合并修订第一轮落实不了（%s）→ 第二轮给出有效修订：成功，合并请求恰好 2 次，第二次带 previousAttempt', async (_label, patch, reason, evidence, retryNote) => {
+    const { model, reconcilePrompts } = pilot({ reconcile: inSequence({ items: [verdict({ ...patch, note: '还要改' })] }, VALID) });
+    const result = await finalizeArticle(pilotInput(), model, stages().onStage);
+    expect(result.markdown).toBe(FINAL);
+    expect(result.revisions).toEqual([CHAPTER_REVISION, ATTRIBUTION_REVISION]);
+    expect(result.rejected).toEqual({ [reason]: 1 });
+    expect(result.review.unapplied).toEqual([failedRecord(patch, reason, evidence), superseded('改归属')]);
+    expect(reconcilePrompts).toHaveLength(2);
+    expect(reconcilePrompts[0]!.user).not.toContain('previousAttempt');
+    // 第二轮仍基于当前文章（第一轮没有改动它），同一条待处理建议带上上次失败的原因
+    expect(reconcilePrompts[1]!.user).toContain(`<article>\n${AFTER_CHAPTER}\n</article>`);
+    expect(reconcilePrompts[1]!.user).toContain('"quote": "嘉宾表示，试点费用为200美元。"');
+    expect(reconcilePrompts[1]!.user).toContain(`"previousAttempt": "${retryNote}"`);
+  });
+
+  // 抓：合并处理两轮都给不出能落实的修订时，仍把归属仍错的文章当成核对完成保存；或者无限重试
+  it.each(UNAPPLIABLE)('合并修订两轮都落实不了（%s）：review_failed，文案含"仍未落实"，恰好 2 次合并请求，不保存', async (_label, patch, reason) => {
+    const { model, reconcilePrompts } = pilot({ reconcile: () => ({ items: [verdict({ ...patch, note: '还要改' })] }) });
+    const save = vi.fn();
+    const err = await rejection(finalizeArticle(pilotInput(), model, stages().onStage).then(save));
+    expect({ code: err.code, message: err.message }).toEqual({
+      code: 'review_failed',
+      message: `内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：有 1 条建议指出的问题仍未落实（${reason}））`,
+    });
+    expect(reconcilePrompts).toHaveLength(2);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  // 抓：第二轮改判"已改正"或"不成立"时仍报失败，或者仍去改文章
+  it.each([
+    ['covered', '再看一遍，当前文章已经改正'],
+    ['unfounded', '再看一遍，依据不支持这条建议'],
+  ])('合并修订第一轮落实不了、第二轮改判 %s：成功，文章保持逐章修订后的样子', async (status, note) => {
+    const notFound = UNAPPLIABLE[0]![1];
+    const { model, reconcilePrompts } = pilot({ reconcile: inSequence({ items: [verdict({ ...notFound, note: '还要改' })] }, { items: [verdict({ status, note })] }) });
     const result = await finalizeArticle(pilotInput(), model, stages().onStage);
     expect(result.markdown).toBe(AFTER_CHAPTER);
     expect(result.revisions).toEqual([CHAPTER_REVISION]);
-    expect(result.review.unapplied).toEqual([
-      superseded('还要改'),
-      { stage: 'reconcile', disposition: reason, type: 'attribution', quote: patch.quote, replacement: patch.replacement, problem: '这是主持人的估计，不是嘉宾的说法', evidence, note: '还要改' },
-    ]);
-    expect(result.rejected).toEqual(rejected);
+    expect(result.rejected).toEqual({ quote_not_found: 1 });
+    expect(result.review.unapplied).toEqual([failedRecord(notFound, 'quote_not_found', EVIDENCE), { ...superseded(note), disposition: status }]);
+    expect(reconcilePrompts).toHaveLength(2);
   });
 
   // 抓：重叠建议的依据本身不在字幕里时也送去合并处理（模型可能据此改文章）
@@ -598,7 +643,7 @@ describe('finalizeArticle：语气清单核对', () => {
       rewritten: null,
       checks: [],
       unapplied: [
-        { stage: 'tone', disposition: 'covered', type: 'unsupported', quote: '用来记录当时神庙工人的津贴', replacement: '似乎用来记录当时神庙工人的津贴', problem: '原话是 seems to，是推测', evidence: STIPEND, note: '另一条修订已写入相同的替换文字' },
+        { stage: 'tone', disposition: 'covered', type: 'unsupported', quote: '用来记录当时神庙工人的津贴', replacement: '似乎用来记录当时神庙工人的津贴', problem: '原话是 seems to，是推测', evidence: STIPEND, note: '这一处已由另一条修订改成相同的文字' },
       ],
     });
     expect(reconcilePrompts).toHaveLength(0);
@@ -620,19 +665,63 @@ describe('finalizeArticle：语气清单核对', () => {
     expect(reconcilePrompts).toHaveLength(0);
   });
 
-  // 抓：语气核对的修订绕过了程序校验（字幕依据）；被拒的建议没留痕或来源阶段记错；dropped 而字段不全的没计入 malformed
-  it('语气建议的依据不在字幕里：拒绝，unapplied 的 stage 是 tone；字段不全的 dropped 计入 malformed', async () => {
+  // 抓：语气核对的修订绕过了程序校验（字幕依据）；被拒的建议没留痕或来源阶段记错；第一步被程序拒绝的语气建议让整次失败
+  it('语气建议的依据不在字幕里：拒绝，unapplied 的 stage 是 tone，照常完成', async () => {
     const fabricated = { type: 'quantity' as const, quote: '现在有五到六家被投公司。', replacement: '现在大约有五家被投公司。', evidence: 'we have roughly five companies', problem: '原话是约数' };
-    const { model } = fakeModel({ tone: dropOn('about five', fabricated) });
+    const { model, tonePrompts } = fakeModel({ tone: dropOn('about five', fabricated) });
     const result = await finalizeArticle(input(), model, stages().onStage);
     expect(result.markdown).toBe(DRAFT);
     expect(result.rejected).toEqual({ evidence_not_in_transcript: 1 });
     expect(result.review.unapplied).toEqual([{ stage: 'tone', disposition: 'evidence_not_in_transcript', ...fabricated }]);
+    expect(tonePrompts).toHaveLength(1);
+  });
 
-    const { model: partial } = fakeModel({ tone: () => ({ checks: [{ index: 1, status: 'dropped', type: 'quantity', quote: '现在有五到六家被投公司。', evidence: 'we’re at about five portfolio companies now', problem: '原话是约数' }] }) });
-    const second = await finalizeArticle(input(), partial, stages().onStage);
-    expect(second.markdown).toBe(DRAFT);
-    expect(second.rejected).toEqual({ malformed: 1 });
+  /** 判为 dropped 却缺 replacement 的语气结论 */
+  const PARTIAL_TONE = { checks: [{ index: 1, status: 'dropped', type: 'quantity', quote: '现在有五到六家被投公司。', evidence: 'we’re at about five portfolio companies now', problem: '原话是约数' }] };
+  const HEDGE_FIX = { type: 'quantity' as const, quote: '现在有五到六家被投公司。', replacement: '现在大约有五家被投公司，预计会增加到五到六家。', evidence: 'we’re at about five portfolio companies now', problem: '原话是约五家' };
+
+  // 抓：语气核对判为"语气丢了"却没给出可用修订时只记 malformed 照样保存（发现的问题没处理）；或者不重试直接失败；重试拿到的有效修订没被采用
+  it('dropped 字段不全（第一次）→ 这一份重新请求，第二次正常：成功，采用第二次的修订，语气请求 2 次', async () => {
+    let calls = 0;
+    const { model, tonePrompts } = fakeModel({ tone: (prompt) => (calls++ === 0 ? PARTIAL_TONE : dropOn('about five', HEDGE_FIX)(prompt)) });
+    const result = await finalizeArticle(input(), model, stages().onStage);
+    expect(result.markdown).toBe('# 柏林与基金\n\n## 柏林岁月\n\n**嘉宾:** 2003 年那家基金投资了 Alpha、Beta 和 Gamma。\n\n## 现在的组合\n\n**嘉宾:** 现在大约有五家被投公司，预计会增加到五到六家。');
+    expect(result.revisions).toEqual([{ type: 'quantity', before: '现在有五到六家被投公司。', after: '现在大约有五家被投公司，预计会增加到五到六家。', reason: '原话是约五家', evidence: 'we’re at about five portfolio companies now' }]);
+    expect(result.rejected).toEqual({});
+    expect(tonePrompts).toHaveLength(2);
+    expect(tonePrompts[1]!.user).toBe(tonePrompts[0]!.user);
+  });
+
+  // 抓：重试后仍然只有"语气丢了"而没有修订时，文章照样保存
+  it('dropped 字段不全两次：review_failed，不保存，语气请求恰好 2 次', async () => {
+    const { model, tonePrompts } = fakeModel({ tone: () => PARTIAL_TONE });
+    const save = vi.fn();
+    const err = await rejection(finalizeArticle(input(), model, stages().onStage).then(save));
+    expect({ code: err.code, message: err.message }).toEqual({
+      code: 'review_failed',
+      message: '内容核对没有完成，这次生成没有保存（对照字幕核对没有完成：模型返回的格式无效（语气清单核对判为语气丢失的条目没有给出有效修订））',
+    });
+    expect(tonePrompts).toHaveLength(2);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  // 抓：清单分成两份时，一份有字段不全的结论就把两份都重发（白白多请求），或者重发的不是出问题的那一份
+  it('清单分两份、只有第二份第一次字段不全：只重发第二份，共 3 次语气请求，第二份重试的修订被采用', async () => {
+    const many = Array.from({ length: 61 }, (_, i) => `[${String(i).padStart(2, '0')}:00] item ${i + 1} seems to be ready for review today`).join('\n\n');
+    const draft = '# 清单\n\n## 进度\n\n第45项已经可以评审。';
+    const hedge = { quote: '第45项已经可以评审。', replacement: '第45项似乎已经可以评审。', evidence: 'item 45 seems to be ready for review today', problem: '原话是 seems to' };
+    let secondChunkCalls = 0;
+    const { model, tonePrompts } = fakeModel({
+      tone: (prompt) => {
+        const valid = dropOn('item 45 seems', hedge)(prompt);
+        if (toneListOf(prompt.user)[0]!.index !== 32 || secondChunkCalls++ > 0) return valid;
+        return { checks: valid.checks.map((c) => (c.index === 45 ? { ...c, replacement: undefined } : c)) };
+      },
+    });
+    const result = await finalizeArticle(input({ draft, transcriptText: many }), model, stages().onStage);
+    expect(tonePrompts.map((p) => toneListOf(p.user)[0]!.index).sort((a, b) => a - b)).toEqual([1, 32, 32]);
+    expect(result.markdown).toBe('# 清单\n\n## 进度\n\n第45项似乎已经可以评审。');
+    expect(result.rejected).toEqual({});
   });
 
   // 抓：语气建议要改的句子已被逐章修订改过（插入了归属），直接替换会把逐章的改动冲掉或叠加；应基于当前文章做合并处理
@@ -718,6 +807,129 @@ describe('finalizeArticle：语气清单核对', () => {
     expect(result.markdown).toBe('# 清单\n\n## 进度\n\n第45项似乎已经可以评审。');
     expect(result.review.toneExcerpts).toBe(61);
     expect(result.review.revisions).toBe(1);
+  });
+});
+
+describe('finalizeArticle：按位置判断是否已覆盖', () => {
+  // 审查方反例：主持人段和嘉宾段各有一个金额，逐章把嘉宾段改成了"成本20美元"，整篇要把主持人段也改成"成本20美元"
+  const HOST = 'Host: our setup cost 20 dollars in the first year.';
+  const GUEST = 'Guest: we paid 20 dollars for the same setup.';
+  const COST_TRANSCRIPT = `[00:00] ${HOST}\n\n[00:20] ${GUEST}`;
+  const COST_DRAFT = '# 成本\n\n## 试点\n\n**主持人:** 第一年的成本200美元。\n\n**嘉宾:** 我们的成本300美元。';
+  /** 逐章建议一：主持人段只加了"约"，数字仍错 */
+  const HOST_ABOUT = { type: 'quantity', quote: '成本200美元', replacement: '成本约200美元', evidence: HOST, problem: '主持人说的是约数' };
+  /** 逐章建议二：嘉宾段改成 20 美元 */
+  const GUEST_FIX = { type: 'quantity', quote: '成本300美元', replacement: '成本20美元', evidence: GUEST, problem: '嘉宾说的是 20 美元' };
+  /** 整篇建议：主持人段改成 20 美元 */
+  const HOST_FIX = { type: 'quantity', quote: '成本200美元', replacement: '成本20美元', evidence: HOST, problem: '主持人说的是 20 美元' };
+  const costInput = (patch: Partial<FinalizeInput> = {}) => input({ draft: COST_DRAFT, transcriptText: COST_TRANSCRIPT, ...patch });
+
+  // 抓（审查方反例）：按全文判断"替换文字已经在文章里"，嘉宾段的"成本20美元"让整篇建议被误判 covered，主持人段停在"成本约200美元"
+  it('别的段落已有相同的替换文字、这一处改成了别的：不记 covered，进合并处理（一次），主持人段随合并结果改变，嘉宾段不变', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({ issues: [HOST_ABOUT, GUEST_FIX] }),
+      fidelity: () => ({ issues: [HOST_FIX] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '加了约但数字仍错', quote: '第一年的成本约200美元。', replacement: '第一年的成本20美元。', evidence: '' }] }),
+    });
+    const result = await finalizeArticle(costInput(), model, stages().onStage);
+    expect(result.markdown).toBe('# 成本\n\n## 试点\n\n**主持人:** 第一年的成本20美元。\n\n**嘉宾:** 我们的成本20美元。');
+    expect(result.revisions).toEqual([
+      { type: 'quantity', before: '成本200美元', after: '成本约200美元', reason: '主持人说的是约数', evidence: HOST },
+      { type: 'quantity', before: '成本300美元', after: '成本20美元', reason: '嘉宾说的是 20 美元', evidence: GUEST },
+      { type: 'quantity', before: '第一年的成本约200美元。', after: '第一年的成本20美元。', reason: '主持人说的是 20 美元', evidence: HOST },
+    ]);
+    expect(result.rejected).toEqual({});
+    expect(result.review.unapplied).toEqual([
+      { stage: 'article', disposition: 'superseded', type: 'quantity', quote: '成本200美元', replacement: '成本20美元', problem: '主持人说的是 20 美元', evidence: HOST, note: '加了约但数字仍错' },
+    ]);
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(reconcilePrompts[0]!.user).toContain('<article>\n# 成本\n\n## 试点\n\n**主持人:** 第一年的成本约200美元。\n\n**嘉宾:** 我们的成本20美元。\n</article>');
+    expect(reconcilePrompts[0]!.user).toContain('"quote": "成本200美元"');
+  });
+
+  // 抓：只要全文别处出现了替换文字就跳过；这一处根本没被改过时，整篇建议应当直接落实
+  it('别的段落已有相同的替换文字、这一处没被改过：整篇建议直接落实，不记 covered，不调合并处理', async () => {
+    const { model, reconcilePrompts } = fakeModel({ review: () => ({ issues: [GUEST_FIX] }), fidelity: () => ({ issues: [HOST_FIX] }) });
+    const result = await finalizeArticle(costInput(), model, stages().onStage);
+    expect(result.markdown).toBe('# 成本\n\n## 试点\n\n**主持人:** 第一年的成本20美元。\n\n**嘉宾:** 我们的成本20美元。');
+    expect(result.revisions.map((r) => [r.before, r.after])).toEqual([
+      ['成本300美元', '成本20美元'],
+      ['成本200美元', '成本20美元'],
+    ]);
+    expect(result.review).not.toHaveProperty('unapplied');
+    expect(reconcilePrompts).toHaveLength(0);
+  });
+
+  // 抓：初稿里 quote 出现两次、两处都被改过，定位不到是哪一处，却因为全文已有替换文字就记 covered（可能漏掉没改对的那一处）
+  it('位置无法确定（初稿里 quote 出现两次且都被改过）：进合并处理，按合并结论记录', async () => {
+    const draft = '# 成本\n\n## 试点\n\n**主持人:** 我们的成本200美元。\n\n**嘉宾:** 他们的成本200美元。';
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({
+        issues: [
+          { type: 'quantity', quote: '我们的成本200美元', replacement: '我们的成本20美元', evidence: HOST, problem: '主持人说的是 20 美元' },
+          { type: 'quantity', quote: '他们的成本200美元', replacement: '他们的成本20美元', evidence: GUEST, problem: '嘉宾说的是 20 美元' },
+        ],
+      }),
+      fidelity: () => ({ issues: [HOST_FIX] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'covered', note: '两处都已改成 20 美元', quote: '', replacement: '', evidence: '' }] }),
+    });
+    const result = await finalizeArticle(costInput({ draft }), model, stages().onStage);
+    expect(result.markdown).toBe('# 成本\n\n## 试点\n\n**主持人:** 我们的成本20美元。\n\n**嘉宾:** 他们的成本20美元。');
+    expect(result.revisions).toHaveLength(2);
+    expect(result.review.unapplied).toEqual([
+      { stage: 'article', disposition: 'covered', type: 'quantity', quote: '成本200美元', replacement: '成本20美元', problem: '主持人说的是 20 美元', evidence: HOST, note: '两处都已改成 20 美元' },
+    ]);
+    expect(reconcilePrompts).toHaveLength(1);
+  });
+
+  const STIPEND = 'And this seems to store the stipends for workers at a temple some few thousand years ago.';
+  const SEEMS = { type: 'unsupported' as const, quote: '用来记录当时神庙工人的津贴', replacement: '似乎用来记录当时神庙工人的津贴', evidence: STIPEND, problem: '原话是 seems to，是推测' };
+  const STIPEND_DRAFT = '# 泥板\n\n## 用途\n\n该图表包含行和列，用来记录当时神庙工人的津贴。';
+  const ONE_SEEMS = '# 泥板\n\n## 用途\n\n该图表包含行和列，似乎用来记录当时神庙工人的津贴。';
+  const coveredSeems = (stage: string) => ({ stage, disposition: 'covered', ...SEEMS, note: '这一处已由另一条修订改成相同的文字' });
+
+  // 抓：同一路整篇复核里两条建议都给同一句补"似乎"，第二条在第一条改过的文字里照样定位成功并替换，叠成"似乎似乎"
+  it('同一路整篇复核里两条相同的"似乎"：最终稿只有一个"似乎"，第二条记 covered，不调合并处理', async () => {
+    const { model, reconcilePrompts } = fakeModel({ fidelity: () => ({ issues: [SEEMS, SEEMS] }) });
+    const result = await finalizeArticle(input({ draft: STIPEND_DRAFT, transcriptText: `[00:00] ${STIPEND}` }), model, stages().onStage);
+    expect(result.markdown).toBe(ONE_SEEMS);
+    expect(result.revisions).toHaveLength(1);
+    expect(result.review.unapplied).toEqual([coveredSeems('article')]);
+    expect(reconcilePrompts).toHaveLength(0);
+  });
+
+  // 抓：同一份语气清单里两条都判 dropped、给同一句补"似乎"，叠成"似乎似乎"
+  it('同一份语气清单里两条相同的"似乎"：最终稿只有一个"似乎"，第二条记 covered，不调合并处理', async () => {
+    const transcriptText = `[00:00] ${STIPEND}\n\n[00:30] It seems to be one of the oldest wage lists we have.`;
+    const { model, tonePrompts, reconcilePrompts } = fakeModel({
+      tone: (prompt) => toneChecks(prompt.user, [{ match: 'seems to store', ...SEEMS }, { match: 'oldest wage', ...SEEMS }]),
+    });
+    const result = await finalizeArticle(input({ draft: STIPEND_DRAFT, transcriptText }), model, stages().onStage);
+    expect(toneListOf(tonePrompts[0]!.user).map((e) => e.index)).toEqual([1, 2]);
+    expect(result.markdown).toBe(ONE_SEEMS);
+    expect(result.revisions).toHaveLength(1);
+    expect(result.review.toneExcerpts).toBe(2);
+    expect(result.review.unapplied).toEqual([coveredSeems('tone')]);
+    expect(reconcilePrompts).toHaveLength(0);
+  });
+
+  // 抓：为了"有问题没解决不能成功"，把第一步就被程序拒绝的建议（字幕里找不到依据、原本就不在初稿里）也当成失败；或者把它们送去合并处理
+  it('逐章和整篇建议在第一步被程序拒绝：只记 unapplied，照常完成，不调合并处理', async () => {
+    const fabricated = { ...TIME_ISSUE, evidence: 'The fund invested in Alpha, Beta and Gamma back in 2003' };
+    const invented = { ...QUANTITY_ISSUE, quote: '现在有七家被投公司。' };
+    const { model, reconcilePrompts } = fakeModel({
+      review: (section) => ({ issues: section.includes('柏林岁月') ? [fabricated] : [] }),
+      fidelity: () => ({ issues: [invented] }),
+    });
+    const result = await finalizeArticle(input(), model, stages().onStage);
+    expect(result.markdown).toBe(DRAFT);
+    expect(result.revisions).toEqual([]);
+    expect(result.rejected).toEqual({ evidence_not_in_transcript: 1, quote_not_found: 1 });
+    expect(result.review.unapplied).toEqual([
+      { stage: 'chapter', disposition: 'evidence_not_in_transcript', ...fabricated },
+      { stage: 'article', disposition: 'quote_not_found', ...invented },
+    ]);
+    expect(reconcilePrompts).toHaveLength(0);
   });
 });
 

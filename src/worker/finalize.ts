@@ -5,7 +5,8 @@ import { AppError } from './app-error';
 import type { Prompt } from './gemini';
 import { chunkExcerpts, hedgedExcerpts, hedgeReviewPrompt, parseToneChecks, TONE_SCHEMA } from './hedges';
 import { checkRequirements, describeRequirements, hasRequirements, rewritePrompt, type Requirements } from './requirements';
-import { applyRevisions, evidenceInTranscript, fidelityReviewPrompt, parseIssues, parseReconcile, reconcilePrompt, reviewPrompt, splitForReview, RECONCILE_SCHEMA, REVIEW_SCHEMA, type RejectReason, type ReviewIssue } from './review';
+import { applyRevisions, MAX_REVISIONS, evidenceInTranscript, fidelityReviewPrompt, parseIssues, parseReconcile, reconcilePrompt, reviewPrompt, splitForReview, RECONCILE_SCHEMA, REVIEW_SCHEMA, type RejectReason, type ReviewIssue } from './review';
+import { TrackedText, type Span } from './tracked';
 import type { VideoMeta } from './youtube';
 
 /** 收尾阶段要用到的模型调用，由生成流程提供（带超时、备用模型和取消），测试里可以换成替身 */
@@ -15,6 +16,9 @@ export interface FinalizeModel {
   /** 整篇修订：返回模型写出的完整文章；没有正常结束时抛错 */
   rewrite(prompt: Prompt): Promise<string>;
 }
+
+/** 合并处理最多做这么多轮：第一轮给出的修订落实不了时，带着原因再处理一轮 */
+export const RECONCILE_ROUNDS = 2;
 
 export interface FinalizeInput {
   draft: string;
@@ -88,79 +92,139 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
   const [chapterOutcomes, fidelity, tone] = await Promise.all([
     Promise.all(sections.map(async (section) => {
       const { issues, malformed } = await readIssues(reviewPrompt({ video, transcriptText, instructions, outline, section }));
-      return { ...applyRevisions(section, issues, transcriptText), malformed: malformed.length };
+      return { issues, malformed: malformed.length };
     })),
     readIssues(fidelityReviewPrompt({ video, transcriptText, instructions, outline, section: markdown })),
     Promise.all(
       toneChunks.map(async (excerpts, i) => {
         const first = toneChunks.slice(0, i).reduce((n, c) => n + c.length, 0) + 1;
-        const parsed = parseToneChecks(await model.json(hedgeReviewPrompt({ video, excerpts, first, section: markdown }), TONE_SCHEMA), first, excerpts.length);
-        if (parsed === null) throw new AppError('summary_invalid', '语气清单核对没有对每一条给出结论');
-        return parsed;
+        // 判为"语气丢了"却没给出可用的修订（字段不全），等于发现了问题没有处理：重新核对这一份一次，仍然如此就算核对没完成
+        for (let attempt = 0; ; attempt++) {
+          const parsed = parseToneChecks(await model.json(hedgeReviewPrompt({ video, excerpts, first, section: markdown }), TONE_SCHEMA), first, excerpts.length);
+          if (parsed === null) throw new AppError('summary_invalid', '语气清单核对没有对每一条给出结论');
+          if (parsed.malformed.length === 0) return parsed;
+          if (attempt >= 1) throw new AppError('summary_invalid', '语气清单核对判为语气丢失的条目没有给出有效修订');
+        }
       }),
     ).then((parts) => ({ issues: parts.flatMap((p) => p.issues), malformed: parts.flatMap((p) => p.malformed) })),
   ]).catch((err: unknown) => failReview(err, '对照字幕核对没有完成'));
 
-  // 两路基于同一份核对前文章：先合并逐章修订，再应用整篇建议。
-  const combined = chapterOutcomes.map((o) => o.markdown).join('');
-  const chapterRevisions = chapterOutcomes.flatMap((o) => o.applied);
-  const fidelityOutcome = { ...applyRevisions(combined, fidelity.issues, transcriptText, chapterRevisions), malformed: fidelity.malformed.length };
-  const toneOutcome = { ...applyRevisions(fidelityOutcome.markdown, tone.issues, transcriptText, [...chapterRevisions, ...fidelityOutcome.applied]), malformed: tone.malformed.length };
-  const staged: { stage: SuggestionStage; outcome: (typeof chapterOutcomes)[number] }[] = [
-    ...chapterOutcomes.map((outcome) => ({ stage: 'chapter' as const, outcome })),
-    { stage: 'article', outcome: fidelityOutcome },
-    { stage: 'tone', outcome: toneOutcome },
-  ];
-  let reviewed = toneOutcome.markdown;
-  const revisions = staged.flatMap((s) => s.outcome.applied);
+  // 几路核对基于同一份核对前的文章。依次应用：逐章 → 整篇 → 语气。每次替换都记下它改的是初稿的哪一段（TrackedText），
+  // 后面的建议按位置判断是不是和已经改过的地方重叠，不按文字判断：别的段落里出现一样的文字不算。
+  const tracked = new TrackedText(markdown);
+  const revisions: Revision[] = [];
   const rejected: FinalizeResult['rejected'] = {};
   const count = (reason: RejectReason, n = 1) => (rejected[reason] = (rejected[reason] ?? 0) + n);
   const unapplied: UnappliedSuggestion[] = [];
-  const pending: { stage: SuggestionStage; issue: ReviewIssue }[] = [];
-  for (const { stage, outcome } of staged) {
-    if (outcome.malformed) count('malformed', outcome.malformed);
-    for (const { issue, reason } of outcome.rejected) {
-      // 引文在核对前的文章里有、轮到它时却定位不到：多数是它要改的句子已被另一条修订改过（也可能是引了别的章的句子）。
-      // 这类建议不能直接丢，见 reconcilePrompt；rejected 里按最终处置计数，不记成 quote_not_found。
-      const overlapped = reason === 'overlaps_earlier' || (reason === 'quote_not_found' && markdown.includes(issue.quote));
-      if (!overlapped) {
-        count(reason);
-        unapplied.push({ stage, disposition: reason, ...issue });
-      } else if (!evidenceInTranscript(issue.evidence, transcriptText)) {
-        count('evidence_not_in_transcript');
-        unapplied.push({ stage, disposition: 'evidence_not_in_transcript', ...issue });
-      }
-      // 另一条修订已经写入了一模一样的替换文字：重复建议，问题已改正
-      else if (issue.replacement.trim() !== '' && reviewed.includes(issue.replacement) && !markdown.includes(issue.replacement)) unapplied.push({ stage, disposition: 'covered', ...issue, note: '另一条修订已写入相同的替换文字' });
-      else pending.push({ stage, issue });
-    }
+  interface Pending {
+    stage: SuggestionStage;
+    issue: ReviewIssue;
+    /** 上一轮合并处理给出的修订为什么没能落实 */
+    failure?: string;
   }
+  let pending: Pending[] = [];
 
-  if (pending.length > 0) {
-    const raw = await model.json(reconcilePrompt({ video, article: reviewed, applied: revisions, pending: pending.map((p) => p.issue) }), RECONCILE_SCHEMA).catch((err: unknown) => failReview(err, '重叠修订建议的合并处理没有完成'));
-    const items = parseReconcile(raw, pending.length);
+  /**
+   * 在当前文章里落实一条建议。scope：这条建议所属的核对单元在初稿里的范围（逐章核对），整篇的建议不限范围。
+   * 返回 applied；或 overlap（它要改的地方已经被改过，where 是那一处在初稿里的位置，无法确定时为 null）；或程序校验拒绝的原因。
+   * mayRefine：合并处理给出的修订本来就是针对改过的文字的，允许落在已有替换上，但不能把改掉的初稿写法改回来。
+   */
+  const attempt = (issue: ReviewIssue, scope: Span | null, mayRefine = false): { result: 'applied' } | { result: 'overlap'; where: Span | null } | { result: RejectReason } => {
+    const current = tracked.current;
+    const cur = scope ? tracked.toCurrent(scope) : { start: 0, end: current.length };
+    const text = current.slice(cur.start, cur.end);
+    const at = text.indexOf(issue.quote);
+    if (at >= 0 && text.indexOf(issue.quote, at + 1) < 0) {
+      const span = { start: cur.start + at, end: cur.start + at + issue.quote.length };
+      if (!mayRefine && tracked.touchesEdit(span)) return { result: 'overlap', where: tracked.toOriginal(span) };
+      if (revisions.length >= MAX_REVISIONS) return { result: 'limit' };
+      const outcome = applyRevisions(text, [issue], transcriptText);
+      const applied = outcome.applied[0];
+      if (!applied) return { result: outcome.rejected[0]!.reason };
+      const next = current.slice(0, cur.start) + outcome.markdown + current.slice(cur.end);
+      if (mayRefine && revisions.some((r) => r.before.trim().length >= 4 && !current.includes(r.before) && next.includes(r.before))) return { result: 'reverts_earlier' };
+      tracked.replace(span, issue.replacement);
+      revisions.push(applied);
+      return { result: 'applied' };
+    }
+    if (at >= 0) return { result: 'quote_not_unique' };
+    if (mayRefine) return { result: 'quote_not_found' };
+    // 当前文章里找不到：看它是不是初稿里有、后来被别的修订改掉了
+    const base = scope ? markdown.slice(scope.start, scope.end) : markdown;
+    const origin = base.indexOf(issue.quote);
+    if (origin >= 0) {
+      const unique = base.indexOf(issue.quote, origin + 1) < 0;
+      const start = (scope?.start ?? 0) + origin;
+      return { result: 'overlap', where: unique ? { start, end: start + issue.quote.length } : null };
+    }
+    // 逐章核对引了别的章里的句子，同样交给合并处理基于全文判断
+    return scope && markdown.includes(issue.quote) ? { result: 'overlap', where: null } : { result: 'quote_not_found' };
+  };
+
+  /** 这一处（初稿坐标）现在是不是已经改成了这条建议想要的文字。只看这一处，不看全文别的地方 */
+  const coveredAt = (where: Span | null, issue: ReviewIssue): boolean => {
+    if (!where || issue.replacement.trim() === '' || !tracked.touched(where)) return false;
+    const region = tracked.region(where);
+    return region.current.includes(issue.replacement) && !region.original.includes(issue.replacement);
+  };
+
+  const place = (stage: SuggestionStage, issue: ReviewIssue, scope: Span | null) => {
+    const outcome = attempt(issue, scope);
+    if (outcome.result === 'applied') return;
+    if (outcome.result !== 'overlap') {
+      count(outcome.result);
+      unapplied.push({ stage, disposition: outcome.result, ...issue });
+    } else if (!evidenceInTranscript(issue.evidence, transcriptText)) {
+      count('evidence_not_in_transcript');
+      unapplied.push({ stage, disposition: 'evidence_not_in_transcript', ...issue });
+    } else if (coveredAt(outcome.where, issue)) {
+      unapplied.push({ stage, disposition: 'covered', ...issue, note: '这一处已由另一条修订改成相同的文字' });
+    } else pending.push({ stage, issue });
+  };
+
+  let offset = 0;
+  for (const [index, section] of sections.entries()) {
+    const scope = { start: offset, end: offset + section.length };
+    offset = scope.end;
+    if (chapterOutcomes[index]!.malformed) count('malformed', chapterOutcomes[index]!.malformed);
+    for (const issue of chapterOutcomes[index]!.issues) place('chapter', issue, scope);
+  }
+  if (fidelity.malformed.length) count('malformed', fidelity.malformed.length);
+  for (const issue of fidelity.issues) place('article', issue, null);
+  for (const issue of tone.issues) place('tone', issue, null);
+
+  // 重叠而没有确认已改好的建议：交给模型基于当前文章逐条处理。给出的修订落实不了时再处理一轮；
+  // 仍有落实不了的，说明有一个已经指出的问题没有解决，这次核对不能算完成。
+  for (let round = 1; pending.length > 0; round++) {
+    if (round > RECONCILE_ROUNDS) {
+      throw new AppError('review_failed', `重叠修订建议的合并处理没有完成：有 ${pending.length} 条建议指出的问题仍未落实（${[...new Set(pending.map((p) => p.failure))].join('、')}）`);
+    }
+    const batch = pending;
+    pending = [];
+    const raw = await model
+      .json(reconcilePrompt({ video, article: tracked.current, applied: revisions, pending: batch.map((p) => ({ ...p.issue, failure: p.failure })) }), RECONCILE_SCHEMA)
+      .catch((err: unknown) => failReview(err, '重叠修订建议的合并处理没有完成'));
+    const items = parseReconcile(raw, batch.length);
     if (!items) throw new AppError('review_failed', '重叠修订建议的合并处理没有完成：模型没有对每条建议给出有效结论');
-    for (const [index, { stage, issue }] of pending.entries()) {
+    for (const [index, { stage, issue }] of batch.entries()) {
       const item = items[index]!;
       if (item.status !== 'revise') {
         unapplied.push({ stage, disposition: item.status, ...issue, note: item.note });
         continue;
       }
-      unapplied.push({ stage, disposition: 'superseded', ...issue, note: item.note });
       const next: ReviewIssue = { type: issue.type, quote: item.quote, replacement: item.replacement, evidence: item.evidence.trim() || issue.evidence, problem: issue.problem };
-      const outcome = applyRevisions(reviewed, [next], transcriptText);
-      // 不能把前面已经改掉的初稿写法又改回来
-      const reverts = outcome.applied.length > 0 && revisions.some((r) => r.before.trim().length >= 4 && !reviewed.includes(r.before) && outcome.markdown.includes(r.before));
-      const reason: RejectReason | null = reverts ? 'reverts_earlier' : (outcome.rejected[0]?.reason ?? null);
-      if (reason) {
-        count(reason);
-        unapplied.push({ stage: 'reconcile', disposition: reason, ...next, note: item.note });
-      } else {
-        reviewed = outcome.markdown;
-        revisions.push(...outcome.applied);
+      const outcome = attempt(next, null, true);
+      if (outcome.result === 'applied') {
+        unapplied.push({ stage, disposition: 'superseded', ...issue, note: item.note });
+        continue;
       }
+      const reason = outcome.result === 'overlap' ? 'quote_not_found' : outcome.result;
+      count(reason);
+      unapplied.push({ stage: 'reconcile', disposition: reason, ...next, note: item.note });
+      pending.push({ stage, issue, failure: reason });
     }
   }
+  const reviewed = tracked.current;
 
   // 局部修订不改标题层级，正常不会破坏结构；万一破坏了就不能保存
   assertArticleLength(reviewed);

@@ -70,7 +70,7 @@ describe('核对出修订', () => {
           replacement: '大约有一千多项（字幕此处数字不清）。',
           problem: '字幕里的数字不完整，不能确定是 1200',
           evidence: "we're tracking on the order of",
-          note: '另一条修订已写入相同的替换文字',
+          note: '这一处已由另一条修订改成相同的文字',
         },
       ],
     });
@@ -300,6 +300,62 @@ describe('重叠修订的合并处理（审查方反例）', () => {
     expect(user).toContain('<current_chapter id="1">\n## 费用\n\n主持人估计，试点费用约为20美元。\n</current_chapter>');
     expect(user).not.toContain('嘉宾表示');
   });
+
+  const pilotScenario = (reconcile: { kind: 'response'; result: unknown } | { kind: 'sequence'; results: unknown[] }) => ({
+    videos: { mockvideo01: { kind: 'ok' as const, title: 'Pilot cost', channel: '测试频道', description: '', cues: [[0, "Host: Our pilot cost about 20 dollars. This is my estimate, not the guest's statement."]] as [number, string][] } },
+    streams: { 'mock-primary': { kind: 'ok' as const, texts: ['# 试点\n\n## 费用\n\n', '嘉宾表示，试点费用为200美元。'], intervalMs: 20 } },
+    reviews: {
+      'mock-primary': {
+        kind: 'ok' as const,
+        issues: [{ type: 'quantity', quote: '试点费用为200美元。', evidence: EVIDENCE, problem: '金额是约 20 美元', replacement: '试点费用约为20美元。' }],
+        fidelityIssues: [{ type: 'attribution', quote: '嘉宾表示，试点费用为200美元。', evidence: EVIDENCE, problem: '这是主持人的估计，不是嘉宾的说法', replacement: '主持人估计，试点费用约为20美元。' }],
+      },
+    },
+    reconciles: { 'mock-primary': reconcile },
+  });
+  /** quote 在当前文章里找不到的修订 */
+  const UNFOUND = { items: [{ index: 0, status: 'revise', note: '还要改', quote: '主持人表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。', evidence: '' }] };
+
+  // 抓：经真实 HTTP 时合并处理两轮都给不出能落实的修订，归属仍错的文章照样 done 并保存、5W1H 可用
+  it('合并修订两轮都落实不了：error review_failed，合并请求 2 次，随后 5W1H 返回 generation_not_found', async () => {
+    await stack.scenario(pilotScenario({ kind: 'response', result: UNFOUND }));
+    const gen = await generate(stack, { url: MOCK_URL });
+
+    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'stage', 'error']);
+    expect(gen.events.at(-1)!.data).toEqual({
+      code: 'review_failed',
+      message: '内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：有 1 条建议指出的问题仍未落实（quote_not_found））',
+      partial: true,
+    });
+    const reconciles = ofKind(await stack.requests(), 'reconcile');
+    expect(reconciles.map((r) => r.model)).toEqual(['mock-primary', 'mock-primary']);
+    expect(promptOf(reconciles[1]!).user).toContain('"previousAttempt": "上一次给出的 quote 在 <article> 里找不到：必须从当前的 <article> 逐字复制"');
+
+    await stack.reset();
+    const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
+    expect(summary.status).toBe(404);
+    expect(summary.body).toEqual(NOT_FOUND);
+    expect(ofKind(await stack.requests(), 'summary')).toHaveLength(0);
+  });
+
+  // 抓：经真实 HTTP 时第一轮落实不了就失败，没有带着原因再处理一轮；或者没采用第二轮的有效修订
+  it('合并修订第一轮落实不了、第二轮有效：done，最终文章是"主持人估计…"，5W1H 用它', async () => {
+    await stack.scenario(
+      pilotScenario({
+        kind: 'sequence',
+        results: [UNFOUND, { items: [{ index: 0, status: 'revise', note: '数字已改对，归属仍错', quote: '嘉宾表示，试点费用约为20美元。', replacement: '主持人估计，试点费用约为20美元。', evidence: '' }] }],
+      }),
+    );
+    const gen = await generate(stack, { url: MOCK_URL });
+    expect(gen.events.at(-1)!.event).toBe('done');
+    expect(eventOf(gen.events, 'revised')!.markdown).toBe(FINAL);
+    expect(ofKind(await stack.requests(), 'reconcile')).toHaveLength(2);
+
+    await stack.reset();
+    const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
+    expect(summary.status).toBe(200);
+    expect(promptOf(ofKind(await stack.requests(), 'summary')[0]!).user).toContain('<current_chapter id="1">\n## 费用\n\n主持人估计，试点费用约为20美元。\n</current_chapter>');
+  });
 });
 
 describe('语气清单核对', () => {
@@ -350,7 +406,7 @@ describe('语气清单核对', () => {
     expect(eventOf(gen.events, 'revised')!.markdown).toBe(FINAL);
     const done = eventOf(gen.events, 'done')!;
     expect(done.review.revisions).toBe(1);
-    expect(done.review.unapplied).toEqual([{ stage: 'tone', disposition: 'covered', ...SEEMS, note: '另一条修订已写入相同的替换文字' }]);
+    expect(done.review.unapplied).toEqual([{ stage: 'tone', disposition: 'covered', ...SEEMS, note: '这一处已由另一条修订改成相同的文字' }]);
     expect(ofKind(await stack.requests(), 'reconcile')).toHaveLength(0);
 
     await stack.reset();

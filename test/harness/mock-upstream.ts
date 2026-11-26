@@ -59,8 +59,11 @@ type ReviewIssueFixture = { type: string; quote: string; evidence: string; probl
  */
 export type ToneScenario = { kind: 'ok'; drops?: ToneDrop[]; delayMs?: number } | { kind: 'response'; result: unknown } | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' };
 
-/** 重叠修订建议合并处理（generateContent）的行为。response：原样返回给定的 JSON（形状可以无效） */
-export type ReconcileScenario = { kind: 'response'; result: unknown } | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' };
+/**
+ * 重叠修订建议合并处理（generateContent）的行为。response：原样返回给定的 JSON（形状可以无效）；
+ * sequence：第 N 次合并处理请求（不分模型，从 0 开始，场景重置时清零）返回 results[N]，超出部分用最后一个
+ */
+export type ReconcileScenario = { kind: 'response'; result: unknown } | { kind: 'sequence'; results: unknown[] } | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' };
 
 /**
  * 约束提取（generateContent）的行为。ok：返回给定的提取结果；
@@ -145,6 +148,8 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
   let playerCounts = new Map<string, number>();
   /** sequence 场景下已收到的约束提取请求数 */
   let requirementsCount = 0;
+  /** sequence 场景下已收到的合并处理请求数 */
+  let reconcileCount = 0;
   const base = `http://127.0.0.1:${port}`;
 
   const server = createServer((req, res) => {
@@ -162,6 +167,7 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
       scenario = { ...defaultScenario(), ...(JSON.parse(text) as Partial<Scenario>) };
       playerCounts = new Map();
       requirementsCount = 0;
+      reconcileCount = 0;
       return json(res, 200, { ok: true });
     }
     if (url.pathname === '/__reset' && req.method === 'POST') {
@@ -169,6 +175,7 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
       log = [];
       playerCounts = new Map();
       requirementsCount = 0;
+      reconcileCount = 0;
       return json(res, 200, { ok: true });
     }
     if (url.pathname === '/__requests') return json(res, 200, log);
@@ -269,6 +276,8 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
       if (purpose === 'reconcile') {
         entry.kind = 'reconcile';
         const behavior = scenario.reconciles?.[model] ?? { kind: 'busy' };
+        const attempt = reconcileCount++;
+        if (behavior.kind === 'sequence') return structured(res, behavior.results[Math.min(attempt, behavior.results.length - 1)]);
         return behavior.kind === 'response' ? structured(res, behavior.result) : summary(res, behavior);
       }
       if (purpose === 'requirements') {

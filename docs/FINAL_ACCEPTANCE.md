@@ -26,7 +26,7 @@
 - **留痕**：没采用的建议连同来自哪一步、处置结果和理由，写进 `done` 事件的 `review.unapplied`，也随文章保存。格式不对、解析不了的只计数。
 - **验证**：
   - 反例修复后最终稿是"主持人估计，试点费用约为20美元。"。单元、Worker 集成和后端 E2E 三层都有回归，共 21 项会在这段逻辑被去掉时变红（变异验证）。
-  - 真实模型下合并处理实际触发了 5 次（4 次离线收尾、1 次线上浏览器），每次都逐条给出了结论，都判为"已被另一条修订改正"，理由可读、和文章对得上。没有出现需要再改一次的情况，所以"再改一次"这条路径只有受控用例的证据。
+  - 真实模型下合并处理实际触发了 5 次（4 次离线收尾、1 次线上浏览器），每次都逐条给出了结论，都判为"已被另一条修订改正"，理由可读、和文章对得上。这 5 次里没有出现需要再改一次的情况。之后在 `5229c585` 的示例视频浏览器全流程里出现过一次：一条修订被合并处理在同一句上又改了一次（见第 7 小节的表）。
 - **历史那 16 条**：上一版六篇复验里记为丢弃的 16 条建议，当时只存了丢弃原因的计数，没有存建议原文和模型的完整响应，现在无法逐条恢复，也就不能断言它们都已被别的修订覆盖。
 
 ### 2. 约束提取失败被当成没有约束
@@ -111,7 +111,7 @@
 这次用时 291 秒，比上一版的 274 秒略长：核对阶段多了三路语气请求，并行数超过同时连接数时要排队。有两处读起来不顺的地方没有改：嘉宾第一人称的回答里出现了"据讲者印象曾任意大利总理的马里奥·德拉吉"这种人称不一致的说法，另有一处"（具体我不太确定）"的插入语。意思没错。
 - **代码符号那一条不再算问题**：按同样的清单做法离线核对了这篇文章里的 57 段代码，逐条对照整段字幕，全部判为有口述依据。`COUNT(*)` 对应讲师口述的"COUNT star"。之前把它记为问题，依据是某一遍逐章核对里的一条建议；专门核对的结果不支持这个判断，所以代码清单这一路没有上线。
 
-## 一、六篇真实复验
+## 一、六篇真实复验（旧版本 `d1de7b0d`）
 
 都经线上地址，用 `scripts/stream-probe.ts` / `scripts/run-acceptance-cases.ts` 发起；字幕都是 Worker 实时取到的（`source=live`），这六次没有遇到拦截。证据在本机 `evidence/final3/online-cases/<案例>/`（审查包 `final3/online-cases/`）：`input.json`（要求）、`draft.md`（流式初稿）、`article.md`（最终文章）、`revisions.json`（采用的修订，每条带字幕原文）、`raw.sse`、`timeline.json`。字幕原文在 `evidence/additional/preflight/<视频 ID>/prepared.txt`，示例视频的在 `src/worker/transcripts/xRh2sVcNXQ8.json`。
 
@@ -159,7 +159,7 @@
 - **有 1 条可以商榷**：要求 B 结尾把英文原句 `Stay Hungry. Stay Foolish.` 换成了中文"求知若饥，虚心若愚"。意思没错，但那是字幕里的原话，保留英文并附中文更好。这是语言类修订，不影响事实。
 - V15 把 `COUNT(*)` 的括号去掉是按用户要求"只列字幕明确口述的代码"做的，读起来不如原写法顺，但符合要求。
 
-## 二、线上浏览器全流程（新增复核之后）
+## 二、线上浏览器全流程（旧版本 `d1de7b0d`）
 
 `E2E_BASE_URL=https://video-article.kingsleyli920.workers.dev EXPECT_MODEL=gemini-4-hydrogen npx playwright test test/e2e/live/candidate-live.spec.ts --project=live`，示例视频，生成要求为空，1 项通过。证据在 `evidence/final3/online-sample/run1/`（审查包 `final3/online-sample/run1/`）：`evidence.json`（页面采样、阶段、修订、5W1H 返回）、`draft.md`、`article.md`、截图 7 张、`video.webm`；服务端日志摘录在 `final3/online-tail-sanitized.jsonl`。
 
@@ -185,7 +185,7 @@
 
 这份证据里没有单独保存原始 SSE 字节流（浏览器用例只存了解析后的事件时间和采样）；六篇 `stream-probe` 的 `raw.sse` 是同一接口的原始流。
 
-## 三、后端 E2E 那次失败
+## 三、后端 E2E 那次失败（旧版本期间）
 
 **当时的情况**
 
@@ -215,7 +215,7 @@
 - 修正的是测试条件：`test/harness/e2e-worker.ts` 启动 Worker 时先把 `src/` 复制成一份快照，入口指向快照，运行期间项目里的源码怎么变都不影响已经启动的 Worker（静态资源原来就是这样处理的）。受控全栈的浏览器用例用的是同一个启动器，一起受益。
 - 复验：在"运行期间改动 `src/`"的同一条件下连跑 3 遍，都是 51 项全过；受控全栈 15 项通过。
 
-## 四、其他已安排工作的状态
+## 四、其他已安排工作的状态（截至旧版本 `d1de7b0d`）
 
 - **字幕恢复**：线上实际走的路径是"本地换客户端（ANDROID 新版 → IOS → ANDROID 旧版）→ 仍是人机验证拦截时，依次请北美东部、北美西部、亚太的 Durable Object 代取 → 示例视频最后用内置备份"。遇到拦截后恢复的证据：`evidence/recovery/probe-loadtranscript-round5.jsonl`（生产代码 320 次，79 次本地三次被拦后由北美东部取到）；`evidence/final2/online-tail-2.jsonl` 里 V14、V02 两次真实生成（本地三次被拦、换区域取到后继续生成并保存）。前四轮探针也在 `evidence/recovery/`。
 - **硬约束检查**：L1a `test/be-unit/requirements.test.ts`、`finalize.test.ts`，L1b `test/be-ft/requirements.test.ts`，L3 `test/be-e2e/review.test.ts`，L5 `test/e2e/fullstack/review.spec.ts`；线上实例是 V08（1,515 → 1,159 字）。

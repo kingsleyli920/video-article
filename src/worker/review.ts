@@ -287,7 +287,20 @@ status 三选一：
 - revise：问题还有一部分没有改正（例如数字已经改对，但发言归属、来源限定、不确定语气或条件仍然不对）。给出针对当前文章的修订：quote 从 <article> 逐字复制（标点和 ** 等标记照抄），在 <article> 里只出现一次，不跨段落，尽量短；replacement 只改正还没改正的部分，必须保留已采用修订改对的内容，不能改回初稿的写法，不能加入 evidence 里没有的信息，不改标题、不分段；evidence 从这条建议的 evidence 里逐字复制。
 - unfounded：对照 evidence 后，这条建议本身不成立，或 evidence 不足以支持它。
 
+带有 previousAttempt 的条目是上一轮处理过、但给出的修订没能落实的，previousAttempt 写了原因，这一次要避开。
+
 每条 pending 都必须按 index 给出恰好一个结论。note 用一句话说明理由。status 不是 revise 时，quote、replacement、evidence 填空字符串。`;
+
+/** 上一轮给出的修订没能落实的原因，写给模型看 */
+const RETRY_NOTE: Record<string, string> = {
+  quote_not_found: '上一次给出的 quote 在 <article> 里找不到：必须从当前的 <article> 逐字复制',
+  quote_not_unique: '上一次给出的 quote 在 <article> 里出现不止一次：把 quote 取长一些，直到只出现一次',
+  evidence_not_in_transcript: '上一次给出的 evidence 不是字幕原文：必须从这条建议的 evidence 里逐字复制',
+  structure: '上一次的修订跨了段落或改动了标题：只改一个段落内的文字',
+  too_long: '上一次的 replacement 比 quote 长出太多：只改必要的几个字',
+  no_change: '上一次的 replacement 和 quote 完全相同：问题已经改正就选 covered，否则给出确有改动的修订',
+  reverts_earlier: '上一次的修订把已经改掉的初稿写法又改了回来：必须保留已采用修订改对的内容',
+};
 
 const RECONCILE_STATUS = ['covered', 'revise', 'unfounded'] as const;
 export type ReconcileStatus = (typeof RECONCILE_STATUS)[number];
@@ -314,7 +327,7 @@ export const RECONCILE_SCHEMA = {
   required: ['items'],
 } as const;
 
-export function reconcilePrompt(input: { video: VideoMeta; article: string; applied: Revision[]; pending: ReviewIssue[] }): Prompt {
+export function reconcilePrompt(input: { video: VideoMeta; article: string; applied: Revision[]; pending: (ReviewIssue & { failure?: string })[] }): Prompt {
   const { video, article, applied, pending } = input;
   return {
     system: RECONCILE_SYSTEM,
@@ -329,7 +342,7 @@ ${JSON.stringify(applied.map((r) => ({ before: r.before, after: r.after, reason:
 </applied>
 
 <pending note="quote 是初稿里的原文，在当前文章里已经找不到；replacement 是当时建议的写法">
-${JSON.stringify(pending.map((p, index) => ({ index, type: p.type, quote: p.quote, replacement: p.replacement, problem: p.problem, evidence: p.evidence })), null, 1)}
+${JSON.stringify(pending.map((p, index) => ({ index, type: p.type, quote: p.quote, replacement: p.replacement, problem: p.problem, evidence: p.evidence, ...(p.failure ? { previousAttempt: RETRY_NOTE[p.failure] ?? `上一次给出的修订没有通过程序校验（${p.failure}）` } : {}) })), null, 1)}
 </pending>
 
 请逐条给出结论。`,
