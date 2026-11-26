@@ -121,6 +121,9 @@ test('按要求修订：经历"正在修订"，完成后核对记录写明修订
   ]);
   await expect(record.locator('details')).toHaveCount(0);
   expect(await statusMain(page)).toBe('已完成，共 2 章、1018 字，用时 0 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。');
+  // 完成后显示的是修订稿，不是流式初稿
+  await expect(chapterBodies(page).nth(1)).toContainText('开源模型的成本大概每年下降一半，竞争会集中在产品和分发上。');
+  await expect(page.locator('#article section.chapter')).toHaveText([/我 2003 年搬到硅谷/, /大概每年下降一半/]);
   expect(JSON.parse((await gen.bodies())[0]!)).toEqual({ url: SAMPLE_URL, instructions: '写给投资人，不超过 1200 字' });
 });
 
