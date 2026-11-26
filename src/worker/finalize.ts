@@ -30,6 +30,7 @@ const FAILURE_LABEL: Record<string, string> = {
   no_change: '修订没有实际改动',
   reverts_earlier: '修订把已改正的内容改了回去',
   limit: '修订数量超过上限',
+  duplicates_context: '修订和紧挨着的上下文重复',
 };
 
 export interface FinalizeInput {

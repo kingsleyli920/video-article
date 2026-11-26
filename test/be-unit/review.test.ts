@@ -451,3 +451,49 @@ describe('parseReconcile', () => {
   });
 });
 
+
+describe('applyRevisions：替换文字和紧挨着的上下文重复', () => {
+  const EVIDENCE_TEXT = 'it was the Christmas of 22 when the whole thing suddenly worked';
+  const SOURCE = `[00:00] ${EVIDENCE_TEXT}`;
+  const issue = (quote: string, replacement: string): ReviewIssue => ({ type: 'time', quote, replacement, evidence: EVIDENCE_TEXT, problem: '时间对应的事情写错了' });
+
+  // 抓（线上真实出现）：把"ChatGPT出现"换成"这一切突然水到渠成"，而后一个分句本来就是这几个字，
+  // 结果成了"这一切突然水到渠成，这一切突然水到渠成"
+  it('替换文字的结尾和后文的开头是同一个分句：拒绝为 duplicates_context，文章不变', () => {
+    const markdown = '# 标题\n\n## 第一章\n\n直到2022年圣诞节前后ChatGPT出现，这一切突然水到渠成，证明了这条路线可行。';
+    const outcome = applyRevisions(markdown, [issue('直到2022年圣诞节前后ChatGPT出现', '直到2022年圣诞节前后，这一切突然水到渠成')], SOURCE);
+    expect(outcome.markdown).toBe(markdown);
+    expect(outcome.applied).toEqual([]);
+    expect(outcome.rejected.map((r) => r.reason)).toEqual(['duplicates_context']);
+  });
+
+  // 抓：只查了后文，没查前文
+  it('替换文字的开头和前文的结尾重复：同样拒绝', () => {
+    const markdown = '# 标题\n\n## 第一章\n\n这一切突然水到渠成，随后ChatGPT出现了。';
+    const outcome = applyRevisions(markdown, [issue('随后ChatGPT出现了。', '这一切突然水到渠成，是在2022年圣诞节前后。')], SOURCE);
+    expect(outcome.markdown).toBe(markdown);
+    expect(outcome.rejected.map((r) => r.reason)).toEqual(['duplicates_context']);
+  });
+
+  // 抓：校验过严，把只和上下文共用一两个字的正常修订也拒掉
+  it('只和上下文重合一两个字（"的""了"、一个词）：照常替换', () => {
+    const markdown = '# 标题\n\n## 第一章\n\n直到2022年圣诞节前后ChatGPT出现，这一切才水到渠成。';
+    const outcome = applyRevisions(markdown, [issue('直到2022年圣诞节前后ChatGPT出现', '直到2022年圣诞节前后，这一切')], SOURCE);
+    expect(outcome.applied).toHaveLength(1);
+    expect(outcome.markdown).toBe('# 标题\n\n## 第一章\n\n直到2022年圣诞节前后，这一切，这一切才水到渠成。');
+  });
+
+  // 抓：原文在这个位置本来就有同样的重复，修订没有让它变得更糟，却被拒绝
+  it('原文本来就重复、修订没有加重：不算这条修订的问题，照常替换', () => {
+    const markdown = '# 标题\n\n## 第一章\n\n在2021年这一切突然水到渠成，这一切突然水到渠成，证明了这条路线可行。';
+    const outcome = applyRevisions(markdown, [issue('在2021年这一切突然水到渠成', '在2022年这一切突然水到渠成')], SOURCE);
+    expect(outcome.applied).toHaveLength(1);
+  });
+
+  // 抓：英文按 4 个字符算重复，普通的冠词、短词被误判
+  it('英文只重合一个短词：照常替换；重合一整段：拒绝', () => {
+    const markdown = '# Title\n\n## One\n\nIt was 2021 when the model shipped, the whole thing suddenly worked for everyone.';
+    expect(applyRevisions(markdown, [issue('It was 2021 when the model shipped', 'It was 2022 when the model shipped')], SOURCE).applied).toHaveLength(1);
+    expect(applyRevisions(markdown, [issue('It was 2021 when the model shipped', 'In 2022 the whole thing suddenly worked')], SOURCE).rejected.map((r) => r.reason)).toEqual(['duplicates_context']);
+  });
+});

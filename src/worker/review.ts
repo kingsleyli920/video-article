@@ -136,7 +136,7 @@ export interface ReviewIssue {
   replacement: string;
 }
 
-export type RejectReason = 'malformed' | 'quote_not_found' | 'quote_not_unique' | 'evidence_not_in_transcript' | 'no_change' | 'structure' | 'too_long' | 'limit' | 'reverts_earlier' | 'overlaps_earlier';
+export type RejectReason = 'malformed' | 'quote_not_found' | 'quote_not_unique' | 'evidence_not_in_transcript' | 'no_change' | 'structure' | 'too_long' | 'limit' | 'reverts_earlier' | 'overlaps_earlier' | 'duplicates_context';
 
 export interface ReviewOutcome {
   markdown: string;
@@ -223,7 +223,32 @@ function checkAt(issue: ReviewIssue, markdown: string, first: number, haystack: 
   // 整行标题不能被删空；标题行内的文字可以改，但不能把 # 标记改掉（上一行已保证）
   if (replacement.trim() === '' && isWholeLine(markdown, first, quote.length)) return 'structure';
   if (replacement.length > Math.max(quote.length * 2, quote.length + 80)) return 'too_long';
+  if (duplicatesContext(markdown, first, quote, replacement)) return 'duplicates_context';
   return null;
+}
+
+const EDGE_PUNCTUATION = /^[\s，,。.；;：:、！!？?—–-]+|[\s，,。.；;：:、！!？?—–-]+$/g;
+
+/** a 的结尾和 b 的开头重合了多少个字符（都先去掉边上的标点和空白） */
+function seam(a: string, b: string): number {
+  const left = a.replace(EDGE_PUNCTUATION, '');
+  const right = b.replace(EDGE_PUNCTUATION, '');
+  for (let k = Math.min(left.length, right.length, 60); k > 0; k--) if (left.endsWith(right.slice(0, k))) return k;
+  return 0;
+}
+
+/**
+ * 替换文字是不是把紧挨着的上下文又写了一遍：它的结尾和后文的开头、或它的开头和前文的结尾重复了一段。
+ * 例：原文"…ChatGPT出现，这一切突然水到渠成，证明了…"，把"ChatGPT出现"换成"这一切突然水到渠成"，结果同一个分句连着出现两次。
+ * 原文在这个位置本来就有同样长的重复时不算（不是这条修订造成的）。重复至少 4 个汉字或 10 个其他字符才算，避免误伤"的""了"这类单字。
+ */
+function duplicatesContext(markdown: string, first: number, quote: string, replacement: string): boolean {
+  const before = markdown.slice(Math.max(0, first - 80), first);
+  const after = markdown.slice(first + quote.length, first + quote.length + 80);
+  const enough = (k: number, text: string) => k >= (/[\u4e00-\u9fff]/.test(text) ? 4 : 10);
+  const tail = seam(replacement, after);
+  const head = seam(before, replacement);
+  return (enough(tail, replacement) && tail > seam(quote, after)) || (enough(head, replacement) && head > seam(before, quote));
 }
 
 /**
@@ -319,6 +344,7 @@ const RETRY_NOTE: Record<string, string> = {
   too_long: '上一次的 replacement 比 quote 长出太多：只改必要的几个字',
   no_change: '上一次的 replacement 和 quote 完全相同：问题已经改正就选 covered，否则给出确有改动的修订',
   reverts_earlier: '上一次的修订把已经改掉的初稿写法又改了回来：必须保留已采用修订改对的内容',
+  duplicates_context: '上一次的 replacement 把紧挨着 quote 的上下文又写了一遍：quote 之外已经有的文字不要重复',
 };
 
 const RECONCILE_STATUS = ['covered', 'revise', 'unfounded'] as const;
