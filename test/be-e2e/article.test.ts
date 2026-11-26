@@ -32,7 +32,8 @@ describe('主模型繁忙或不响应时改用备用模型', () => {
     await stack.scenario({ streams: { 'mock-primary': { kind: 'busy' }, 'mock-fallback': FALLBACK_OK } });
     const gen = await generate(stack, { url: MOCK_URL });
 
-    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'done']);
+    // 写完之后是核对阶段（stage: reviewing），默认场景下核对没有问题、不发 revised
+    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'stage', 'done']);
     expect(eventOf(gen.events, 'meta')!.model).toBe('mock-primary');
     expect(deltaText(gen.events)).toBe(FALLBACK_MARKDOWN);
     expect(eventOf(gen.events, 'done')).toMatchObject({ chapters: [{ id: '1', title: '唯一一章：备用' }], numberWarnings: [], model: 'mock-fallback' });
@@ -60,7 +61,8 @@ describe('主模型繁忙或不响应时改用备用模型', () => {
     await stack.scenario({ streams: { 'mock-primary': { kind: 'hang' }, 'mock-fallback': FALLBACK_OK } });
     const gen = await generate(stack, { url: MOCK_URL });
 
-    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'done']);
+    // 写完之后是核对阶段（stage: reviewing），默认场景下核对没有问题、不发 revised
+    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'stage', 'done']);
     expect(deltaText(gen.events)).toBe(FALLBACK_MARKDOWN);
     expect(eventOf(gen.events, 'done')!.model).toBe('mock-fallback');
     expect(gen.elapsedMs).toBeGreaterThanOrEqual(8_950);

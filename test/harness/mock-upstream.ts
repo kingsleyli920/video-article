@@ -222,7 +222,8 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
         const behavior = scenario.reviews?.[model] ?? { kind: 'ok', issues: [] };
         if (behavior.kind !== 'ok') return summary(res, behavior);
         const user = String((body as { contents?: { parts?: { text?: string }[] }[] } | null)?.contents?.[0]?.parts?.[0]?.text ?? '');
-        const section = user.slice(user.lastIndexOf('<section>'));
+        // 用户消息末尾的"请核对 <section>，输出问题列表。"里也有 <section>，要找的是 "<section>\n" 开头的那一块
+        const section = user.slice(user.indexOf('<section>\n'), user.lastIndexOf('\n</section>'));
         return structured(res, { issues: behavior.issues.filter((i) => section.includes(i.quote)) }, behavior.delayMs);
       }
       if (purpose === 'requirements') {

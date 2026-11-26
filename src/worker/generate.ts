@@ -55,6 +55,12 @@ export async function handleGenerate(request: Request, env: Env, ctx: ExecutionC
 
 /** 模型首个 token 在线上可能要等几十秒；期间定时发 SSE 注释，让连接保持活跃（客户端按规范忽略注释）。 */
 const HEARTBEAT_INTERVAL_MS = 15_000;
+/**
+ * 收尾阶段（修订、核对）期间不再有 delta 写出，入站请求的中止信号在 wrangler dev 里也不会提前触发（见 event-stream.ts），
+ * 客户端断开只能靠写入失败发现。这期间每秒写一次心跳，断开后一两秒内就能取消核对请求并放弃保存，
+ * 而不是等核对结束（线上每章可能一两分钟）后照样保存。
+ */
+const FINALIZE_HEARTBEAT_MS = 1_000;
 
 /**
  * 客户端断开、输出流关闭或出错、写入受阻时 events.signal 中止：进行中的字幕请求和 Gemini 请求随之取消，
@@ -157,6 +163,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
 
     // 初稿已经流式发给页面。保存之前先核对：可计算的用户约束、逐章对照字幕（见 finalize.ts）
     const draft = markdown;
+    const stopFinalizeHeartbeat = events.heartbeat(FINALIZE_HEARTBEAT_MS);
     const final = await finalizeArticle(
       { draft, video: transcript.video, transcriptText, instructions: input.instructions, requirements },
       {
@@ -175,7 +182,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
         },
       },
       (stage) => events.send('stage', { stage }),
-    );
+    ).finally(stopFinalizeHeartbeat);
     markdown = final.markdown;
     const reviewedMs = since();
     const article = parseArticle(markdown);

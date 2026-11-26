@@ -38,9 +38,11 @@ describe('主流程：生成文章 → 5W1H', () => {
 
     expect(gen.status).toBe(200);
     expect(gen.contentType).toBe('text/event-stream; charset=utf-8');
-    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'done']);
+    // 文章写完之后多了核对阶段；默认场景下核对没有问题，不发 revised
+    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'stage', 'done']);
     expect(gen.events[0]!.data).toEqual({ stage: 'transcript' });
     expect(gen.events[2]!.data).toEqual({ stage: 'generating' });
+    expect(gen.events[6]!.data).toEqual({ stage: 'reviewing' });
 
     const meta = eventOf(gen.events, 'meta')!;
     expect(meta).toEqual({
@@ -71,23 +73,33 @@ describe('主流程：生成文章 → 5W1H', () => {
         firstTokenMs: expect.any(Number),
         firstParagraphMs: expect.any(Number),
         modelDoneMs: expect.any(Number),
+        reviewedMs: expect.any(Number),
         savedMs: expect.any(Number),
       },
       numberWarnings: [{ time: '34:25', fragment: 'of,200', written: ['1200'] }],
       model: 'mock-primary',
+      // 用户要求"写给投资人看，突出数字"里没有可计算的约束，checks 为空
+      review: { sections: 2, revisions: 0, rewritten: null, checks: [] },
     });
-    const { transcriptMs, firstTokenMs, firstParagraphMs, modelDoneMs, savedMs } = done.timing;
+    const { transcriptMs, firstTokenMs, firstParagraphMs, modelDoneMs, reviewedMs, savedMs } = done.timing;
     expect(transcriptMs).toBeLessThanOrEqual(firstTokenMs!);
     // 模拟上游第一块只有标题，第二块（间隔 50 毫秒）才有第一段可读正文：首个可读段落晚于首个文本，不能把标题算成可读
     expect(firstParagraphMs! - firstTokenMs!).toBeGreaterThanOrEqual(40);
     expect(firstParagraphMs!).toBeLessThanOrEqual(modelDoneMs);
-    expect(modelDoneMs).toBeLessThanOrEqual(savedMs);
+    expect(modelDoneMs).toBeLessThanOrEqual(reviewedMs!);
+    expect(reviewedMs!).toBeLessThanOrEqual(savedMs);
 
-    // 上游实际收到的：先播放器、再字幕、再一次主模型流式请求；请求里是整理后的字幕和去掉首尾空白的用户要求
+    // 上游实际收到的：先播放器、再字幕，然后同时发出约束提取和一次主模型流式请求（两者到达顺序不固定），
+    // 文章写完后每章一个核对请求；请求里是整理后的字幕和去掉首尾空白的用户要求
     const generationRequests = await stack.requests();
-    expect(generationRequests.map((r) => r.kind)).toEqual(['player', 'captions', 'stream']);
+    expect(generationRequests.slice(0, 2).map((r) => r.kind)).toEqual(['player', 'captions']);
+    expect(generationRequests.slice(2, 4).map((r) => r.kind).sort()).toEqual(['requirements', 'stream']);
+    expect(generationRequests.slice(4).map((r) => [r.kind, r.model])).toEqual([
+      ['review', 'mock-primary'],
+      ['review', 'mock-primary'],
+    ]);
     expect(generationRequests[0]!.videoId).toBe('mockvideo01');
-    const streamRequest = generationRequests[2]!;
+    const streamRequest = ofKind(generationRequests, 'stream')[0]!;
     expect(streamRequest.path).toBe('/gemini/mock-primary:streamGenerateContent?alt=sse');
     const articlePrompt = promptOf(streamRequest);
     expect(articlePrompt.user).toContain(`<transcript>\n${TRANSCRIPT_TEXT}\n</transcript>`);
