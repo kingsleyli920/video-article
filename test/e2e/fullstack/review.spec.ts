@@ -123,16 +123,12 @@ test('正文在 stage: reviewing 之前就在页面上逐步增长，核对中�
   // 7 段、每段间隔 300 毫秒、每 40 毫秒采一次：中间长度至少应有十几条，这里只要求 3 条，避免机器忙时偶发失败
   expect(growth.intermediateSamples).toBeGreaterThanOrEqual(3);
   expect(stagesSeen(list)).toEqual(['正在获取字幕', '正在生成文章', '正文已写完，正在对照字幕核对', expect.stringMatching(/^已完成/)]);
-  // 核对中 5W1H 一直不可点：所有完成之前的采样里，文章都还是 streaming
-  expect(list.filter((s) => s.t < reviewingAt + 1_000).every((s) => s.state === '' || s.state === 'streaming')).toBe(true);
+  // 核对中 5W1H 一直不可点：所有完成之前的采样里，文章都还没到 done（流式中是 streaming，核对中是 reviewing）
+  expect([...new Set(list.filter((s) => s.t < reviewingAt + 1_000).map((s) => s.state))].sort()).toEqual(['', 'reviewing', 'streaming']);
 });
 
 // 抓：页面最终显示的、服务端保存的、5W1H 用的不是同一个版本（页面还是初稿、或 5W1H 读到初稿）；核对记录没列出修订；5W1H 请求带了请求体
 test('对照字幕修订一处：初稿先流式显示 → 核对后正文换成最终版本并列出修订 → 5W1H 用的是修订后的句子', async ({ page }) => {
-  // 模拟上游的 reviews 场景按"请求里最后一个 <section>"截取章节，但核对提示词末尾的"请核对 <section>，输出问题列表。"也含这个标签，
-  // 截到的永远是这一句，issues 一条都不会返回（test/harness/mock-upstream.ts 的 review 分支）。那个文件由别人维护，这里不改；
-  // 本地把截取改成 lastIndexOf('<section>\n') 后这条用例通过。模拟上游修好后去掉这一行；修好之前可以设 MOCK_REVIEWS_FIXED=1 强制运行。
-  test.fixme(!process.env.MOCK_REVIEWS_FIXED, '模拟上游 reviews 场景截取 <section> 有误，返回不了修订');
   await setScenario({
     videos: { mockvideo01: { kind: 'ok', title: '芯片投资访谈', channel: '测试频道', description: '本期主持人 Alex Chen', cues: CHIP_CUES } },
     streams: { 'mock-primary': { kind: 'ok', texts: CHIP_DRAFT, intervalMs: 300 } },

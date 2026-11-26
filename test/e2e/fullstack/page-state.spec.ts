@@ -42,12 +42,17 @@ test('YouTube 拦截非示例视频：显示人机验证错误，不调用模型
 
   const status = page.locator('#status');
   await expect(status).toHaveAttribute('data-tone', 'error', { timeout: 15_000 });
-  expect(await statusMessage(page)).toBe("YouTube 拒绝了字幕请求，可能触发了人机验证（Sign in to confirm you're not a bot）");
+  expect(await statusMessage(page)).toBe('YouTube 拒绝了字幕请求，可能触发了人机验证（共试 3 次：人机验证、人机验证、人机验证）');
   await expect(status.locator('.status-detail')).toHaveCount(0);
   await expect(status.getByRole('button', { name: '重新生成' })).toBeVisible();
   await expect(page.locator('#article')).toBeEmpty();
   await expect.poll(() => controlsIdle(page)).toEqual(IDLE_CONTROLS);
 
   const upstream = await upstreamRequests();
-  expect(upstream.map((r) => [r.kind, r.videoId])).toEqual([['player', 'blockedvid1']]);
+  // 被拦后换客户端重试，一共 3 次播放器请求；都被拦，所以没有字幕请求，也没有调用模型
+  expect(upstream.map((r) => [r.kind, r.videoId])).toEqual([
+    ['player', 'blockedvid1'],
+    ['player', 'blockedvid1'],
+    ['player', 'blockedvid1'],
+  ]);
 });

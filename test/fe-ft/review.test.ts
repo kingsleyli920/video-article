@@ -116,8 +116,8 @@ describe('核对阶段的状态条', () => {
     await settle();
     expect(page.status).toEqual({ hidden: false, tone: 'busy', text: '正文已写完，正在对照字幕核对 · 已用时 0 秒', detail: '', hasRetry: false });
     expect(page.toggles.map((b) => [b.disabled, b.title])).toEqual([
-      [true, '全文生成并保存后可用'],
-      [true, '全文生成并保存后可用'],
+      [true, '全文核对并保存后可用'],
+      [true, '全文核对并保存后可用'],
     ]);
     expect(page.stop.hidden).toBe(false);
 
@@ -257,7 +257,7 @@ describe('revised：最终全文替换初稿', () => {
       lines: ['初稿没有满足生成要求（全文 1,432 字，要求不超过 1,200 字），已按要求修订，全文从 1,432 字改为 1,018 字。', '生成要求核对：全文 1,018 字，上限 1,200 字。'],
       details: null,
     });
-    expect(page.status.text).toBe('已完成，共 2 章、1018 字，用时 0 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。');
+    expect(page.status.text).toBe('已完成，共 2 章、1,018 字，用时 0 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。');
     expect(chapterBody('1')).toBe('安德森: 我 2003 年搬到硅谷，那家基金在之后十年里投资了三家芯片公司。');
   });
 
@@ -349,10 +349,10 @@ describe('核对阶段停止', () => {
     await settle();
 
     expect(signal.aborted).toBe(true);
-    expect(page.status).toEqual({ hidden: false, tone: 'idle', text: '已停止生成，已生成的内容保留在下方。', detail: '', hasRetry: true });
+    expect(page.status).toEqual({ hidden: false, tone: 'idle', text: '已停止，下方是没有核对完的初稿。', detail: '', hasRetry: true });
     expect(page.article.dataset.state).toBe('failed');
     expect(chapterBody('1')).toBe('安德森: 2003 年那家基金投资了三家芯片公司。');
-    expect(page.incompleteNote).toBe('内容不完整：已停止生成');
+    expect(page.incompleteNote).toBe('未通过核对：已停止，这篇文章没有核对完，也没有保存');
     expect(page.toggles.map((b) => b.disabled)).toEqual([true, true]);
     expect(reviewBox()).toBeNull();
     expect(page.controlsDisabled).toEqual([false, false, false, false]);

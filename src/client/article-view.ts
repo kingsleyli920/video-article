@@ -3,12 +3,14 @@ import { marked } from 'marked';
 import { parseArticle } from '../shared/article';
 import type { ArticleReview, NumberWarning, Revision, RevisionType } from '../shared/types';
 
-export type ArticleState = 'streaming' | 'done' | 'failed';
+/** reviewing：正文已经写完，正在核对；和 streaming 一样 5W1H 还不可用，但不再显示"还在写"的光标 */
+export type ArticleState = 'streaming' | 'reviewing' | 'done' | 'failed';
 
 const RENDER_INTERVAL_MS = 80;
 
 const BUTTON_HINT: Record<ArticleState, string> = {
   streaming: '全文生成并保存后可用',
+  reviewing: '全文核对并保存后可用',
   done: '查看本章的 5W1H 总结',
   failed: '生成未完成，章节总结不可用',
 };
@@ -63,6 +65,8 @@ export interface ArticleView {
   reset(): void;
   /** 生成中：合并 80ms 内的多次更新再重绘 */
   update(markdown: string): void;
+  /** 正文已经写完、进入核对：去掉光标重绘；之后的 update（核对后的最终全文）也不带光标 */
+  settle(): void;
   /** notices：显示在标题下方的提示（如疑似补全了残缺数字），不改正文。checked：核对记录，有内容时显示在标题下方 */
   finish(markdown: string, notices?: string[], checked?: ReviewRecord): void;
   /** label：文章下方说明的前缀，默认"内容不完整" */
@@ -102,7 +106,9 @@ export function buildReviewRecord({ review, revisions }: ReviewRecord): HTMLElem
       change.className = 'revision-change';
       const tag = textElement('span', REVISION_LABEL[revision.type]);
       tag.className = 'revision-type';
-      change.append(tag, textElement('del', revision.before), ' → ', textElement('ins', revision.after || '（删去）'));
+      // 原句和修订是 Markdown 片段：去掉加粗标记再显示，读起来和正文里一样
+      const plain = (text: string) => text.replace(/\*\*/g, '');
+      change.append(tag, textElement('del', plain(revision.before)), ' → ', textElement('ins', plain(revision.after) || '（删去）'));
       const reason = textElement('p', revision.reason);
       reason.className = 'revision-reason';
       const evidence = textElement('p', `字幕原文：${revision.evidence}`);
@@ -119,6 +125,7 @@ export function buildReviewRecord({ review, revisions }: ReviewRecord): HTMLElem
 export function createArticleView(root: HTMLElement): ArticleView {
   let latest = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let progress: 'streaming' | 'reviewing' = 'streaming';
 
   const paint = (state: ArticleState, note?: string, notices: string[] = [], checked?: ReviewRecord) => {
     clearTimeout(timer);
@@ -153,12 +160,17 @@ export function createArticleView(root: HTMLElement): ArticleView {
       clearTimeout(timer);
       timer = undefined;
       latest = '';
+      progress = 'streaming';
       root.replaceChildren();
       delete root.dataset.state;
     },
     update(markdown) {
       latest = markdown;
-      timer ??= setTimeout(() => paint('streaming'), RENDER_INTERVAL_MS);
+      timer ??= setTimeout(() => paint(progress), RENDER_INTERVAL_MS);
+    },
+    settle() {
+      progress = 'reviewing';
+      if (latest) paint('reviewing');
     },
     finish(markdown, notices = [], checked) {
       latest = markdown;

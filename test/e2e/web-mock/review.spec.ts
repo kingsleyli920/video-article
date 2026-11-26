@@ -65,7 +65,7 @@ test('revised：初稿被换成最终全文，核对记录点开能看到原句�
 
   await gen.push(['done', done({ review: review({ revisions: 2 }) })]);
   await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok');
-  expect(await statusMain(page)).toBe('已完成，共 2 章、1234 字，用时 0 秒。已对照字幕核对，修订 2 处。点击章节标题旁的 5W1H 查看总结。');
+  expect(await statusMain(page)).toBe('已完成，共 2 章、1,234 字，用时 0 秒。已对照字幕核对，修订 2 处。点击章节标题旁的 5W1H 查看总结。');
   await expect(page.locator('#article section.chapter').first()).not.toContainText('2003 年那家基金投资了');
 
   const record = page.locator('#article > h1 + .article-review');
@@ -120,7 +120,7 @@ test('按要求修订：经历"正在修订"，完成后核对记录写明修订
     '生成要求核对：全文 1,018 字，上限 1,200 字。',
   ]);
   await expect(record.locator('details')).toHaveCount(0);
-  expect(await statusMain(page)).toBe('已完成，共 2 章、1018 字，用时 0 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。');
+  expect(await statusMain(page)).toBe('已完成，共 2 章、1,018 字，用时 0 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。');
   // 完成后显示的是修订稿，不是流式初稿
   await expect(chapterBodies(page).nth(1)).toContainText('开源模型的成本大概每年下降一半，竞争会集中在产品和分发上。');
   await expect(page.locator('#article section.chapter')).toHaveText([/我 2003 年搬到硅谷/, /大概每年下降一半/]);
@@ -171,12 +171,12 @@ test('核对中点"停止生成"：中止请求，保留初稿，状态条"已�
   await page.getByRole('button', { name: '停止生成' }).click();
   const status = page.locator('#status');
   await expect(status).toHaveAttribute('data-tone', 'idle');
-  expect(await statusMain(page)).toBe('已停止生成，已生成的内容保留在下方。');
+  expect(await statusMain(page)).toBe('已停止，下方是没有核对完的初稿。');
   expect(await gen.aborted()).toBe(true);
   await expect(status.getByRole('button', { name: '重新生成' })).toBeVisible();
   await expect(page.locator('#article')).toHaveAttribute('data-state', 'failed');
   await expect(chapterBodies(page).first()).toContainText('2003 年那家基金投资了三家芯片公司。');
-  await expect(page.locator('.incomplete-note')).toHaveText('内容不完整：已停止生成');
+  await expect(page.locator('.incomplete-note')).toHaveText('未通过核对：已停止，这篇文章没有核对完，也没有保存');
   for (const toggle of await page.locator('.summary-toggle').all()) await expect(toggle).toBeDisabled();
   await expect(page.getByRole('button', { name: '生成文章' })).toBeEnabled();
 

@@ -85,6 +85,7 @@ async function generate(input: GenerationInput): Promise<void> {
   const ui: GenerationUi = {
     stage(next) {
       stage = next;
+      if (next === 'revising' || next === 'reviewing') view.settle();
       renderProgress();
     },
     meta(meta) {
@@ -102,13 +103,15 @@ async function generate(input: GenerationInput): Promise<void> {
       const warningText = warnings.length ? `文中有 ${warnings.length} 处疑似补全了残缺数字，见标题下方的提示。` : '';
       const modelNote = result.model && result.model !== requestedModel ? `主模型繁忙，本次由 ${result.model} 生成` : '';
       const reviewText = result.review ? (result.review.revisions ? `已对照字幕核对，修订 ${result.review.revisions} 处。` : '已对照字幕核对。') : '';
-      showStatus('ok', `已完成，共 ${result.chapters.length} 章、${result.chars} 字，用时 ${seconds()} 秒。${reviewText}${warningText}点击章节标题旁的 5W1H 查看总结。`, modelNote);
+      showStatus('ok', `已完成，共 ${result.chapters.length} 章、${result.chars.toLocaleString('en-US')} 字，用时 ${seconds()} 秒。${reviewText}${warningText}点击章节标题旁的 5W1H 查看总结。`, modelNote);
     },
     fail(error, markdown) {
       clearInterval(ticker);
       const cancelled = error.code === 'cancelled';
-      view.fail(markdown, error.message, REVIEW_ERRORS.has(error.code) ? '未通过核对' : '内容不完整');
-      const stoppedText = markdown ? '已停止生成，已生成的内容保留在下方。' : '已停止生成。';
+      // 核对阶段点了停止：正文其实已经写完，缺的是核对和保存，不说成"内容不完整"
+      const stoppedInReview = cancelled && (stage === 'revising' || stage === 'reviewing');
+      view.fail(markdown, stoppedInReview ? '已停止，这篇文章没有核对完，也没有保存' : error.message, REVIEW_ERRORS.has(error.code) || stoppedInReview ? '未通过核对' : '内容不完整');
+      const stoppedText = stoppedInReview ? '已停止，下方是没有核对完的初稿。' : markdown ? '已停止生成，已生成的内容保留在下方。' : '已停止生成。';
       showStatus(cancelled ? 'idle' : 'error', cancelled ? stoppedText : error.message, '', true);
     },
   };

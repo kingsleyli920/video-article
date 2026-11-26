@@ -81,9 +81,9 @@ describe('buildReviewRecord 的组合', () => {
           },
           {
             type: '发言归属',
-            before: '**安德森:** 软件正在吞噬世界。',
-            after: '**主持人:** 你以前说过，软件正在吞噬世界。',
-            change: '发言归属**安德森:** 软件正在吞噬世界。 → **主持人:** 你以前说过，软件正在吞噬世界。',
+            before: '安德森: 软件正在吞噬世界。',
+            after: '主持人: 你以前说过，软件正在吞噬世界。',
+            change: '发言归属安德森: 软件正在吞噬世界。 → 主持人: 你以前说过，软件正在吞噬世界。',
             reason: '这句是主持人在提问时引用嘉宾以前的话，不是嘉宾这次的回答',
             evidence: "字幕原文：You famously said software is eating the world. Do you still believe that?",
           },
@@ -145,8 +145,8 @@ describe('修订条目的内容', () => {
     expect(item).toEqual({
       type: '没有依据',
       before: '<img src=x onerror="__reviewXss()">研发 &amp; 销售',
-      after: '<b>研发</b> & **销售**',
-      change: '没有依据<img src=x onerror="__reviewXss()">研发 &amp; 销售 → <b>研发</b> & **销售**',
+      after: '<b>研发</b> & 销售',
+      change: '没有依据<img src=x onerror="__reviewXss()">研发 &amp; 销售 → <b>研发</b> & 销售',
       reason: '字幕里没有 <script>alert(1)</script> 这家公司',
       evidence: '字幕原文：R&amp;D <b>and</b> sales **grew** <img src=y onerror="__reviewXss()">',
     });
