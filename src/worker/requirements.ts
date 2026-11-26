@@ -204,7 +204,8 @@ export function numbersIn(text: string): number[] {
     const unit = m[2] ? (/[kK千]/.test(m[2]) ? 1000 : 10000) : 1;
     if (Number.isFinite(base)) found.push(Math.round(base * unit));
   }
-  for (const m of text.matchAll(/[零〇一二两三四五六七八九十百千万]+/g)) {
+  // 紧跟在阿拉伯数字后面的"千""万"是上面那条规则的单位（"2千""3万"），不能再单独读成 1000、10000
+  for (const m of text.matchAll(/(?<![\d.]\s*)[零〇一二两三四五六七八九十百千万]+/g)) {
     const value = parseChineseNumber(m[0]);
     if (value !== null) found.push(value);
   }
