@@ -324,7 +324,7 @@ describe('重叠修订的合并处理（审查方反例）', () => {
     expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'stage', 'error']);
     expect(gen.events.at(-1)!.data).toEqual({
       code: 'review_failed',
-      message: '内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：有 1 条建议指出的问题仍未落实（quote_not_found））',
+      message: '内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：有 1 条建议指出的问题仍未落实（修订定位不到原句））',
       partial: true,
     });
     const reconciles = ofKind(await stack.requests(), 'reconcile');

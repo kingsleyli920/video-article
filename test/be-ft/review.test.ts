@@ -426,7 +426,7 @@ describe('对照字幕核对：重叠修订的合并处理', () => {
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
     expect(events.at(-1)).toEqual({
       event: 'error',
-      data: { code: 'review_failed', message: '内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：有 1 条建议指出的问题仍未落实（quote_not_found））', partial: true },
+      data: { code: 'review_failed', message: '内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：有 1 条建议指出的问题仍未落实（修订定位不到原句））', partial: true },
     });
     expect(eventOf(events, 'done')).toBeUndefined();
     expect(eventOf(events, 'revised')).toBeUndefined();

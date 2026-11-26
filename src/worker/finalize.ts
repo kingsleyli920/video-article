@@ -20,6 +20,18 @@ export interface FinalizeModel {
 /** 合并处理最多做这么多轮：第一轮给出的修订落实不了时，带着原因再处理一轮 */
 export const RECONCILE_ROUNDS = 2;
 
+/** 合并处理给出的修订落实不了的原因，写进给用户看的错误说明 */
+const FAILURE_LABEL: Record<string, string> = {
+  quote_not_found: '修订定位不到原句',
+  quote_not_unique: '修订定位不唯一',
+  evidence_not_in_transcript: '修订的依据对不上字幕',
+  structure: '修订会破坏文章结构',
+  too_long: '修订改动过大',
+  no_change: '修订没有实际改动',
+  reverts_earlier: '修订把已改正的内容改了回去',
+  limit: '修订数量超过上限',
+};
+
 export interface FinalizeInput {
   draft: string;
   video: VideoMeta;
@@ -197,7 +209,7 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
   // 仍有落实不了的，说明有一个已经指出的问题没有解决，这次核对不能算完成。
   for (let round = 1; pending.length > 0; round++) {
     if (round > RECONCILE_ROUNDS) {
-      throw new AppError('review_failed', `重叠修订建议的合并处理没有完成：有 ${pending.length} 条建议指出的问题仍未落实（${[...new Set(pending.map((p) => p.failure))].join('、')}）`);
+      throw new AppError('review_failed', `重叠修订建议的合并处理没有完成：有 ${pending.length} 条建议指出的问题仍未落实（${[...new Set(pending.map((p) => FAILURE_LABEL[p.failure ?? ''] ?? '修订没有通过校验'))].join('、')}）`);
     }
     const batch = pending;
     pending = [];

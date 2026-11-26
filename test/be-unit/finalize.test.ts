@@ -538,7 +538,7 @@ describe('finalizeArticle：重叠修订的合并处理', () => {
     const err = await rejection(finalizeArticle(pilotInput(), model, stages().onStage).then(save));
     expect({ code: err.code, message: err.message }).toEqual({
       code: 'review_failed',
-      message: `内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：有 1 条建议指出的问题仍未落实（${reason}））`,
+      message: `内容核对没有完成，这次生成没有保存（重叠修订建议的合并处理没有完成：有 1 条建议指出的问题仍未落实（${{ quote_not_found: '修订定位不到原句', quote_not_unique: '修订定位不唯一', evidence_not_in_transcript: '修订的依据对不上字幕', reverts_earlier: '修订把已改正的内容改了回去' }[reason]}））`,
     });
     expect(reconcilePrompts).toHaveLength(2);
     expect(save).not.toHaveBeenCalled();
