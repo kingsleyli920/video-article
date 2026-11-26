@@ -22,7 +22,20 @@ export interface UpstreamOptions {
   busyModels?: string[];
   /** 这些模型的 Gemini 请求一律返回 402（预付额度用完，2026-11-25 实际遇到的响应） */
   billingModels?: string[];
+  /**
+   * 按用途和模型单独指定 Gemini 的响应（比如只让核对请求 503、402 或一直不返回），优先于上面所有选项；
+   * 返回 undefined 时按其他选项处理
+   */
+  geminiOverride?: (request: { purpose: GeminiPurpose; model: string; body: string; signal: AbortSignal | null }) => Response | Promise<Response> | undefined;
 }
+
+/** Gemini 的 503 响应（模型繁忙） */
+export const busyResponse = () => Response.json({ error: { code: 503, message: 'The model is overloaded.', status: 'UNAVAILABLE' } }, { status: 503 });
+/** Gemini 的 402 响应（预付额度用完） */
+export const billingResponse = () =>
+  Response.json({ error: { code: 402, message: 'Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.', status: 'RESOURCE_EXHAUSTED' } }, { status: 402 });
+/** 一直不返回，和真实 fetch 一样在中止时失败 */
+export const hangingResponse = (signal: AbortSignal | null) => new Promise<Response>((_, reject) => signal?.addEventListener('abort', () => reject(signal.reason)));
 
 export interface UpstreamCall {
   url: string;
@@ -45,12 +58,13 @@ export function mockUpstream(options: UpstreamOptions) {
       return typeof player === 'number' ? new Response('', { status: player }) : Response.json(player);
     }
     if (url.startsWith('https://www.youtube.com/api/timedtext')) return new Response(options.captions ?? srv1([[0, 'live caption text']]));
-    if (options.billingModels?.some((model) => url.includes(`/models/${model}:`))) {
-      return Response.json({ error: { code: 402, message: 'Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.', status: 'RESOURCE_EXHAUSTED' } }, { status: 402 });
+    if (purpose && options.geminiOverride) {
+      const model = url.split('/models/')[1]!.split(':')[0]!;
+      const override = options.geminiOverride({ purpose, model, body, signal: init?.signal ?? null });
+      if (override !== undefined) return override;
     }
-    if (options.busyModels?.some((model) => url.includes(`/models/${model}:`))) {
-      return Response.json({ error: { code: 503, message: 'The model is overloaded.', status: 'UNAVAILABLE' } }, { status: 503 });
-    }
+    if (options.billingModels?.some((model) => url.includes(`/models/${model}:`))) return billingResponse();
+    if (options.busyModels?.some((model) => url.includes(`/models/${model}:`))) return busyResponse();
     const streamBody = purpose === 'rewrite' ? options.rewriteStream : purpose === 'article' ? options.geminiStream : undefined;
     if (streamBody !== undefined) return new Response(chunkedBody(streamBody), { headers: { 'content-type': 'text/event-stream' } });
     if (purpose === 'review') {

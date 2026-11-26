@@ -18,7 +18,9 @@ describe('POST /api/generations', () => {
     const { status, events } = await generate({ url: url(OTHER_VIDEO_ID), instructions: '写给投资人' });
 
     expect(status).toBe(200);
-    expect(events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'done']);
+    // 文章写完之后、done 之前多了核对阶段（stage: reviewing）；初稿没有问题时不发 revised
+    expect(events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'stage', 'done']);
+    expect(events.filter((e) => e.event === 'stage').map((e) => e.data)).toEqual([{ stage: 'transcript' }, { stage: 'generating' }, { stage: 'reviewing' }]);
     const meta = eventOf(events, 'meta')!;
     // 抓：等待时没有字幕来源信息，或者把整篇字幕发给页面
     expect(meta.transcript).toEqual({
@@ -46,8 +48,8 @@ describe('POST /api/generations', () => {
     // 预览只在 meta 里发给页面，不存进上下文
     expect(saved!.transcript).not.toHaveProperty('preview');
 
-    // 用户要求和字幕都进了 Gemini 请求
-    const prompt = upstream.gemini()[0]!.body;
+    // 用户要求和字幕都进了写文章的 Gemini 请求（有用户要求时还会有一次约束提取请求，先于写文章发出）
+    const prompt = upstream.gemini('article')[0]!.body;
     expect(prompt).toContain('写给投资人');
     expect(prompt).toContain('live caption text');
   });
@@ -109,7 +111,7 @@ describe('POST /api/generations', () => {
     expect(done.numberWarnings).toEqual([{ time: '34:25', fragment: 'of,200', written: ['1200'] }]);
 
     const masked = "[00:00] intro\n\n[34:25] >> we're tracking on the order of〔字幕此处数字不清，无法确定具体数量〕 bills";
-    const articleRequest = upstream.gemini()[0]!.body;
+    const articleRequest = upstream.gemini('article')[0]!.body;
     expect(JSON.parse(articleRequest).contents[0].parts[0].text).toContain(`<transcript>\n${masked}\n</transcript>`);
     expect(articleRequest).not.toContain(',200');
 
@@ -122,7 +124,9 @@ describe('POST /api/generations', () => {
 
     const res = await exports.default.fetch(`https://app.test/api/generations/${generationId}/chapters/1/summary`, { method: 'POST' });
     expect(res.status).toBe(200);
-    const summaryRequest = upstream.gemini()[1]!.body;
+    // 只看 5W1H 请求：核对请求里也带着同一份遮蔽后的字幕，按位置取会取到核对请求
+    expect(upstream.gemini('summary')).toHaveLength(1);
+    const summaryRequest = upstream.gemini('summary')[0]!.body;
     expect(JSON.parse(summaryRequest).contents[0].parts[0].text).toContain(`<transcript>\n${masked}\n</transcript>`);
     expect(summaryRequest).not.toContain(',200');
   });
@@ -131,13 +135,14 @@ describe('POST /api/generations', () => {
   it('主模型开始输出前持续繁忙（503 重试后仍失败）时整篇改用备用模型，done 和保存的上下文记录实际模型', async () => {
     const upstream = mockUpstream({ busyModels: ['test-model'], geminiStream: geminiSse(ARTICLE_TEXTS) });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
-    expect(upstream.gemini().map((c) => c.url.split('/models/')[1]!.split(':')[0])).toEqual(['test-model', 'test-model', 'test-fallback']);
+    // 只看写文章的请求（核对请求同样会先 503 再换备用，那是另一回事）
+    expect(upstream.gemini('article').map((c) => c.url.split('/models/')[1]!.split(':')[0])).toEqual(['test-model', 'test-model', 'test-fallback']);
     expect(eventOf(events, 'meta')!.model).toBe('test-model');
     expect(eventOf(events, 'done')!.model).toBe('test-fallback');
     expect(events.filter((e) => e.event === 'delta').map((e) => (e.data as { text: string }).text).join('')).toBe(ARTICLE_MARKDOWN);
     expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.model).toBe('test-fallback');
     // 主模型用 high；备用模型用它自己经过验证的思考档 low，不沿用主模型的 high
-    expect(upstream.gemini().map((c) => JSON.parse(c.body).generationConfig.thinkingConfig)).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'high' }, { thinkingLevel: 'low' }]);
+    expect(upstream.gemini('article').map((c) => JSON.parse(c.body).generationConfig.thinkingConfig)).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'high' }, { thinkingLevel: 'low' }]);
   });
 
   // 抓：备用模型没有配置思考档时，请求里又带上了主模型的 high（实际请求和日志里记的 null 不一致）
@@ -156,7 +161,7 @@ describe('POST /api/generations', () => {
     await Promise.all(pending);
 
     expect(events.at(-1)).toMatchObject({ event: 'done', data: { model: 'test-fallback' } });
-    const requests = upstream.gemini().map((c) => ({ model: c.url.split('/models/')[1]!.split(':')[0], thinkingConfig: JSON.parse(c.body).generationConfig.thinkingConfig }));
+    const requests = upstream.gemini('article').map((c) => ({ model: c.url.split('/models/')[1]!.split(':')[0], thinkingConfig: JSON.parse(c.body).generationConfig.thinkingConfig }));
     expect(requests).toEqual([
       { model: 'test-model', thinkingConfig: { thinkingLevel: 'high' } },
       { model: 'test-model', thinkingConfig: { thinkingLevel: 'high' } },
@@ -192,7 +197,7 @@ describe('POST /api/generations', () => {
       kind: 'asr',
       liveError: 'YouTube 拒绝了字幕请求，可能触发了人机验证（HTTP 429）',
     });
-    expect(upstream.gemini()[0]!.body).toContain('this new wave of AI companies');
+    expect(upstream.gemini('article')[0]!.body).toContain('this new wave of AI companies');
     expect(eventOf(events, 'done')).toBeDefined();
   });
 
@@ -306,7 +311,8 @@ describe('POST /api/generations', () => {
     if (allowed) {
       expect(eventOf(events, 'meta')!.transcript.chars).toBe(L + delta);
       expect(eventOf(events, 'done')).toBeDefined();
-      expect(upstream.gemini()).toHaveLength(1);
+      // 写文章只请求一次（之后每章还有一个核对请求）
+      expect(upstream.gemini('article')).toHaveLength(1);
     } else {
       expect(eventOf(events, 'meta')).toBeUndefined();
       expect(eventOf(events, 'error')).toEqual({ code: 'transcript_too_long', message: '字幕过长，超过支持的上限（300001 字符，上限 300000）', partial: false });
