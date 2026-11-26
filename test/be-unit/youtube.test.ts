@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchTranscript, formatTranscript, parseSrv1, pickTrack, prepareTranscript, type CaptionTrack } from '../../src/worker/youtube';
+import { fetchTranscript, formatTranscript, parseSrv1, pickTrack, prepareTranscript, TranscriptError, type CaptionTrack } from '../../src/worker/youtube';
 import { playerResponse, srv1 } from '../fixtures/upstream';
 
 afterEach(() => vi.restoreAllMocks());
@@ -32,6 +32,9 @@ describe('fetchTranscript', () => {
       trackName: 'English (auto-generated)',
       trackVssId: 'a.en',
     });
+    // 抓：第一次就成功时多发请求，或者成功时没有记下用的是哪个客户端
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(transcript.attempts).toEqual([{ client: 'ANDROID 21.26.364', ok: true, ms: expect.any(Number) }]);
     expect(transcript.cues).toEqual([
       { start: 160, text: "hello 'world'" },
       { start: 1900, text: 'second line' },
@@ -60,9 +63,13 @@ describe('fetchTranscript', () => {
     expect(String(fetchSpy.mock.calls[1]![0])).toBe('https://www.youtube.com/api/timedtext?v=x&lang=en&fmt=srv1');
   });
 
+  // 抓：三种客户端都被人机验证拦下时被当成"视频不存在"，或者说明里看不出试了几次
   it('LOGIN_REQUIRED 且原因是 bot 验证时报 youtube_blocked', async () => {
     mockYouTube(playerResponse({ status: 'LOGIN_REQUIRED', reason: "Sign in to confirm you're not a bot" }), '');
-    await expect(fetchTranscript('xRh2sVcNXQ8')).rejects.toMatchObject({ code: 'youtube_blocked' });
+    await expect(fetchTranscript('xRh2sVcNXQ8')).rejects.toMatchObject({
+      code: 'youtube_blocked',
+      message: 'YouTube 拒绝了字幕请求，可能触发了人机验证（共试 3 次：人机验证、人机验证、人机验证）',
+    });
   });
 
   it('视频不可播放时报 video_unavailable 并带上 YouTube 给的原因', async () => {
@@ -76,12 +83,215 @@ describe('fetchTranscript', () => {
     await expect(fetchTranscript('xRh2sVcNXQ8')).rejects.toMatchObject({ code: 'no_captions' });
     vi.restoreAllMocks();
     mockYouTube(playerResponse(), '');
-    await expect(fetchTranscript('xRh2sVcNXQ8')).rejects.toMatchObject({ code: 'no_captions', message: '这个视频没有可用的字幕（字幕内容为空）' });
+    await expect(fetchTranscript('xRh2sVcNXQ8')).rejects.toMatchObject({ code: 'no_captions', message: '这个视频没有可用的字幕（共试 3 次：字幕为空、字幕为空、字幕为空）' });
   });
 
-  it('YouTube 返回 429 时报 youtube_blocked', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 429 }));
-    await expect(fetchTranscript('xRh2sVcNXQ8')).rejects.toMatchObject({ code: 'youtube_blocked' });
+  // 抓：429 被当成一般上游错误，或者重试时复用了已经读过的同一个 Response
+  it('YouTube 一直返回 429 时报 youtube_blocked', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('', { status: 429 }));
+    await expect(fetchTranscript('xRh2sVcNXQ8')).rejects.toMatchObject({ code: 'youtube_blocked', message: 'YouTube 拒绝了字幕请求，可能触发了人机验证（共试 3 次：HTTP 429、HTTP 429、HTTP 429）' });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+});
+
+const PLAYER_URL = 'https://www.youtube.com/youtubei/v1/player';
+const ANDROID_UA = 'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip';
+const IOS_UA = 'com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)';
+const OLD_ANDROID_UA = 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip';
+const BOT = playerResponse({ status: 'LOGIN_REQUIRED', reason: "Sign in to confirm you're not a bot" });
+
+type Reply = object | number | 'network' | 'hang';
+
+/** 第 N 次播放器请求按 players[N] 回应，第 N 次字幕请求按 captions[N]（用完后重复最后一个）。数字是 HTTP 状态 */
+function mockAttempts(players: Reply[], captions: (string | number)[] = [srv1([[0, 'hello']])]) {
+  let p = 0;
+  let c = 0;
+  const reply = (r: Reply | string, init?: RequestInit): Promise<Response> => {
+    if (r === 'network') return Promise.reject(new TypeError('fetch failed'));
+    if (r === 'hang') return new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)));
+    if (typeof r === 'number') return Promise.resolve(new Response('', { status: r }));
+    return Promise.resolve(typeof r === 'string' ? new Response(r) : Response.json(r));
+  };
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.startsWith(PLAYER_URL)) {
+      const r = players[p++];
+      if (r === undefined) throw new Error(`多发了第 ${p} 次播放器请求`);
+      return reply(r, init);
+    }
+    if (url.startsWith('https://www.youtube.com/api/timedtext')) return reply(captions[Math.min(c++, captions.length - 1)]!, init);
+    throw new Error(`意外请求 ${url}`);
+  });
+}
+
+type FetchSpy = ReturnType<typeof mockAttempts>;
+const playerCalls = (spy: FetchSpy) => spy.mock.calls.filter(([u]) => String(u).startsWith(PLAYER_URL));
+const captionCalls = (spy: FetchSpy) => spy.mock.calls.filter(([u]) => !String(u).startsWith(PLAYER_URL));
+const headersOf = (call: FetchSpy['mock']['calls'][number]) => call[1]!.headers as Record<string, string>;
+/** 一次播放器请求用的客户端：[clientName, clientVersion, UA, X-YouTube-Client-Name] */
+const clientOf = (call: FetchSpy['mock']['calls'][number]) => {
+  const client = JSON.parse(String(call[1]!.body)).context.client;
+  return [client.clientName, client.clientVersion, headersOf(call)['user-agent'], headersOf(call)['x-youtube-client-name']];
+};
+
+describe('fetchTranscript 被拦截时换客户端重试', () => {
+  // 抓：被 403 拦一次就失败（线上普通视频的核心缺口）；重试时还用同一个客户端；403 被归成笼统的 youtube_error
+  it('第一次播放器 403、第二次换 IOS 客户端成功', async () => {
+    const spy = mockAttempts([403, playerResponse()]);
+    const transcript = await fetchTranscript('dQw4w9WgXcQ');
+    expect(playerCalls(spy).map(clientOf)).toEqual([
+      ['ANDROID', '21.26.364', ANDROID_UA, '3'],
+      ['IOS', '21.26.4', IOS_UA, '5'],
+    ]);
+    expect(headersOf(playerCalls(spy)[1]!)['x-youtube-client-version']).toBe('21.26.4');
+    expect(JSON.parse(String(playerCalls(spy)[1]![1]!.body)).context.client).toEqual({
+      clientName: 'IOS',
+      clientVersion: '21.26.4',
+      deviceMake: 'Apple',
+      deviceModel: 'iPhone16,2',
+      osName: 'iPhone',
+      osVersion: '18.3.2.22D82',
+      hl: 'en',
+      gl: 'US',
+    });
+    // 抓：IOS 客户端给的字幕地址仍用 ANDROID 的 UA 去拉
+    expect(captionCalls(spy).map((call) => headersOf(call)['user-agent'])).toEqual([IOS_UA]);
+    expect(transcript.cues).toEqual([{ start: 0, text: 'hello' }]);
+    expect(transcript.attempts).toEqual([
+      { client: 'ANDROID 21.26.364', ok: false, step: 'player', code: 'youtube_blocked', detail: 'HTTP 403', ms: expect.any(Number) },
+      { client: 'IOS 21.26.4', ok: true, ms: expect.any(Number) },
+    ]);
+  });
+
+  // 抓：200 + LOGIN_REQUIRED（bot）不触发重试
+  it('第一次 LOGIN_REQUIRED（bot）、第二次成功', async () => {
+    const spy = mockAttempts([BOT, playerResponse()]);
+    const transcript = await fetchTranscript('dQw4w9WgXcQ');
+    expect(playerCalls(spy)).toHaveLength(2);
+    expect(transcript.attempts.map((a) => [a.client, a.ok, a.code, a.detail])).toEqual([
+      ['ANDROID 21.26.364', false, 'youtube_blocked', "Sign in to confirm you're not a bot"],
+      ['IOS 21.26.4', true, undefined, undefined],
+    ]);
+  });
+
+  // 抓：一直重试不停；试满 3 次后报错码不对；说明里看不出试了几次、各是什么结果；日志里没有每次的记录
+  it('三种客户端都被拦：报 youtube_blocked，只请求 3 次，说明列出每次的结果', async () => {
+    const spy = mockAttempts([403, BOT, 429]);
+    const err = await fetchTranscript('dQw4w9WgXcQ').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TranscriptError);
+    expect(err).toMatchObject({ code: 'youtube_blocked', message: 'YouTube 拒绝了字幕请求，可能触发了人机验证（共试 3 次：HTTP 403、人机验证、HTTP 429）' });
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(playerCalls(spy).map(clientOf)).toEqual([
+      ['ANDROID', '21.26.364', ANDROID_UA, '3'],
+      ['IOS', '21.26.4', IOS_UA, '5'],
+      ['ANDROID', '20.10.38', OLD_ANDROID_UA, '3'],
+    ]);
+    expect((err as TranscriptError).attempts.map((a) => [a.client, a.step, a.code, a.detail])).toEqual([
+      ['ANDROID 21.26.364', 'player', 'youtube_blocked', 'HTTP 403'],
+      ['IOS 21.26.4', 'player', 'youtube_blocked', "Sign in to confirm you're not a bot"],
+      ['ANDROID 20.10.38', 'player', 'youtube_blocked', 'HTTP 429'],
+    ]);
+  });
+
+  // 抓：视频本身的问题也去换客户端重试，白白多等、多发请求
+  it('video_unavailable 不重试，只请求 1 次，说明和以前一样', async () => {
+    const spy = mockAttempts([playerResponse({ status: 'ERROR', reason: 'This video is unavailable' })]);
+    await expect(fetchTranscript('dQw4w9WgXcQ')).rejects.toMatchObject({ code: 'video_unavailable', message: '视频不存在或无法播放（This video is unavailable）' });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  // 抓：播放器正常返回但没有字幕轨（视频确实没有字幕）也去重试
+  it('没有字幕轨（no_captions）不重试，只请求 1 次', async () => {
+    const spy = mockAttempts([playerResponse({ tracks: [] })]);
+    await expect(fetchTranscript('dQw4w9WgXcQ')).rejects.toMatchObject({ code: 'no_captions', message: '这个视频没有可用的字幕' });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  // 抓：只在播放器这一步重试，字幕下载被拦时直接失败
+  it('字幕下载 403 后换客户端，重新取播放器数据并成功', async () => {
+    const spy = mockAttempts([playerResponse(), playerResponse()], [403, srv1([[0, 'hello']])]);
+    const transcript = await fetchTranscript('dQw4w9WgXcQ');
+    expect(playerCalls(spy)).toHaveLength(2);
+    expect(captionCalls(spy).map((call) => headersOf(call)['user-agent'])).toEqual([ANDROID_UA, IOS_UA]);
+    expect(transcript.attempts.map((a) => [a.client, a.ok, a.step, a.code, a.detail])).toEqual([
+      ['ANDROID 21.26.364', false, 'captions', 'youtube_blocked', 'HTTP 403'],
+      ['IOS 21.26.4', true, undefined, undefined, undefined],
+    ]);
+  });
+
+  // 抓：有字幕轨但内容为空（缺 PO token，因客户端而异）时直接报没有字幕
+  it('字幕内容为空时换客户端成功', async () => {
+    const spy = mockAttempts([playerResponse(), playerResponse()], ['', srv1([[0, 'hello']])]);
+    await expect(fetchTranscript('dQw4w9WgXcQ')).resolves.toMatchObject({ cues: [{ start: 0, text: 'hello' }] });
+    expect(playerCalls(spy)).toHaveLength(2);
+  });
+
+  // 抓：网络错误、其他 HTTP 错误不换客户端
+  it('网络错误、HTTP 500 之后换客户端，第三次成功', async () => {
+    const spy = mockAttempts(['network', 500, playerResponse()]);
+    const transcript = await fetchTranscript('dQw4w9WgXcQ');
+    expect(playerCalls(spy)).toHaveLength(3);
+    expect(transcript.attempts.map((a) => [a.client, a.ok, a.code, a.detail])).toEqual([
+      ['ANDROID 21.26.364', false, 'youtube_error', '网络请求失败'],
+      ['IOS 21.26.4', false, 'youtube_error', 'HTTP 500'],
+      ['ANDROID 20.10.38', true, undefined, undefined],
+    ]);
+  });
+
+  // 抓：前几次尝试仍用完整上限，慢速 403 让用户白等；缩短上限下的超时不换客户端
+  it('非最后一次尝试用缩短的上限，超时后换下一个客户端', async () => {
+    const spy = mockAttempts(['hang', playerResponse()]);
+    const started = Date.now();
+    const transcript = await fetchTranscript('dQw4w9WgXcQ', { timeouts: { playerMs: 5_000, captionsMs: 5_000, quickPlayerMs: 50, quickCaptionsMs: 50 } });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(playerCalls(spy)).toHaveLength(2);
+    expect(transcript.attempts[0]).toEqual({ client: 'ANDROID 21.26.364', ok: false, step: 'player', code: 'youtube_timeout', detail: '读取视频信息超过 0.05 秒', ms: expect.any(Number) });
+  });
+
+  // 抓：三次都超时时总耗时超出说好的上限，或最后一次没有用完整上限
+  it('三次都超时：前两次用缩短上限、最后一次用完整上限，报 youtube_timeout', async () => {
+    const spy = mockAttempts(['hang', 'hang', 'hang']);
+    const started = Date.now();
+    await expect(fetchTranscript('dQw4w9WgXcQ', { timeouts: { playerMs: 200, captionsMs: 200, quickPlayerMs: 50, quickCaptionsMs: 50 } })).rejects.toMatchObject({
+      code: 'youtube_timeout',
+      message: '获取字幕超时，请稍后重试（共试 3 次：超时、超时、超时）',
+    });
+    const elapsed = Date.now() - started;
+    expect(elapsed).toBeGreaterThanOrEqual(290);
+    expect(elapsed).toBeLessThan(1_000);
+    expect(spy).toHaveBeenCalledTimes(3);
+  });
+
+  // 抓：已经给了完整上限仍超时还继续重试，用户要多等两轮
+  it('上限没有缩短时超时不重试', async () => {
+    const spy = mockAttempts(['hang']);
+    await expect(fetchTranscript('dQw4w9WgXcQ', { timeouts: { playerMs: 50, captionsMs: 50 } })).rejects.toMatchObject({
+      code: 'youtube_timeout',
+      message: '获取字幕超时，请稍后重试（读取视频信息超过 0.05 秒）',
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  // 抓：客户端已经断开还去请求 YouTube
+  it('signal 已中止时不发任何请求，直接以中止原因结束', async () => {
+    const spy = mockAttempts([playerResponse()]);
+    const controller = new AbortController();
+    const reason = new Error('客户端已断开');
+    controller.abort(reason);
+    await expect(fetchTranscript('dQw4w9WgXcQ', { signal: controller.signal })).rejects.toBe(reason);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  // 抓：客户端断开后仍换下一个客户端继续请求
+  it('第一次被拦期间客户端断开：不再发下一次请求，以中止原因结束', async () => {
+    const controller = new AbortController();
+    const reason = new Error('客户端已断开');
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      controller.abort(reason);
+      return new Response('', { status: 403 });
+    });
+    await expect(fetchTranscript('dQw4w9WgXcQ', { signal: controller.signal })).rejects.toBe(reason);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });
 

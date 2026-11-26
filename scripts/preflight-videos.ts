@@ -7,7 +7,8 @@
  * 是否超过整理后字符上限、代码版本。原始字幕和整理后文本另存文件。
  *
  * 注意：这里是本机出口直连 YouTube，不是 Cloudflare 出口；线上 Worker 能否取到要另外验证。
- * 字幕轨列表是在脚本里旁路记录播放器接口的响应得到的，生产代码本身不改。
+ * 字幕轨列表是在脚本里旁路记录播放器接口的响应得到的，生产代码本身不改；被拦后换客户端重试时记录的是最后一次的响应。
+ * attempts 是生产代码返回的每次尝试（客户端、结果、耗时）。
  */
 import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -15,7 +16,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LIMITS } from '../src/shared/limits';
 import { AppError } from '../src/worker/app-error';
-import { fetchTranscript, prepareTranscript, type CaptionTrack, type DefaultAudio } from '../src/worker/youtube';
+import { fetchTranscript, prepareTranscript, TranscriptError, type CaptionTrack, type DefaultAudio } from '../src/worker/youtube';
 
 const [outDir, ...ids] = process.argv.slice(2);
 if (!outDir || ids.length === 0 || !ids.every((id) => /^[A-Za-z0-9_-]{11}$/.test(id))) {
@@ -77,6 +78,7 @@ for (const id of ids) {
     row = {
       id,
       result: 'ok',
+      attempts: transcript.attempts,
       title: transcript.video.title,
       channel: transcript.video.channel,
       lengthSeconds: transcript.video.lengthSeconds,
@@ -100,6 +102,7 @@ for (const id of ids) {
       result: 'failed',
       errorCode: code,
       errorDetail: err instanceof AppError ? (err.detail ?? null) : String(err),
+      attempts: err instanceof TranscriptError ? err.attempts : null,
       playability: player ? { status: player.status ?? null, reason: player.reason ?? null } : null,
       title: (player?.details.title as string | undefined) ?? null,
       lengthSeconds: player?.details.lengthSeconds ? Number(player.details.lengthSeconds) : null,

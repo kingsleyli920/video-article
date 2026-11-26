@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES, type ErrorCode } from '../shared/errors';
 import { AppError } from './app-error';
 
 export interface Cue {
@@ -21,6 +22,28 @@ export interface Transcript {
   trackName: string;
   trackVssId: string;
   cues: Cue[];
+  /** 依次试过的客户端和各自的结果；最后一条是成功的那次。内置备份时是实时获取失败的那几次 */
+  attempts: TranscriptAttempt[];
+}
+
+/** 一次字幕获取尝试：用哪个客户端、成没成、失败在哪一步、错误码和原因、耗时 */
+export interface TranscriptAttempt {
+  client: string;
+  ok: boolean;
+  step?: 'player' | 'captions';
+  code?: ErrorCode;
+  detail?: string;
+  ms: number;
+}
+
+/** 全部尝试都失败时抛出：错误码沿用最后一次的，attempts 供日志和探针使用 */
+export class TranscriptError extends AppError {
+  readonly attempts: TranscriptAttempt[];
+
+  constructor(code: ErrorCode, detail: string | undefined, attempts: TranscriptAttempt[]) {
+    super(code, detail);
+    this.attempts = attempts;
+  }
 }
 
 export interface CaptionTrack {
@@ -50,17 +73,42 @@ export interface DefaultAudio {
 }
 
 const PLAYER_ENDPOINT = 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false';
-// 2026-11 实测：网页端（WEB）给出的字幕地址缺 PO token 时返回空内容，ANDROID 客户端给出的地址可以直接拉取。
-const ANDROID_CLIENT = {
-  clientName: 'ANDROID',
-  clientVersion: '20.10.38',
-  androidSdkVersion: 30,
-  osName: 'Android',
-  osVersion: '11',
-  hl: 'en',
-  gl: 'US',
-} as const;
-const ANDROID_UA = `com.google.android.youtube/${ANDROID_CLIENT.clientVersion} (Linux; U; Android 11) gzip`;
+
+interface Client {
+  /** InnerTube 的 X-YouTube-Client-Name 编号 */
+  id: string;
+  /** 播放器请求体里的 context.client */
+  context: { clientName: string; clientVersion: string } & Record<string, string | number>;
+  /** 播放器请求和字幕下载都用这个 UA（字幕地址是按这个客户端签发的） */
+  ua: string;
+}
+
+/**
+ * 按顺序轮换的客户端，参数取自 yt-dlp 主干。2026-11 实测：网页端（WEB）给出的字幕地址缺 PO token 时返回空内容，
+ * 移动端客户端给出的地址可以直接拉取。2026-11-25 从 Cloudflare 出口实测 42 轮：单独成功率 ANDROID 21.26.364 是 39/42、
+ * ANDROID 20.10.38 是 38/42、IOS 21.26.4 是 37/42，失败全是播放器接口 HTTP 403；同一轮三个全失败 0/42。
+ * 第二个换成 IOS 而不是旧版 ANDROID：拦截如果按客户端类型判定，换类型比换版本更可能绕开（两两相关性没测，待探针验证）。
+ * TVHTML5（一律 LOGIN_REQUIRED）、ANDROID_VR、WEB_EMBEDDED_PLAYER、MWEB（直接 403）不可用，不要加进来。
+ */
+const CLIENTS: Client[] = [
+  {
+    id: '3',
+    context: { clientName: 'ANDROID', clientVersion: '21.26.364', androidSdkVersion: 30, osName: 'Android', osVersion: '11', hl: 'en', gl: 'US' },
+    ua: 'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip',
+  },
+  {
+    id: '5',
+    context: { clientName: 'IOS', clientVersion: '21.26.4', deviceMake: 'Apple', deviceModel: 'iPhone16,2', osName: 'iPhone', osVersion: '18.3.2.22D82', hl: 'en', gl: 'US' },
+    ua: 'com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
+  },
+  {
+    id: '3',
+    context: { clientName: 'ANDROID', clientVersion: '20.10.38', androidSdkVersion: 30, osName: 'Android', osVersion: '11', hl: 'en', gl: 'US' },
+    ua: 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip',
+  },
+];
+
+const EMPTY_CAPTIONS = '字幕内容为空';
 
 export interface TranscriptOptions {
   /** 客户端断开等上游取消；触发后立即放弃，不再兜底 */
@@ -72,30 +120,93 @@ export interface TranscriptOptions {
 }
 
 /**
- * 每一步的时间上限都包含读取响应正文。线上实测这两步合计 0.3–1.8 秒，上限留足余量，
- * 同时保证不会一直卡在字幕阶段：超时报 youtube_timeout，示例视频据此转入内置备份。
+ * 每一步的时间上限都包含读取响应正文。线上实测这两步合计 0.3–1.8 秒。
+ *
+ * - 最后一次尝试用完整上限：player 10 秒、字幕 15 秒，和只试一次时一样。
+ * - 之前的尝试用缩短的上限（quick*）：player 4 秒、字幕 5 秒。被拦的 403 有时要 5 到 8 秒才返回，等它没有意义，
+ *   正常响应远在 4 秒以内；即使网络偶尔慢、早期尝试被掐断，最后一次仍有完整上限。
+ * - 超时是否换下一个客户端：只有这一步用的是缩短上限时才换（多半是慢速拦截）；已经给了完整上限仍超时，
+ *   再试只会让用户多等，直接报 youtube_timeout，示例视频据此转入内置备份。上限设得一样短时（如测试里统一调短），
+ *   超时也就不换。
+ * - 整个字幕阶段的最坏耗时：(4 + 5) × 2 + (10 + 15) = 43 秒（旧版只试一次是 25 秒）。常见的快速 403 每次只多几百毫秒，
+ *   慢速 403 每次最多多 4 秒。
  */
-const TRANSCRIPT_TIMEOUTS = { playerMs: 10_000, captionsMs: 15_000 };
+const TRANSCRIPT_TIMEOUTS = { playerMs: 10_000, captionsMs: 15_000, quickPlayerMs: 4_000, quickCaptionsMs: 5_000 };
 
 /** 按倍率缩短的字幕超时（倍率只在测试时小于 1） */
 export function transcriptTimeouts(scale = 1): typeof TRANSCRIPT_TIMEOUTS {
-  return { playerMs: TRANSCRIPT_TIMEOUTS.playerMs * scale, captionsMs: TRANSCRIPT_TIMEOUTS.captionsMs * scale };
+  const t = TRANSCRIPT_TIMEOUTS;
+  return { playerMs: t.playerMs * scale, captionsMs: t.captionsMs * scale, quickPlayerMs: t.quickPlayerMs * scale, quickCaptionsMs: t.quickCaptionsMs * scale };
 }
 
-/** 直连 YouTube：先取播放器数据选字幕轨，再拉 srv1 格式的字幕（体积约为 json3 的十分之一）。 */
+type Step = 'player' | 'captions';
+type StepLimits = Record<Step, number>;
+
+/**
+ * 直连 YouTube：先取播放器数据选字幕轨，再拉 srv1 格式的字幕（体积约为 json3 的十分之一）。
+ *
+ * 被拦截时按 CLIENTS 的顺序换客户端重试，最多 3 次。换下一个的失败：播放器或字幕 HTTP 403 / 429（youtube_blocked）、
+ * LOGIN_REQUIRED + bot（youtube_blocked）、网络错误和其他 HTTP 错误（youtube_error，换客户端可能绕开某个版本被拒的情况）、
+ * 有字幕轨但字幕内容为空（缺 PO token 的表现，因客户端而异）、缩短上限下的超时。
+ * 不重试：video_unavailable、no_captions（播放器正常返回但没有字幕轨）、完整上限下的超时、客户端断开（立即停止）。
+ * 只试一次就结束时错误说明和以前一样；试了多次时说明里列出每次的结果，详细记录在 TranscriptError.attempts。
+ * 不依赖 Worker 环境，探针可以直接调用。
+ */
 export async function fetchTranscript(videoId: string, options: TranscriptOptions = {}): Promise<Transcript> {
-  const timeouts = { ...TRANSCRIPT_TIMEOUTS, ...options.timeouts };
-  const player = await withDeadline('读取视频信息', timeouts.playerMs, options.signal, (signal) => fetchPlayer(videoId, signal, options.playerEndpoint ?? PLAYER_ENDPOINT));
+  const full = { ...TRANSCRIPT_TIMEOUTS, ...options.timeouts };
+  const attempts: TranscriptAttempt[] = [];
+  let failure: AppError | null = null;
+  for (const [i, client] of CLIENTS.entries()) {
+    const limits: StepLimits =
+      i === CLIENTS.length - 1
+        ? { player: full.playerMs, captions: full.captionsMs }
+        : { player: Math.min(full.quickPlayerMs, full.playerMs), captions: Math.min(full.quickCaptionsMs, full.captionsMs) };
+    const label = `${client.context.clientName} ${client.context.clientVersion}`;
+    const started = Date.now();
+    const at: { step: Step } = { step: 'player' };
+    try {
+      const transcript = await attempt(videoId, client, limits, options, at);
+      attempts.push({ client: label, ok: true, ms: Date.now() - started });
+      return { ...transcript, attempts };
+    } catch (err) {
+      if (options.signal?.aborted) throw options.signal.reason;
+      if (!(err instanceof AppError)) throw err;
+      failure = err;
+      attempts.push({ client: label, ok: false, step: at.step, code: err.code, ...(err.detail ? { detail: err.detail } : {}), ms: Date.now() - started });
+      const fullLimit = at.step === 'player' ? full.playerMs : full.captionsMs;
+      if (!recoverable(err, limits[at.step] < fullLimit)) break;
+    }
+  }
+  const detail = attempts.length === 1 ? failure!.detail : `共试 ${attempts.length} 次：${attempts.map(outcome).join('、')}`;
+  throw new TranscriptError(failure!.code, detail, attempts);
+}
+
+function recoverable(err: AppError, shortenedLimit: boolean): boolean {
+  if (err.code === 'youtube_timeout') return shortenedLimit;
+  return err.code === 'youtube_blocked' || err.code === 'youtube_error' || (err.code === 'no_captions' && err.detail === EMPTY_CAPTIONS);
+}
+
+/** 给用户看的单次结果，尽量短："HTTP 403"、"人机验证"、"超时"、"字幕为空"…… */
+function outcome(a: TranscriptAttempt): string {
+  const what = a.code === 'youtube_timeout' ? '超时' : a.detail === EMPTY_CAPTIONS ? '为空' : /bot/i.test(a.detail ?? '') ? '人机验证' : (a.detail ?? ERROR_MESSAGES[a.code!]);
+  if (a.step !== 'captions') return what;
+  return /^[A-Za-z]/.test(what) ? `字幕 ${what}` : `字幕${what}`;
+}
+
+/** 用一个客户端走完一次：播放器数据 → 选轨 → 下载字幕。at.step 记录走到了哪一步，失败时据此判断 */
+async function attempt(videoId: string, client: Client, limits: StepLimits, options: TranscriptOptions, at: { step: Step }): Promise<Omit<Transcript, 'attempts'>> {
+  const player = await withDeadline('读取视频信息', limits.player, options.signal, (signal) => fetchPlayer(videoId, client, signal, options.playerEndpoint ?? PLAYER_ENDPOINT));
   const renderer = player.captions?.playerCaptionsTracklistRenderer;
   const track = pickTrack(renderer?.captionTracks ?? [], renderer?.audioTracks?.[renderer.defaultAudioTrackIndex ?? 0] ?? {});
   if (!track) throw new AppError('no_captions');
 
-  const xml = await withDeadline('下载字幕', timeouts.captionsMs, options.signal, async (signal) => {
-    const res = await request(captionUrl(track.baseUrl), { headers: { 'user-agent': ANDROID_UA }, signal });
+  at.step = 'captions';
+  const xml = await withDeadline('下载字幕', limits.captions, options.signal, async (signal) => {
+    const res = await request(captionUrl(track.baseUrl), { headers: { 'user-agent': client.ua }, signal });
     return res.text();
   });
   const cues = parseSrv1(xml);
-  if (cues.length === 0) throw new AppError('no_captions', '字幕内容为空');
+  if (cues.length === 0) throw new AppError('no_captions', EMPTY_CAPTIONS);
 
   const details = player.videoDetails ?? {};
   return {
@@ -114,14 +225,25 @@ export async function fetchTranscript(videoId: string, options: TranscriptOption
   };
 }
 
-async function fetchPlayer(videoId: string, signal: AbortSignal, endpoint: string): Promise<PlayerResponse> {
+async function fetchPlayer(videoId: string, client: Client, signal: AbortSignal, endpoint: string): Promise<PlayerResponse> {
   const res = await request(endpoint, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'user-agent': ANDROID_UA },
-    body: JSON.stringify({ context: { client: ANDROID_CLIENT }, videoId }),
+    headers: {
+      'content-type': 'application/json',
+      'user-agent': client.ua,
+      'x-youtube-client-name': client.id,
+      'x-youtube-client-version': client.context.clientVersion,
+    },
+    body: JSON.stringify({ context: { client: client.context }, videoId }),
     signal,
   });
-  const player = (await res.json()) as PlayerResponse;
+  let player: PlayerResponse;
+  try {
+    player = (await res.json()) as PlayerResponse;
+  } catch {
+    if (signal.aborted) throw signal.reason;
+    throw new AppError('youtube_error', '视频信息不是有效的 JSON');
+  }
   const { status, reason } = player.playabilityStatus ?? {};
   if (status === 'OK') return player;
   if (status === 'LOGIN_REQUIRED' && /bot/i.test(reason ?? '')) throw new AppError('youtube_blocked', reason);
@@ -166,7 +288,8 @@ async function request(url: string, init: RequestInit): Promise<Response> {
     if (init.signal?.aborted) throw init.signal.reason;
     throw new AppError('youtube_error', '网络请求失败');
   }
-  if (res.status === 429) throw new AppError('youtube_blocked', 'HTTP 429');
+  // 2026-11-25 实测：Cloudflare 出口被拦时播放器接口直接回 403，和 429 一样是拦截，不是一般的上游错误
+  if (res.status === 403 || res.status === 429) throw new AppError('youtube_blocked', `HTTP ${res.status}`);
   if (!res.ok) throw new AppError('youtube_error', `HTTP ${res.status}`);
   return res;
 }

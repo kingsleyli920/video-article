@@ -13,7 +13,7 @@ import { NO_REQUIREMENTS, parseRequirements, REQUIREMENTS_SCHEMA, requirementsPr
 import { createStore, type GenerationContext } from './store';
 import { loadTranscript } from './transcripts';
 import { transcriptPreview } from './transcript-preview';
-import { prepareTranscript } from './youtube';
+import { prepareTranscript, TranscriptError } from './youtube';
 
 interface GenerationInput {
   videoId: string;
@@ -81,6 +81,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     const { generationId, store } = createStore(env);
     Object.assign(log, {
       source: info.source,
+      transcriptAttempts: transcript.attempts,
       transcriptChars: transcriptText.length,
       damagedNumbers: damagedNumbers.map((d) => `${d.time} ${d.fragment}`),
       model: gemini.model,
@@ -215,6 +216,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     const error = toAppError(err);
     if (error.code === 'internal') console.error(err);
     Object.assign(log, { ok: false, code: error.code });
+    if (err instanceof TranscriptError) log.transcriptAttempts = err.attempts;
     await events.send('error', { code: error.code, message: error.message, partial: markdown.length > 0 }).catch(() => {});
   } finally {
     stopHeartbeat();

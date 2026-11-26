@@ -1,7 +1,7 @@
 import type { TranscriptInfo } from '../shared/types';
 import { toAppError } from './app-error';
 import sampleBackup from './transcripts/xRh2sVcNXQ8.json';
-import { fetchTranscript, type Transcript, type TranscriptOptions } from './youtube';
+import { fetchTranscript, TranscriptError, type Transcript, type TranscriptAttempt, type TranscriptOptions } from './youtube';
 
 /** 内置备份文件的格式：cues 存成 [开始毫秒, 文本]，source 记录来源，便于复核。 */
 export interface BackupFile {
@@ -21,7 +21,8 @@ export interface LoadedTranscript {
 }
 
 /**
- * 先直连 YouTube；失败（含超时）且该视频有内置备份时改用备份，并带上实时获取失败的原因。
+ * 先直连 YouTube（被拦时 fetchTranscript 内部会换客户端重试）；全部失败（含超时）且该视频有内置备份时改用备份，
+ * 并带上实时获取失败的原因。只有示例视频有备份，其他视频失败就报错。
  * 客户端已经断开导致的取消不兜底，直接把取消原因抛出去。
  */
 export async function loadTranscript(videoId: string, options: TranscriptOptions = {}): Promise<LoadedTranscript> {
@@ -33,15 +34,16 @@ export async function loadTranscript(videoId: string, options: TranscriptOptions
     const backup = BACKUPS.get(videoId);
     if (!backup) throw err;
     const reason = toAppError(err).message;
+    const attempts = err instanceof TranscriptError ? err.attempts : [];
     console.warn(JSON.stringify({ event: 'transcript_backup', videoId, reason }));
     return {
-      transcript: fromBackup(backup),
+      transcript: fromBackup(backup, attempts),
       info: { source: 'backup', language: backup.language, kind: backup.kind, liveError: reason },
     };
   }
 }
 
-function fromBackup(file: BackupFile): Transcript {
+function fromBackup(file: BackupFile, attempts: TranscriptAttempt[]): Transcript {
   return {
     video: file.video,
     language: file.language,
@@ -49,5 +51,6 @@ function fromBackup(file: BackupFile): Transcript {
     trackName: file.trackName,
     trackVssId: file.source.trackVssId,
     cues: file.cues.map(([start, text]) => ({ start, text })),
+    attempts,
   };
 }

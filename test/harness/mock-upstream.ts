@@ -8,9 +8,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { geminiPurpose, NO_REQUIREMENTS_JSON } from '../fixtures/upstream';
 
+export type OkVideo = { kind: 'ok'; title?: string; channel?: string; description?: string; cues: [number, string][] };
+
 export type VideoScenario =
-  | { kind: 'ok'; title?: string; channel?: string; description?: string; cues: [number, string][] }
+  | OkVideo
+  /** 一直被拦：每次播放器请求都返回 LOGIN_REQUIRED + bot */
   | { kind: 'blocked' }
+  /** 前 times 次播放器请求被拦（http403：直接回 HTTP 403；login：200 + LOGIN_REQUIRED + bot），之后按 then 正常返回。计数随场景重置 */
+  | { kind: 'blocked-first'; times: number; mode: 'http403' | 'login'; then: OkVideo }
   | { kind: 'unplayable' }
   | { kind: 'no-captions' }
   | { kind: 'hang' };
@@ -68,6 +73,8 @@ export interface RecordedRequest {
   aborted: boolean;
   /** 收到请求到响应结束或连接断开的毫秒数 */
   durationMs: number | null;
+  /** 播放器和字幕请求的 User-Agent（核对换客户端时字幕是否用对应客户端的 UA 去拉） */
+  userAgent?: string;
 }
 
 export const MOCK_VIDEO_ID = 'mockvideo01';
@@ -108,6 +115,8 @@ export interface MockUpstream {
 export async function startMockUpstream(port: number): Promise<MockUpstream> {
   let scenario = defaultScenario();
   let log: RecordedRequest[] = [];
+  /** blocked-first 场景下各视频已收到的播放器请求数 */
+  let playerCounts = new Map<string, number>();
   const base = `http://127.0.0.1:${port}`;
 
   const server = createServer((req, res) => {
@@ -123,11 +132,13 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
 
     if (url.pathname === '/__scenario' && req.method === 'PUT') {
       scenario = { ...defaultScenario(), ...(JSON.parse(text) as Partial<Scenario>) };
+      playerCounts = new Map();
       return json(res, 200, { ok: true });
     }
     if (url.pathname === '/__reset' && req.method === 'POST') {
       scenario = defaultScenario();
       log = [];
+      playerCounts = new Map();
       return json(res, 200, { ok: true });
     }
     if (url.pathname === '/__requests') return json(res, 200, log);
@@ -148,9 +159,19 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
 
     if (url.pathname === '/youtube/player') {
       entry.kind = 'player';
+      entry.userAgent = req.headers['user-agent'];
       const videoId = (body as { videoId?: string } | null)?.videoId ?? '';
       entry.videoId = videoId;
-      const video = scenario.videos[videoId] ?? { kind: 'unplayable' };
+      let video: VideoScenario = scenario.videos[videoId] ?? { kind: 'unplayable' };
+      if (video.kind === 'blocked-first') {
+        const count = (playerCounts.get(videoId) ?? 0) + 1;
+        playerCounts.set(videoId, count);
+        if (count <= video.times) {
+          if (video.mode === 'http403') return json(res, 403, {});
+          return json(res, 200, { playabilityStatus: { status: 'LOGIN_REQUIRED', reason: "Sign in to confirm you're not a bot" } });
+        }
+        video = video.then;
+      }
       if (video.kind === 'hang') return;
       if (video.kind === 'blocked') return json(res, 200, { playabilityStatus: { status: 'LOGIN_REQUIRED', reason: "Sign in to confirm you're not a bot" } });
       if (video.kind === 'unplayable') return json(res, 200, { playabilityStatus: { status: 'ERROR', reason: 'Video unavailable' } });
@@ -172,9 +193,11 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
 
     if (url.pathname === '/youtube/timedtext') {
       entry.kind = 'captions';
+      entry.userAgent = req.headers['user-agent'];
       const videoId = url.searchParams.get('v') ?? '';
       entry.videoId = videoId;
-      const video = scenario.videos[videoId];
+      const scenarioVideo = scenario.videos[videoId];
+      const video = scenarioVideo?.kind === 'blocked-first' ? scenarioVideo.then : scenarioVideo;
       if (!video || video.kind !== 'ok') return json(res, 404, {});
       const cues = video.cues.map(([seconds, text]) => `<text start="${seconds}" dur="2.5">${text}</text>`).join('');
       res.writeHead(200, { 'content-type': 'text/xml; charset=utf-8' });
