@@ -6,7 +6,7 @@
  * 管理接口：PUT /__scenario（整体替换场景）、POST /__reset（恢复默认场景并清空记录）、GET /__requests（请求记录）。
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { geminiPurpose, NO_REQUIREMENTS_JSON } from '../fixtures/upstream';
+import { geminiPurpose, geminiUserText, NO_REQUIREMENTS_JSON, toneChecks, type ToneDrop } from '../fixtures/upstream';
 
 export type OkVideo = { kind: 'ok'; title?: string; channel?: string; description?: string; cues: [number, string][] };
 
@@ -53,6 +53,12 @@ export type ReviewScenario =
 
 type ReviewIssueFixture = { type: string; quote: string; evidence: string; problem: string; replacement: string };
 
+/**
+ * 语气清单核对（generateContent）的行为。ok：按请求里的清单逐条返回结论，片段原文包含某条 drops[].match 的记 dropped（带那条修订），其余都是 kept；
+ * response：原样返回给定的 JSON（形状可以无效）
+ */
+export type ToneScenario = { kind: 'ok'; drops?: ToneDrop[]; delayMs?: number } | { kind: 'response'; result: unknown } | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' };
+
 /** 重叠修订建议合并处理（generateContent）的行为。response：原样返回给定的 JSON（形状可以无效） */
 export type ReconcileScenario = { kind: 'response'; result: unknown } | { kind: 'busy' } | { kind: 'hang' } | { kind: 'invalid' };
 
@@ -70,6 +76,8 @@ export interface Scenario {
   summaries: Record<string, SummaryScenario>;
   /** 按模型名，对照字幕核对的行为；没列出的模型返回"没有问题" */
   reviews?: Record<string, ReviewScenario>;
+  /** 按模型名，语气清单核对的行为；没列出的模型对清单每一条都返回 kept */
+  tones?: Record<string, ToneScenario>;
   /** 按模型名，重叠修订建议合并处理的行为；没列出的模型返回 503 */
   reconciles?: Record<string, ReconcileScenario>;
   /** 按模型名，约束提取的行为；没列出的模型返回"没有可计算的约束" */
@@ -82,8 +90,8 @@ export interface RecordedRequest {
   at: string;
   method: string;
   path: string;
-  /** stream：写文章；rewrite：按要求修订；review：对照字幕核对；reconcile：重叠修订建议的合并处理；requirements：约束提取；summary：5W1H */
-  kind: 'player' | 'captions' | 'stream' | 'rewrite' | 'review' | 'reconcile' | 'requirements' | 'summary' | 'other';
+  /** stream：写文章；rewrite：按要求修订；review：对照字幕核对；tone：语气清单核对；reconcile：重叠修订建议的合并处理；requirements：约束提取；summary：5W1H */
+  kind: 'player' | 'captions' | 'stream' | 'rewrite' | 'review' | 'tone' | 'reconcile' | 'requirements' | 'summary' | 'other';
   model?: string;
   videoId?: string;
   body: unknown;
@@ -250,6 +258,13 @@ export async function startMockUpstream(port: number): Promise<MockUpstream> {
         const system = String((body as { systemInstruction?: { parts?: { text?: string }[] } } | null)?.systemInstruction?.parts?.[0]?.text ?? '');
         const issues = system.includes('负责整篇文章的语义限定复核') && behavior.fidelityIssues ? behavior.fidelityIssues : behavior.issues;
         return structured(res, { issues: issues.filter((i) => section.includes(i.quote)) }, behavior.delayMs);
+      }
+      if (purpose === 'tone') {
+        entry.kind = 'tone';
+        const behavior = scenario.tones?.[model] ?? { kind: 'ok' };
+        if (behavior.kind === 'response') return structured(res, behavior.result);
+        if (behavior.kind !== 'ok') return summary(res, behavior);
+        return structured(res, toneChecks(geminiUserText(body), behavior.drops), behavior.delayMs);
       }
       if (purpose === 'reconcile') {
         entry.kind = 'reconcile';

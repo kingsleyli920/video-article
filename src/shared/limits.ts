@@ -24,7 +24,8 @@ export const SUMMARY_TIMING = { clientMs: 100_000, serverBudgetMs: 85_000, prima
  * - REVIEW_TIMING：按章核对字幕，各章并行，每一章主模型最多 primaryMs，主备合计 serverBudgetMs。
  *   高档思考实测每章 34 到 67 秒，所以给到 150 秒。
  * - REQUIREMENTS_TIMING：从用户要求里提取可计算的约束，低档思考，一般几秒。
- * - maxUnits：核对请求的总并行上限；预留一个整篇语义限定复核，其余用于按章核对，章节更多时相邻合并。
+ * - maxUnits：核对请求的并行基数；预留两个给整篇语义限定复核和语气清单核对，其余（4 个）用于按章核对，章节更多时相邻合并。
+ *   语气清单长时最多分三份，合计可能超过 Workers 的同时连接数，多出的请求排队等待，不会失败。
  */
 export const REVIEW_TIMING = { serverBudgetMs: 210_000, primaryMs: 150_000, minFallbackMs: 20_000, maxUnits: 6 } as const;
 export const REQUIREMENTS_TIMING = { serverBudgetMs: 50_000, primaryMs: 30_000, minFallbackMs: 10_000 } as const;

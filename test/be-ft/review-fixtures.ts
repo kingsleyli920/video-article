@@ -6,6 +6,7 @@ import { geminiSse, srv1 } from '../fixtures/upstream';
 
 export const url = (id: string) => `https://www.youtube.com/watch?v=${id}`;
 
+/** 第三条的 "about five" 是语气词表里的约数说法：这份字幕摘出 1 条语气片段，收尾时会多发 1 次语气清单核对 */
 export const CAPTIONS = srv1([
   [0, 'welcome back to the show today we are talking with Maria Lopez'],
   [12, 'I moved to Berlin in 2003. Over the next ten years the fund backed Alpha, Beta and Gamma'],

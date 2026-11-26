@@ -77,7 +77,8 @@ describe('核对出修订', () => {
     expect(done.numberWarnings).toEqual([]);
     expect(ofKind(await stack.requests(), 'reconcile')).toHaveLength(0);
 
-    // 两章加整篇复核
+    // 两章加整篇复核；默认字幕里没有语气词表里的说法，不发语气核对
+    expect(ofKind(await stack.requests(), 'tone')).toHaveLength(0);
     const reviews = ofKind(await stack.requests(), 'review');
     expect(reviews.map((r) => r.model)).toEqual(['mock-primary', 'mock-primary', 'mock-primary']);
     expect(reviews.map((r) => promptOf(r).user.includes('<section>\n## 第二章：数字'))).toEqual([false, true, false]);
@@ -162,6 +163,7 @@ describe('核对阶段的失败和断开', () => {
     expect(eventOf(gen.events, 'done')).toBeUndefined();
     expect(eventOf(gen.events, 'revised')).toBeUndefined();
     expect(ofKind(await stack.requests(), 'review')).toHaveLength(0);
+    expect(ofKind(await stack.requests(), 'tone')).toHaveLength(0);
 
     await stack.reset();
     const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
@@ -287,6 +289,9 @@ describe('重叠修订的合并处理（审查方反例）', () => {
     expect(reconciles.map((r) => r.model)).toEqual(['mock-primary']);
     expect(promptOf(reconciles[0]!).user).toContain('<article>\n# 试点\n\n## 费用\n\n嘉宾表示，试点费用约为20美元。\n</article>');
     expect(ofKind(await stack.requests(), 'review')).toHaveLength(2);
+    // 字幕里 "about 20 dollars" 是一条语气片段：另发一次语气核对（默认全部 kept）
+    expect(ofKind(await stack.requests(), 'tone')).toHaveLength(1);
+    expect(done.review.toneExcerpts).toBe(1);
 
     await stack.reset();
     const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
@@ -294,6 +299,79 @@ describe('重叠修订的合并处理（审查方反例）', () => {
     const user = promptOf(ofKind(await stack.requests(), 'summary')[0]!).user;
     expect(user).toContain('<current_chapter id="1">\n## 费用\n\n主持人估计，试点费用约为20美元。\n</current_chapter>');
     expect(user).not.toContain('嘉宾表示');
+  });
+});
+
+describe('语气清单核对', () => {
+  const STIPEND = 'And this seems to store the stipends for workers at a temple some few thousand years ago.';
+  const DRAFT = '# 泥板\n\n## 用途\n\n该图表包含行和列，用来记录当时神庙工人的津贴。';
+  const FINAL = '# 泥板\n\n## 用途\n\n该图表包含行和列，似乎用来记录当时神庙工人的津贴。';
+  const SEEMS = { type: 'unsupported' as const, quote: '用来记录当时神庙工人的津贴', replacement: '似乎用来记录当时神庙工人的津贴', evidence: STIPEND, problem: '原话是 seems to，是推测' };
+  const stipendScenario = {
+    videos: { mockvideo01: { kind: 'ok' as const, title: 'Clay tablets', channel: '测试频道', description: '', cues: [[0, STIPEND]] as [number, string][] } },
+    streams: { 'mock-primary': { kind: 'ok' as const, texts: ['# 泥板\n\n## 用途\n\n', '该图表包含行和列，用来记录当时神庙工人的津贴。'], intervalMs: 20 } },
+  };
+
+  // 抓：经真实 HTTP 时语气核对请求没发到上游或被当成普通核对；它的修订没进最终文章；5W1H 用的不是最终文章
+  it('只有语气核对查出"似乎"被去掉：revised 补回"似乎"，5W1H 上游请求里的章节与之一致', async () => {
+    await stack.scenario({ ...stipendScenario, tones: { 'mock-primary': { kind: 'ok', drops: [{ match: 'seems to store', ...SEEMS }] } } });
+    const gen = await generate(stack, { url: MOCK_URL });
+
+    expect(gen.events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'stage', 'revised', 'done']);
+    expect(deltaText(gen.events)).toBe(DRAFT);
+    expect(eventOf(gen.events, 'revised')).toEqual({ markdown: FINAL, revisions: [{ type: 'unsupported', before: SEEMS.quote, after: SEEMS.replacement, reason: SEEMS.problem, evidence: STIPEND }] });
+    expect(eventOf(gen.events, 'done')!.review).toEqual({ sections: 1, toneExcerpts: 1, revisions: 1, rewritten: null, checks: [] });
+
+    const requests = await stack.requests();
+    // 一章 + 整篇两次核对；语气一次，带编号 1 的片段和整篇初稿，不带整段字幕
+    expect(ofKind(requests, 'review')).toHaveLength(2);
+    const tones = ofKind(requests, 'tone');
+    expect(tones.map((r) => r.model)).toEqual(['mock-primary']);
+    expect(promptOf(tones[0]!).user).toContain(`\n1. [seems to / some few] ${STIPEND}\n`);
+    expect(promptOf(tones[0]!).user).toContain(`<section>\n${DRAFT}\n</section>`);
+    expect(promptOf(tones[0]!).user).not.toContain('<transcript>');
+
+    await stack.reset();
+    const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
+    expect(summary.status).toBe(200);
+    const user = promptOf(ofKind(await stack.requests(), 'summary')[0]!).user;
+    expect(user).toContain('<current_chapter id="1">\n## 用途\n\n该图表包含行和列，似乎用来记录当时神庙工人的津贴。\n</current_chapter>');
+  });
+
+  // 抓（真实反例，经真实 HTTP）：整篇复核和语气核对都补"似乎"，最终稿叠成"似乎似乎用来记录…"
+  it('整篇复核和语气核对给出相同的"似乎"：最终稿只有一个"似乎"，语气那条记 covered，不调合并处理', async () => {
+    await stack.scenario({
+      ...stipendScenario,
+      reviews: { 'mock-primary': { kind: 'ok', issues: [], fidelityIssues: [SEEMS] } },
+      tones: { 'mock-primary': { kind: 'ok', drops: [{ match: 'seems to store', ...SEEMS }] } },
+    });
+    const gen = await generate(stack, { url: MOCK_URL });
+
+    expect(eventOf(gen.events, 'revised')!.markdown).toBe(FINAL);
+    const done = eventOf(gen.events, 'done')!;
+    expect(done.review.revisions).toBe(1);
+    expect(done.review.unapplied).toEqual([{ stage: 'tone', disposition: 'covered', ...SEEMS, note: '另一条修订已写入相同的替换文字' }]);
+    expect(ofKind(await stack.requests(), 'reconcile')).toHaveLength(0);
+
+    await stack.reset();
+    const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
+    expect(promptOf(ofKind(await stack.requests(), 'summary')[0]!).user).toContain('<current_chapter id="1">\n## 用途\n\n该图表包含行和列，似乎用来记录当时神庙工人的津贴。\n</current_chapter>');
+    expect(summary.status).toBe(200);
+  });
+
+  // 抓：经真实 HTTP 时语气核对返回空清单被当成"没有问题"，没核对完的文章被保存、5W1H 可用
+  it('语气核对响应缺条目：review_failed，不保存', async () => {
+    await stack.scenario({ ...stipendScenario, tones: { 'mock-primary': { kind: 'response', result: { checks: [] } } } });
+    const gen = await generate(stack, { url: MOCK_URL });
+    expect(gen.events.at(-1)).toEqual({
+      event: 'error',
+      data: { code: 'review_failed', message: '内容核对没有完成，这次生成没有保存（对照字幕核对没有完成：模型返回的格式无效（语气清单核对没有对每一条给出结论））', partial: true },
+    });
+    expect(eventOf(gen.events, 'done')).toBeUndefined();
+    await stack.reset();
+    const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');
+    expect(summary.status).toBe(404);
+    expect(summary.body).toEqual(NOT_FOUND);
   });
 });
 
@@ -312,6 +390,7 @@ describe('约束提取确认不了', () => {
     const requests = await stack.requests();
     expect(ofKind(requests, 'requirements').map((r) => r.model)).toEqual(['mock-primary', 'mock-primary', 'mock-primary']);
     expect(ofKind(requests, 'review')).toHaveLength(0);
+    expect(ofKind(requests, 'tone')).toHaveLength(0);
 
     await stack.reset();
     const summary = await summarize(stack, eventOf(gen.events, 'meta')!.generationId, '1');

@@ -5,10 +5,13 @@ import { ClientGone } from '../../src/worker/event-stream';
 import { finalizeArticle, groupSections, type FinalizeInput, type FinalizeModel } from '../../src/worker/finalize';
 import type { Prompt } from '../../src/worker/gemini';
 import { NO_REQUIREMENTS, type Requirements } from '../../src/worker/requirements';
+import { hedgeReviewPrompt, TONE_SCHEMA } from '../../src/worker/hedges';
 import { fidelityReviewPrompt, reconcilePrompt, RECONCILE_SCHEMA, REVIEW_SCHEMA } from '../../src/worker/review';
+import { toneChecks, toneListOf } from '../fixtures/upstream';
 
 const VIDEO = { id: 'mockvideo01', title: 'Maria Lopez on Berlin and the fund', channel: '测试频道', description: '', lengthSeconds: 600 };
 
+/** 第三段的 "about five" 是语气词表里的约数说法：这份字幕摘出 1 条语气片段，收尾时会多发 1 次语气清单核对 */
 const TRANSCRIPT = [
   "[00:00] welcome back to the show, today I'm talking with Maria Lopez",
   '[00:12] >> I moved to Berlin in 2003. Over the next ten years the fund backed Alpha, Beta and Gamma',
@@ -47,16 +50,26 @@ const FIDELITY_SYSTEM = fidelityReviewPrompt({ video: VIDEO, transcriptText: TRA
 const isFidelity = (prompt: Prompt) => prompt.system === FIDELITY_SYSTEM;
 const RECONCILE_SYSTEM = reconcilePrompt({ video: VIDEO, article: '', applied: [], pending: [] }).system;
 const isReconcile = (prompt: Prompt) => prompt.system === RECONCILE_SYSTEM;
+const TONE_SYSTEM = hedgeReviewPrompt({ video: VIDEO, excerpts: [], first: 1, section: '' }).system;
+const isTone = (prompt: Prompt) => prompt.system === TONE_SYSTEM;
 
 /**
  * 手写的模型替身：json（核对）按这一单元的原文返回结果，没给 review 时返回"没有问题"；
+ * 语气清单核对没给 tone 时按请求里的清单逐条返回 kept；
  * rewrite、reconcile（重叠修订的合并处理）没给时被调用就报错（用例因此能证明"不该修订时没有修订""不该合并时没有调用"）。
  */
 function fakeModel(
-  options: { review?: (section: string) => unknown; fidelity?: (section: string) => unknown; reconcile?: (prompt: Prompt) => unknown; rewrite?: (prompt: Prompt) => Promise<string> } = {},
+  options: {
+    review?: (section: string) => unknown;
+    fidelity?: (section: string) => unknown;
+    tone?: (prompt: Prompt) => unknown;
+    reconcile?: (prompt: Prompt) => unknown;
+    rewrite?: (prompt: Prompt) => Promise<string>;
+  } = {},
 ) {
   const reviewPrompts: Prompt[] = [];
   const fidelityPrompts: Prompt[] = [];
+  const tonePrompts: Prompt[] = [];
   const reconcilePrompts: Prompt[] = [];
   const schemas: object[] = [];
   const rewritePrompts: Prompt[] = [];
@@ -67,6 +80,10 @@ function fakeModel(
         reconcilePrompts.push(prompt);
         if (!options.reconcile) throw new Error('这个用例不该调用合并处理');
         return options.reconcile(prompt);
+      }
+      if (isTone(prompt)) {
+        tonePrompts.push(prompt);
+        return options.tone ? options.tone(prompt) : toneChecks(prompt.user);
       }
       if (isFidelity(prompt)) {
         fidelityPrompts.push(prompt);
@@ -81,7 +98,7 @@ function fakeModel(
       return options.rewrite(prompt);
     },
   };
-  return { model, reviewPrompts, fidelityPrompts, reconcilePrompts, schemas, rewritePrompts };
+  return { model, reviewPrompts, fidelityPrompts, tonePrompts, reconcilePrompts, schemas, rewritePrompts };
 }
 
 function input(patch: Partial<FinalizeInput> = {}): FinalizeInput {
@@ -106,8 +123,8 @@ async function rejection(work: Promise<unknown>): Promise<AppError> {
 
 describe('finalizeArticle：正常路径', () => {
   // 抓：没有约束、没有问题时也改动了文章，或者白白调用一次整篇修订
-  it('没有约束、核对没有问题：原样返回，每章一次核对并额外整篇复核一次，不调用 rewrite', async () => {
-    const { model, reviewPrompts, fidelityPrompts, schemas, rewritePrompts } = fakeModel();
+  it('没有约束、核对没有问题：原样返回，每章一次核对、整篇复核一次、语气清单核对一次，不调用 rewrite', async () => {
+    const { model, reviewPrompts, fidelityPrompts, tonePrompts, schemas, rewritePrompts } = fakeModel();
     const { seen, onStage } = stages();
     const result = await finalizeArticle(input(), model, onStage);
     expect(result).toEqual({
@@ -115,7 +132,7 @@ describe('finalizeArticle：正常路径', () => {
       revisions: [],
       requirements: NO_REQUIREMENTS,
       rejected: {},
-      review: { sections: 2, revisions: 0, rewritten: null, checks: [] },
+      review: { sections: 2, toneExcerpts: 1, revisions: 0, rewritten: null, checks: [] },
     });
     expect(rewritePrompts).toHaveLength(0);
     expect(seen).toEqual(['reviewing']);
@@ -129,7 +146,9 @@ describe('finalizeArticle：正常路径', () => {
       expect(prompt.user).toContain('<article_outline note="整篇文章的章节标题，只用来了解这一部分在全文里的位置">\n1. 柏林岁月\n2. 现在的组合\n</article_outline>');
     }
     expect(fidelityPrompts.map(sectionOf)).toEqual([DRAFT]);
-    expect(schemas).toEqual([REVIEW_SCHEMA, REVIEW_SCHEMA, REVIEW_SCHEMA]);
+    // 字幕里只有 "about five" 一处命中：语气核对一份清单、一次请求，核对的是整篇文章
+    expect(tonePrompts.map(sectionOf)).toEqual([DRAFT]);
+    expect(schemas).toEqual([REVIEW_SCHEMA, REVIEW_SCHEMA, REVIEW_SCHEMA, TONE_SCHEMA]);
   });
 
   // 抓：已有足够篇幅余量时仍改写；核对结果里没有给用户看的实际数值
@@ -138,7 +157,7 @@ describe('finalizeArticle：正常路径', () => {
     const { seen, onStage } = stages();
     const result = await finalizeArticle(input({ requirements: Promise.resolve(req({ maxChars: 80 })) }), model, onStage);
     expect(result.markdown).toBe(DRAFT);
-    expect(result.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: ['全文 61 字，上限 80 字'] });
+    expect(result.review).toEqual({ sections: 2, toneExcerpts: 1, revisions: 0, rewritten: null, checks: ['全文 61 字，上限 80 字'] });
     expect(rewritePrompts).toHaveLength(0);
     expect(seen).toEqual(['reviewing']);
   });
@@ -161,6 +180,7 @@ describe('finalizeArticle：正常路径', () => {
     // 程序校验拒绝的建议连同来源阶段留痕；格式不对的不在内
     expect(result.review).toEqual({
       sections: 2,
+      toneExcerpts: 1,
       revisions: 2,
       rewritten: null,
       checks: [],
@@ -180,13 +200,14 @@ describe('finalizeArticle：正常路径', () => {
 
   // 抓：初稿超字数时直接报错或截断，而不是让模型修订一次；修订后核对的还是初稿；阶段顺序错
   it('初稿超出上限 → 修订一次后满足：返回修订稿，rewritten 记录前后字数，阶段 revising → reviewing', async () => {
-    const { model, rewritePrompts, reviewPrompts, fidelityPrompts } = fakeModel({ rewrite: async () => REWRITTEN });
+    const { model, rewritePrompts, reviewPrompts, fidelityPrompts, tonePrompts } = fakeModel({ rewrite: async () => REWRITTEN });
     const { seen, onStage } = stages();
     const result = await finalizeArticle(input({ instructions: '全文不超过 50 字', requirements: Promise.resolve(req({ maxChars: 50 })) }), model, onStage);
     expect(seen).toEqual(['revising', 'reviewing']);
     expect(result.markdown).toBe(REWRITTEN);
     expect(result.review).toEqual({
       sections: 2,
+      toneExcerpts: 1,
       revisions: 0,
       rewritten: { unmet: ['全文 61 字，要求不超过 50 字'], charsBefore: 61, charsAfter: 36 },
       checks: ['全文 36 字，上限 50 字'],
@@ -198,6 +219,7 @@ describe('finalizeArticle：正常路径', () => {
     // 核对的是修订稿，不是初稿
     expect(reviewPrompts.map(sectionOf)).toEqual(['# 柏林与基金\n\n## 柏林岁月\n\n**嘉宾:** 2003 年搬到柏林。\n\n', '## 现在的组合\n\n**嘉宾:** 现在约五家。']);
     expect(fidelityPrompts.map(sectionOf)).toEqual([REWRITTEN]);
+    expect(tonePrompts.map(sectionOf)).toEqual([REWRITTEN]);
   });
 
   it('初稿满足原上限但余量不足：仅改写一次，真实 unmet 为空，全部核对使用压缩稿', async () => {
@@ -247,7 +269,7 @@ describe('finalizeArticle：正常路径', () => {
     }
   });
 
-  // 抓：为整篇复核预留连接后，合并时丢了章节或把复核算成额外章节单元
+  // 抓：为整篇复核和语气核对预留两个连接后，合并时丢了章节或把它们算成额外章节单元
   it('7 章的文章：合并成 4 个核对单元，拼回去等于原文', async () => {
     const draft = `# 七章\n\n${Array.from({ length: 7 }, (_, i) => `## 第${i + 1}章\n\n**嘉宾:** 第${i + 1}章正文。`).join('\n\n')}`;
     const { model, reviewPrompts } = fakeModel();
@@ -257,31 +279,48 @@ describe('finalizeArticle：正常路径', () => {
     expect(reviewPrompts.map((p) => sectionOf(p).match(/^## .+$/gm))).toEqual([['## 第1章', '## 第2章'], ['## 第3章', '## 第4章'], ['## 第5章', '## 第6章'], ['## 第7章']]);
   });
 
-  it('10章占满逐章预算时，连同整篇复核也不超过6个并行请求', async () => {
+  // 抓：逐章单元仍按"总数减 1"分配，加上整篇复核和语气核对超过 6 个并行请求
+  it('10 章：逐章合并成 4 个单元，连同整篇复核和语气核对正好 6 个并行请求', async () => {
     const draft = `# 十章\n\n${Array.from({ length: 10 }, (_, i) => `## 第${i + 1}章\n\n第${i + 1}章正文。`).join('\n\n')}`;
-    const { model, reviewPrompts, fidelityPrompts, schemas } = fakeModel();
+    const { model, reviewPrompts, fidelityPrompts, tonePrompts, schemas } = fakeModel();
     const result = await finalizeArticle(input({ draft }), model, stages().onStage);
-    expect(result.review.sections).toBe(5);
+    expect(result.review.sections).toBe(4);
     expect(reviewPrompts.map(sectionOf).join('')).toBe(draft);
     expect(fidelityPrompts.map(sectionOf)).toEqual([draft]);
+    // 4 个逐章 + 1 个整篇 + 1 个语气（字幕里 "about five" 一条）
+    expect(tonePrompts).toHaveLength(1);
     expect(schemas).toHaveLength(6);
+  });
+
+  // 抓：5 章的文章仍拆成 5 个逐章单元（旧上限 maxUnits - 1），加上另外两路超过并行预算
+  it('5 章的文章：逐章合并成 3 个单元（上限 4），拼回去等于原文', async () => {
+    const draft = `# 五章\n\n${Array.from({ length: 5 }, (_, i) => `## 第${i + 1}章\n\n**嘉宾:** 第${i + 1}章正文。`).join('\n\n')}`;
+    const { model, reviewPrompts, schemas } = fakeModel();
+    const result = await finalizeArticle(input({ draft }), model, stages().onStage);
+    expect(result.review.sections).toBe(3);
+    expect(reviewPrompts.map(sectionOf).join('')).toBe(draft);
+    expect(reviewPrompts.map((p) => sectionOf(p).match(/^## .+$/gm))).toEqual([['## 第1章', '## 第2章'], ['## 第3章', '## 第4章'], ['## 第5章']]);
+    expect(schemas).toHaveLength(5);
   });
 });
 
 describe('finalizeArticle：并行', () => {
-  // 抓：各单元串行核对，等待时间是所有章节之和（高档思考每章 30 到 60 秒）
-  it('两章与整篇复核都在任何一个请求返回前发出，完成顺序不影响合并', async () => {
-    const pending: { section: string; fidelity: boolean; resolve: (value: unknown) => void }[] = [];
+  // 抓：各单元串行核对，等待时间是所有章节之和（高档思考每章 30 到 60 秒）；语气核对等其他核对结束才发
+  it('两章、整篇复核与语气核对都在任何一个请求返回前发出，完成顺序不影响合并', async () => {
+    const pending: { prompt: Prompt; kind: string; resolve: (value: unknown) => void }[] = [];
     const model: FinalizeModel = {
-      json: (prompt) => new Promise((resolve) => pending.push({ section: sectionOf(prompt), fidelity: isFidelity(prompt), resolve })),
+      json: (prompt) => new Promise((resolve) => pending.push({ prompt, kind: isTone(prompt) ? 'tone' : isFidelity(prompt) ? 'article' : 'chapter', resolve })),
       rewrite: async () => {
         throw new Error('不该调用 rewrite');
       },
     };
     const work = finalizeArticle(input(), model, stages().onStage);
-    await vi.waitFor(() => expect(pending).toHaveLength(3), { timeout: 500, interval: 5 });
-    expect(pending.map((p) => p.fidelity)).toEqual([false, false, true]);
-    expect(pending[2]!.section).toBe(DRAFT);
+    // 两章 + 整篇 + 语气（字幕里 "about five" 一条，一份清单）
+    await vi.waitFor(() => expect(pending).toHaveLength(4), { timeout: 500, interval: 5 });
+    expect(pending.map((p) => p.kind)).toEqual(['chapter', 'chapter', 'article', 'tone']);
+    expect(sectionOf(pending[2]!.prompt)).toBe(DRAFT);
+    expect(sectionOf(pending[3]!.prompt)).toBe(DRAFT);
+    pending[3]!.resolve(toneChecks(pending[3]!.prompt.user));
     pending[2]!.resolve({ issues: [QUANTITY_ISSUE] });
     pending[1]!.resolve({ issues: [] });
     pending[0]!.resolve({ issues: [TIME_ISSUE] });
@@ -305,6 +344,7 @@ describe('finalizeArticle：整篇语义限定复核', () => {
     expect(result.rejected).toEqual({ malformed: 1 });
     expect(result.review).toEqual({
       sections: 2,
+      toneExcerpts: 1,
       revisions: 2,
       rewritten: null,
       checks: [],
@@ -404,7 +444,8 @@ describe('finalizeArticle：重叠修订的合并处理', () => {
       CHAPTER_REVISION,
       { type: 'attribution', before: '嘉宾表示，试点费用约为20美元。', after: '主持人估计，试点费用约为20美元。', reason: '这是主持人的估计，不是嘉宾的说法', evidence: EVIDENCE },
     ]);
-    expect(result.review).toEqual({ sections: 1, revisions: 2, rewritten: null, checks: [], unapplied: [superseded('数字已改对，归属仍错')] });
+    // 字幕里 "about 20 dollars" 一条语气片段（替身全部判 kept）
+    expect(result.review).toEqual({ sections: 1, toneExcerpts: 1, revisions: 2, rewritten: null, checks: [], unapplied: [superseded('数字已改对，归属仍错')] });
     expect(result.rejected).toEqual({});
     // 合并请求只发一次，基于当前文章（已含逐章修订），带已采用的修订
     expect(reconcilePrompts).toHaveLength(1);
@@ -531,6 +572,152 @@ describe('finalizeArticle：重叠修订的合并处理', () => {
     const original = new AppError('gemini_billing');
     const { model } = pilot({ reconcile: () => { throw original; } });
     expect(await rejection(finalizeArticle(pilotInput(), model, stages().onStage))).toBe(original);
+  });
+});
+
+describe('finalizeArticle：语气清单核对', () => {
+  /** 语气核对替身：片段原文包含 match 的那一条判 dropped 并给出 issue，其余 kept */
+  const dropOn = (match: string, issue: { type?: 'quantity' | 'unsupported'; quote: string; replacement: string; evidence: string; problem: string }) => (prompt: Prompt) => toneChecks(prompt.user, [{ match, ...issue }]);
+
+  // 真实复现过的反例：整篇复核和语气核对给同一句补了同一个"似乎"，修复前最终稿是"似乎似乎用来记录…"
+  const STIPEND = 'And this seems to store the stipends for workers at a temple some few thousand years ago.';
+  const STIPEND_INPUT = input({ draft: '# 泥板\n\n## 用途\n\n该图表包含行和列，用来记录当时神庙工人的津贴。', transcriptText: `[00:00] ${STIPEND}` });
+  const SEEMS = { type: 'unsupported' as const, quote: '用来记录当时神庙工人的津贴', replacement: '似乎用来记录当时神庙工人的津贴', evidence: STIPEND, problem: '原话是 seems to，是推测' };
+
+  // 抓（真实反例）：两路都给同一句补"似乎"，语气这条在整篇修订后的文章上照样替换，叠成"似乎似乎"；或者白白再调一次合并处理
+  it('整篇复核和语气核对给出相同的"似乎"：最终稿只有一个"似乎"，语气那条记 covered，不调合并处理', async () => {
+    const { model, tonePrompts, reconcilePrompts } = fakeModel({ fidelity: () => ({ issues: [SEEMS] }), tone: dropOn('seems to store', SEEMS) });
+    const result = await finalizeArticle(STIPEND_INPUT, model, stages().onStage);
+    expect(result.markdown).toBe('# 泥板\n\n## 用途\n\n该图表包含行和列，似乎用来记录当时神庙工人的津贴。');
+    expect(result.revisions).toEqual([{ type: 'unsupported', before: '用来记录当时神庙工人的津贴', after: '似乎用来记录当时神庙工人的津贴', reason: '原话是 seems to，是推测', evidence: STIPEND }]);
+    expect(result.rejected).toEqual({});
+    expect(result.review).toEqual({
+      sections: 1,
+      toneExcerpts: 1,
+      revisions: 1,
+      rewritten: null,
+      checks: [],
+      unapplied: [
+        { stage: 'tone', disposition: 'covered', type: 'unsupported', quote: '用来记录当时神庙工人的津贴', replacement: '似乎用来记录当时神庙工人的津贴', problem: '原话是 seems to，是推测', evidence: STIPEND, note: '另一条修订已写入相同的替换文字' },
+      ],
+    });
+    expect(reconcilePrompts).toHaveLength(0);
+    // 语气核对拿到的是核对前的文章，清单只有这一条，命中 seems to 和 some few
+    expect(tonePrompts).toHaveLength(1);
+    expect(toneListOf(tonePrompts[0]!.user)).toEqual([{ index: 1, text: STIPEND }]);
+    expect(tonePrompts[0]!.user).toContain('[seems to / some few]');
+  });
+
+  // 抓：语气核对查出的问题没有替换进文章；采用后没计数；toneExcerpts 没记或记错
+  it('只有语气核对查出一处（另外两路都没碰）：采用，review.toneExcerpts 为 1', async () => {
+    const hedge = { type: 'quantity' as const, quote: '现在有五到六家被投公司。', replacement: '现在大约有五家被投公司，预计会增加到五到六家。', evidence: 'we’re at about five portfolio companies now', problem: '原话是约五家' };
+    const { model, reconcilePrompts } = fakeModel({ tone: dropOn('about five', hedge) });
+    const result = await finalizeArticle(input(), model, stages().onStage);
+    expect(result.markdown).toBe('# 柏林与基金\n\n## 柏林岁月\n\n**嘉宾:** 2003 年那家基金投资了 Alpha、Beta 和 Gamma。\n\n## 现在的组合\n\n**嘉宾:** 现在大约有五家被投公司，预计会增加到五到六家。');
+    expect(result.revisions).toEqual([{ type: 'quantity', before: '现在有五到六家被投公司。', after: '现在大约有五家被投公司，预计会增加到五到六家。', reason: '原话是约五家', evidence: 'we’re at about five portfolio companies now' }]);
+    expect(result.review).toEqual({ sections: 2, toneExcerpts: 1, revisions: 1, rewritten: null, checks: [] });
+    expect(result.rejected).toEqual({});
+    expect(reconcilePrompts).toHaveLength(0);
+  });
+
+  // 抓：语气核对的修订绕过了程序校验（字幕依据）；被拒的建议没留痕或来源阶段记错；dropped 而字段不全的没计入 malformed
+  it('语气建议的依据不在字幕里：拒绝，unapplied 的 stage 是 tone；字段不全的 dropped 计入 malformed', async () => {
+    const fabricated = { type: 'quantity' as const, quote: '现在有五到六家被投公司。', replacement: '现在大约有五家被投公司。', evidence: 'we have roughly five companies', problem: '原话是约数' };
+    const { model } = fakeModel({ tone: dropOn('about five', fabricated) });
+    const result = await finalizeArticle(input(), model, stages().onStage);
+    expect(result.markdown).toBe(DRAFT);
+    expect(result.rejected).toEqual({ evidence_not_in_transcript: 1 });
+    expect(result.review.unapplied).toEqual([{ stage: 'tone', disposition: 'evidence_not_in_transcript', ...fabricated }]);
+
+    const { model: partial } = fakeModel({ tone: () => ({ checks: [{ index: 1, status: 'dropped', type: 'quantity', quote: '现在有五到六家被投公司。', evidence: 'we’re at about five portfolio companies now', problem: '原话是约数' }] }) });
+    const second = await finalizeArticle(input(), partial, stages().onStage);
+    expect(second.markdown).toBe(DRAFT);
+    expect(second.rejected).toEqual({ malformed: 1 });
+  });
+
+  // 抓：语气建议要改的句子已被逐章修订改过（插入了归属），直接替换会把逐章的改动冲掉或叠加；应基于当前文章做合并处理
+  it('语气建议与逐章修订重叠、又有逐章没改的问题：进合并处理，最终稿两处都改对', async () => {
+    const PILOT = "[00:00] Host: Our pilot cost about 20 dollars. This is my estimate, not the guest's statement.";
+    const EVIDENCE = "Host: Our pilot cost about 20 dollars. This is my estimate, not the guest's statement.";
+    const chapterFix = { type: 'attribution', quote: '试点费用为200美元。', evidence: EVIDENCE, problem: '这是主持人的估计', replacement: '试点费用为200美元，这是主持人的估计。' };
+    const toneFix = { type: 'quantity' as const, quote: '试点费用为200美元', replacement: '试点费用约为20美元', evidence: 'Our pilot cost about 20 dollars.', problem: '原话是约 20 美元' };
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({ issues: [chapterFix] }),
+      tone: dropOn('about 20', toneFix),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '归属已补，金额和约数仍错', quote: '试点费用为200美元，这是主持人的估计。', replacement: '试点费用约为20美元，这是主持人的估计。', evidence: '' }] }),
+    });
+    const result = await finalizeArticle(input({ draft: '# 试点\n\n## 费用\n\n嘉宾表示，试点费用为200美元。', transcriptText: PILOT }), model, stages().onStage);
+    expect(result.markdown).toBe('# 试点\n\n## 费用\n\n嘉宾表示，试点费用约为20美元，这是主持人的估计。');
+    expect(result.revisions).toEqual([
+      { type: 'attribution', before: '试点费用为200美元。', after: '试点费用为200美元，这是主持人的估计。', reason: '这是主持人的估计', evidence: EVIDENCE },
+      { type: 'quantity', before: '试点费用为200美元，这是主持人的估计。', after: '试点费用约为20美元，这是主持人的估计。', reason: '原话是约 20 美元', evidence: 'Our pilot cost about 20 dollars.' },
+    ]);
+    expect(result.review.unapplied).toEqual([{ stage: 'tone', disposition: 'superseded', ...toneFix, note: '归属已补，金额和约数仍错' }]);
+    expect(reconcilePrompts).toHaveLength(1);
+    // 合并处理基于已含逐章修订的当前文章，待处理的是语气那条
+    expect(reconcilePrompts[0]!.user).toContain('<article>\n# 试点\n\n## 费用\n\n嘉宾表示，试点费用为200美元，这是主持人的估计。\n</article>');
+    expect(reconcilePrompts[0]!.user).toContain('"quote": "试点费用为200美元"');
+  });
+
+  // 抓：语气核对漏给、重复给或格式不对的结论被当成"没有问题"，没核对的条目悄悄消失，文章照样保存
+  it.each<[string, unknown]>([
+    ['缺条目', { checks: [] }],
+    ['缺 checks', { issues: [] }],
+    ['编号超出清单', { checks: [{ index: 2, status: 'kept', type: 'unsupported', quote: '', replacement: '', evidence: '', problem: '' }] }],
+    ['status 无效', { checks: [{ index: 1, status: 'fixed', type: 'unsupported', quote: '', replacement: '', evidence: '', problem: '' }] }],
+  ])('语气核对响应%s：review_failed，不返回可保存的结果', async (_label, raw) => {
+    const { model, tonePrompts } = fakeModel({ tone: () => raw });
+    const save = vi.fn();
+    const err = await rejection(finalizeArticle(input(), model, stages().onStage).then(save));
+    expect({ code: err.code, message: err.message }).toEqual({
+      code: 'review_failed',
+      message: '内容核对没有完成，这次生成没有保存（对照字幕核对没有完成：模型返回的格式无效（语气清单核对没有对每一条给出结论））',
+    });
+    expect(tonePrompts).toHaveLength(1);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  // 抓：语气请求繁忙时退回"只用另外两路的结果"保存；账单错误被包成 review_failed
+  it('语气请求 503：review_failed，不保存', async () => {
+    const { model } = fakeModel({ tone: () => { throw new AppError('gemini_busy', 'HTTP 503'); } });
+    const save = vi.fn();
+    const err = await rejection(finalizeArticle(input(), model, stages().onStage).then(save));
+    expect({ code: err.code, message: err.message }).toEqual({ code: 'review_failed', message: '内容核对没有完成，这次生成没有保存（对照字幕核对没有完成：Gemini 模型繁忙，请稍后重试（HTTP 503））' });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('语气请求 402：gemini_billing 原样抛出', async () => {
+    const original = new AppError('gemini_billing');
+    const { model } = fakeModel({ tone: () => { throw original; } });
+    expect(await rejection(finalizeArticle(input(), model, stages().onStage))).toBe(original);
+  });
+
+  // 抓：字幕里没有推测说法时也发一次空清单的语气请求；或者 review 里带着 toneExcerpts: 0
+  it('字幕里没有任何命中词：不发语气请求，review 没有 toneExcerpts 字段', async () => {
+    const plain = TRANSCRIPT.replace('we’re at about five portfolio companies now', 'we’re at five portfolio companies now');
+    const { model, tonePrompts, schemas } = fakeModel();
+    const result = await finalizeArticle(input({ transcriptText: plain }), model, stages().onStage);
+    expect(tonePrompts).toHaveLength(0);
+    expect(schemas).toEqual([REVIEW_SCHEMA, REVIEW_SCHEMA, REVIEW_SCHEMA]);
+    expect(result.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: [] });
+    expect(result.review).not.toHaveProperty('toneExcerpts');
+  });
+
+  // 抓：清单超过 60 条时只发一份（或第二份编号又从 1 起，和第一份撞号）；第二份查出的问题对不上号、没采用
+  it('清单 61 条：分两次请求，编号 1–31 和 32–61 连续不重叠；第二份查出的问题照常采用', async () => {
+    const many = Array.from({ length: 61 }, (_, i) => `[${String(i).padStart(2, '0')}:00] item ${i + 1} seems to be ready for review today`).join('\n\n');
+    const draft = '# 清单\n\n## 进度\n\n第45项已经可以评审。';
+    const hedge = { quote: '第45项已经可以评审。', replacement: '第45项似乎已经可以评审。', evidence: 'item 45 seems to be ready for review today', problem: '原话是 seems to' };
+    const { model, tonePrompts } = fakeModel({ tone: dropOn('item 45 seems', hedge) });
+    const result = await finalizeArticle(input({ draft, transcriptText: many }), model, stages().onStage);
+    expect(tonePrompts).toHaveLength(2);
+    const [first, second] = tonePrompts.map((p) => toneListOf(p.user).map((e) => e.index));
+    expect(first).toEqual(Array.from({ length: 31 }, (_, i) => i + 1));
+    expect(second).toEqual(Array.from({ length: 30 }, (_, i) => i + 32));
+    expect(toneListOf(tonePrompts[1]!.user)[13]).toEqual({ index: 45, text: 'item 45 seems to be ready for review today' });
+    expect(result.markdown).toBe('# 清单\n\n## 进度\n\n第45项似乎已经可以评审。');
+    expect(result.review.toneExcerpts).toBe(61);
+    expect(result.review.revisions).toBe(1);
   });
 });
 

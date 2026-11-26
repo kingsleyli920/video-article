@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyRevisions, fidelityReviewPrompt, normalizeEvidence, parseIssues, parseReconcile, reconcilePrompt, RECONCILE_SCHEMA, reviewPrompt, splitForReview, type ReviewIssue } from '../../src/worker/review';
+import type { Revision } from '../../src/shared/types';
 import { geminiPurpose } from '../fixtures/upstream';
 
 /** 整理后的字幕（和 prepareTranscript 的输出同一种形状：段首时间戳、换人标记 >>、弯引号原样） */
@@ -269,6 +270,59 @@ describe('applyRevisions：丢弃原因', () => {
     expect(outcome.applied).toHaveLength(40);
     expect(outcome.markdown.endsWith('第39条。第40条。第41句。\n')).toBe(true);
     expect(outcome.rejected).toEqual([{ issue: issues[40], reason: 'limit' }]);
+  });
+});
+
+describe('applyRevisions：与更早步骤的修订重叠（earlier）', () => {
+  // 真实复现过的反例：整篇复核和语气核对给同一句补了同一个"似乎"
+  const STIPEND = 'And this seems to store the stipends for workers at a temple some few thousand years ago.';
+  const STIPEND_TRANSCRIPT = `[00:00] ${STIPEND}`;
+  const BEFORE = '## 泥板\n\n该图表包含行和列，用来记录当时神庙工人的津贴。\n\n';
+  const AFTER_FIRST = '## 泥板\n\n该图表包含行和列，似乎用来记录当时神庙工人的津贴。\n\n';
+  const HEDGE: ReviewIssue = { type: 'unsupported', quote: '用来记录当时神庙工人的津贴', replacement: '似乎用来记录当时神庙工人的津贴', evidence: STIPEND, problem: '原话是推测' };
+  const EARLIER: Revision = { type: 'unsupported', before: '用来记录当时神庙工人的津贴', after: '似乎用来记录当时神庙工人的津贴', reason: '原话是推测', evidence: STIPEND };
+
+  // 抓：前一步已经补过"似乎"，这一步再按同一个 quote 替换，变成"似乎似乎用来记录…"
+  it('quote 落在更早修订改写后的文字里：不替换，记 overlaps_earlier', () => {
+    expect(applyRevisions(AFTER_FIRST, [HEDGE], STIPEND_TRANSCRIPT, [EARLIER])).toEqual({ markdown: AFTER_FIRST, applied: [], rejected: [{ issue: HEDGE, reason: 'overlaps_earlier' }] });
+  });
+
+  // 抓：只判断"quote 完全落在 after 里"，和 after 部分重叠的 quote 照样替换，把前一步的改写切坏
+  it('quote 和更早修订的文字部分重叠：也记 overlaps_earlier', () => {
+    const partial: ReviewIssue = { ...HEDGE, quote: '行和列，似乎', replacement: '行和列，大概' };
+    expect(applyRevisions(AFTER_FIRST, [partial], STIPEND_TRANSCRIPT, [EARLIER]).rejected).toEqual([{ issue: partial, reason: 'overlaps_earlier' }]);
+  });
+
+  // 抓：只要有 earlier 就一律拒绝（误伤同一句里不相干的修订）；紧挨着 after 的 quote 被算成重叠
+  it('quote 不在任何更早修订的范围内（包括紧挨着它）：照常替换', () => {
+    const touching: ReviewIssue = { ...HEDGE, type: 'language', quote: '该图表包含行和列，', replacement: '这张图表分成行和列，' };
+    const outcome = applyRevisions(AFTER_FIRST, [touching], STIPEND_TRANSCRIPT, [EARLIER]);
+    expect(outcome.markdown).toBe('## 泥板\n\n这张图表分成行和列，似乎用来记录当时神庙工人的津贴。\n\n');
+    expect(outcome.rejected).toEqual([]);
+  });
+
+  // 抓：删除类修订的 after 是空串，indexOf('') 恒为 0，被当成和所有 quote 重叠，后面的修订全被拦下
+  it('更早修订的 after 是空串或只有空白（删除类）：不误判', () => {
+    const deletions: Revision[] = [
+      { ...EARLIER, before: '多余的一句。', after: '' },
+      { ...EARLIER, before: '另一句。', after: '  ' },
+    ];
+    const outcome = applyRevisions(BEFORE, [HEDGE], STIPEND_TRANSCRIPT, deletions);
+    expect(outcome.markdown).toBe(AFTER_FIRST);
+    expect(outcome.rejected).toEqual([]);
+  });
+
+  // 抓：更早修订的文字已经不在当前文章里（又被改掉了），仍被拿来拦截
+  it('更早修订的 after 不在当前文章里：照常替换', () => {
+    const gone: Revision = { ...EARLIER, after: '用途不明' };
+    expect(applyRevisions(BEFORE, [HEDGE], STIPEND_TRANSCRIPT, [gone]).markdown).toBe(AFTER_FIRST);
+  });
+
+  // 抓：加了第四个参数后，不传它的调用（逐章核对、合并处理）行为变了
+  it('不传 earlier：和传空数组一样，按 quote 照常替换', () => {
+    const without = applyRevisions(AFTER_FIRST, [HEDGE], STIPEND_TRANSCRIPT);
+    expect(without).toEqual(applyRevisions(AFTER_FIRST, [HEDGE], STIPEND_TRANSCRIPT, []));
+    expect(without.markdown).toBe('## 泥板\n\n该图表包含行和列，似乎似乎用来记录当时神庙工人的津贴。\n\n');
   });
 });
 

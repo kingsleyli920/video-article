@@ -2,7 +2,7 @@ import { exports } from 'cloudflare:workers';
 import { vi } from 'vitest';
 import { readSse } from '../../src/shared/sse';
 import type { StreamEvents } from '../../src/shared/types';
-import { chunkedBody, geminiJson, geminiPurpose, geminiSse, NO_REQUIREMENTS_JSON, playerResponse, srv1, type GeminiPurpose } from '../fixtures/upstream';
+import { chunkedBody, geminiJson, geminiPurpose, geminiSse, geminiUserText, NO_REQUIREMENTS_JSON, playerResponse, srv1, toneChecks, type GeminiPurpose } from '../fixtures/upstream';
 
 export interface UpstreamOptions {
   /** YouTube 播放器接口的响应；传 status 数字表示直接返回该 HTTP 状态 */
@@ -14,6 +14,8 @@ export interface UpstreamOptions {
   geminiJson?: object;
   /** 对照字幕核对的 JSON 响应；不设时返回"没有问题"。函数形式按请求体决定（各章的请求体不同） */
   reviewJson?: object | ((body: string) => object);
+  /** 语气清单核对的 JSON 响应；不设时按请求里的清单逐条返回 kept（编号范围取自请求）。函数形式按请求体决定（分成几份时各份编号不同） */
+  toneJson?: object | ((body: string) => object);
   /** 约束提取的 JSON 响应；不设时返回"没有可计算的约束"。函数形式按这是第几次约束提取请求（从 0 开始）决定，用来模拟"第 N 次返回不同结果" */
   requirementsJson?: object | ((attempt: number) => object);
   /** 重叠修订建议合并处理的 JSON 响应；不设时这种请求会报"未预设"（用例因此能证明没有调用合并处理） */
@@ -73,6 +75,10 @@ export function mockUpstream(options: UpstreamOptions) {
     if (purpose === 'review') {
       const review = typeof options.reviewJson === 'function' ? options.reviewJson(body) : options.reviewJson;
       return Response.json(review ?? geminiJson({ issues: [] }));
+    }
+    if (purpose === 'tone') {
+      const tone = typeof options.toneJson === 'function' ? options.toneJson(body) : options.toneJson;
+      return Response.json(tone ?? geminiJson(toneChecks(geminiUserText(JSON.parse(body)))));
     }
     if (purpose === 'reconcile' && options.reconcileJson !== undefined) {
       return Response.json(typeof options.reconcileJson === 'function' ? options.reconcileJson(body) : options.reconcileJson);

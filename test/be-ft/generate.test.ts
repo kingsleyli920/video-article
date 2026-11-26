@@ -258,6 +258,7 @@ describe('POST /api/generations', () => {
     expect(eventOf(events, 'revised')).toBeUndefined();
     expect(upstream.gemini('rewrite')).toHaveLength(1);
     expect(upstream.gemini('review')).toHaveLength(0);
+    expect(upstream.gemini('tone')).toHaveLength(0);
     expect(save).not.toHaveBeenCalled();
     expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
   });

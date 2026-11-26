@@ -176,8 +176,18 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
   const pageText = (await page.locator('#article').innerText()).replace(/\s+/g, '');
   const plain = (text: string) => text.replace(/\s+/g, '');
   const noMarkup = (text: string) => !/[*_`#>\[\]|]/.test(text) && text.trim().length >= 8;
-  for (const r of revisions) {
-    if (r.after && noMarkup(r.after)) expect(pageText, `页面应显示修订后的句子：${r.after}`).toContain(plain(r.after));
+  // 每条修订后的句子都应在页面上；除非后面还有一条修订改的是同一处（合并处理基于前一条的结果再改），那以后一条为准
+  const refinedLater = (after: string, later: typeof revisions) =>
+    later.some((l) => {
+      const [a, b] = [plain(after), plain(l.before)];
+      for (let i = 0; i + 8 <= b.length; i++) if (a.includes(b.slice(i, i + 8))) return true;
+      return b.length > 0 && b.length < 8 && a.includes(b);
+    });
+  let supersededRevisions = 0;
+  for (const [i, r] of revisions.entries()) {
+    if (!r.after || !noMarkup(r.after)) continue;
+    if (refinedLater(r.after, revisions.slice(i + 1))) supersededRevisions++;
+    else expect(pageText, `页面应显示修订后的句子：${r.after}`).toContain(plain(r.after));
   }
   if (revisions.length > 0) {
     const record = page.locator('.article-review details');
@@ -234,6 +244,7 @@ test('候选配置：来源面板先于正文 → 流式文章 → 保存 → �
         stages,
         review: done!.review,
         revisions,
+        supersededRevisions,
         transcript: meta!.transcript,
         sourceAt,
         articleLengthAtSource,

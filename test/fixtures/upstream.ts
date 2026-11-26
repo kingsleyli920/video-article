@@ -49,19 +49,58 @@ export function geminiJson(value: unknown, finishReason = 'STOP') {
   return { candidates: [{ content: { parts: [{ text: JSON.stringify(value) }], role: 'model' }, finishReason }] };
 }
 
-export type GeminiPurpose = 'article' | 'rewrite' | 'review' | 'reconcile' | 'requirements' | 'summary';
+export type GeminiPurpose = 'article' | 'rewrite' | 'review' | 'tone' | 'reconcile' | 'requirements' | 'summary';
 
 /** 重叠修订建议合并处理的系统提示词开头；它和两种核对一样以"你是事实核对编辑"开头，要先单独认出来 */
 const RECONCILE_PREFIX = '你是事实核对编辑。一篇根据视频字幕写成的文章刚做过两路核对';
 
-/** 按系统提示词的开头判断一次 Gemini 请求是做什么的（文章、按要求修订、对照字幕核对、重叠修订的合并处理、提取约束、5W1H） */
+/** 语气清单核对的系统提示词开头；同样以"你是事实核对编辑"开头，要先单独认出来 */
+const TONE_PREFIX = '你是事实核对编辑，这一次只核对确定程度';
+
+/** 按系统提示词的开头判断一次 Gemini 请求是做什么的（文章、按要求修订、对照字幕核对、语气清单核对、重叠修订的合并处理、提取约束、5W1H） */
 export function geminiPurpose(url: string, body: unknown): GeminiPurpose {
   const system = String((body as { systemInstruction?: { parts?: { text?: string }[] } } | null)?.systemInstruction?.parts?.[0]?.text ?? '');
   if (url.includes('streamGenerateContent')) return system.startsWith('你是中文内容编辑。下面是一篇') ? 'rewrite' : 'article';
   if (system.startsWith(RECONCILE_PREFIX)) return 'reconcile';
+  if (system.startsWith(TONE_PREFIX)) return 'tone';
   if (system.startsWith('你是事实核对编辑')) return 'review';
   if (system.startsWith('你负责从用户写给文章生成器的要求里')) return 'requirements';
   return 'summary';
+}
+
+/** Gemini 请求体里的用户消息 */
+export function geminiUserText(body: unknown): string {
+  return String((body as { contents?: { parts?: { text?: string }[] }[] } | null)?.contents?.[0]?.parts?.[0]?.text ?? '');
+}
+
+/** 语气核对请求里列出的清单：编号和片段原文（按"编号. [命中词] 原文"一行一条解析，不依赖提示词的其他措辞） */
+export function toneListOf(user: string): { index: number; text: string }[] {
+  const block = /<hedged_excerpts>\n([\s\S]*?)\n<\/hedged_excerpts>/.exec(user)?.[1] ?? '';
+  return block.split('\n').flatMap((line) => {
+    const m = /^(\d+)\. \[[^\]]*\] (.*)$/.exec(line);
+    return m ? [{ index: Number(m[1]), text: m[2]! }] : [];
+  });
+}
+
+/** 语气核对替身要判为 dropped 的条目：片段原文包含 match 的那一条，带上这条修订 */
+export interface ToneDrop {
+  match: string;
+  type?: 'quantity' | 'unsupported';
+  quote: string;
+  replacement: string;
+  evidence: string;
+  problem: string;
+}
+
+/** 按请求里的清单生成语气核对结果：命中 drops 的记 dropped，其余每条都是 kept（编号与请求一致，不多不少） */
+export function toneChecks(user: string, drops: ToneDrop[] = []) {
+  return {
+    checks: toneListOf(user).map(({ index, text }) => {
+      const drop = drops.find((d) => text.includes(d.match));
+      if (!drop) return { index, status: 'kept', type: 'unsupported', quote: '', replacement: '', evidence: '', problem: '' };
+      return { index, status: 'dropped', type: drop.type ?? 'unsupported', quote: drop.quote, replacement: drop.replacement, evidence: drop.evidence, problem: drop.problem };
+    }),
+  };
 }
 
 /** 约束提取的"什么都没提"结果 */

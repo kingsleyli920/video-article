@@ -67,9 +67,11 @@ describe('用户要求"不超过 N 字"', () => {
     expect(eventOf(events, 'revised')).toEqual({ markdown: SHORT, revisions: [] });
     const done = eventOf(events, 'done')!;
     expect(done.chars).toBe(36);
-    expect(done.review).toEqual({ sections: 2, revisions: 0, rewritten: { unmet: ['全文 61 字，要求不超过 50 字'], charsBefore: 61, charsAfter: 36 }, checks: ['全文 36 字，上限 50 字'] });
+    expect(done.review).toEqual({ sections: 2, toneExcerpts: 1, revisions: 0, rewritten: { unmet: ['全文 61 字，要求不超过 50 字'], charsBefore: 61, charsAfter: 36 }, checks: ['全文 36 字，上限 50 字'] });
     // 核对的是修订稿
     expect(upstream.gemini('review').map((r) => promptOf(r.body).user.includes('2003 年搬到柏林。'))).toEqual([true, false, true]);
+    // 语气核对（字幕里 "about five" 一条）也对着修订稿
+    expect(upstream.gemini('tone').map((r) => promptOf(r.body).user.includes(`<section>\n${SHORT}\n</section>`))).toEqual([true]);
 
     const saved = await openStore(env, eventOf(events, 'meta')!.generationId).load();
     expect(saved!.article.markdown).toBe(SHORT);
@@ -93,6 +95,7 @@ describe('用户要求"不超过 N 字"', () => {
     expect(eventOf(events, 'revised')).toBeUndefined();
     expect(upstream.gemini('rewrite')).toHaveLength(1);
     expect(upstream.gemini('review')).toHaveLength(0);
+    expect(upstream.gemini('tone')).toHaveLength(0);
     expect(save).not.toHaveBeenCalled();
     expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
   });
@@ -212,6 +215,7 @@ describe('约束提取请求', () => {
     expect(upstream.gemini('requirements')).toHaveLength(3);
     expect(upstream.gemini('rewrite')).toHaveLength(0);
     expect(upstream.gemini('review')).toHaveLength(0);
+    expect(upstream.gemini('tone')).toHaveLength(0);
     expect(save).not.toHaveBeenCalled();
     expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
   });
@@ -244,6 +248,7 @@ describe('约束提取确认不了（审查方反例，用户要求"不超过150
     expect(requests).toHaveLength(3);
     for (const r of requests) expect(promptOf(r.body).user).toBe('<user_requirements>\n不超过1500字\n</user_requirements>\n\n请提取硬性约束。');
     expect(upstream.gemini('review')).toHaveLength(0);
+    expect(upstream.gemini('tone')).toHaveLength(0);
     expect(save).not.toHaveBeenCalled();
     expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
   });
@@ -276,7 +281,7 @@ describe('约束提取确认不了（审查方反例，用户要求"不超过150
     const upstream = mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM, requirementsJson: geminiJson(NONE) });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID), instructions: '写得口语一点，面向初学者' });
     expect(events.at(-1)!.event).toBe('done');
-    expect(eventOf(events, 'done')!.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: [] });
+    expect(eventOf(events, 'done')!.review).toEqual({ sections: 2, toneExcerpts: 1, revisions: 0, rewritten: null, checks: [] });
     expect(upstream.gemini('requirements')).toHaveLength(1);
     expect(upstream.gemini('rewrite')).toHaveLength(0);
     expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(DRAFT);

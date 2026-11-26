@@ -243,7 +243,9 @@ export function classifyHttpError(status: number, body: string): AppError {
   // 同一账单下换模型也一样会被拒，换了只会掩盖原因
   if (status === 402 || /prepayment credits are depleted/i.test(message)) return new AppError('gemini_billing');
   if (status === 429) return new AppError('gemini_quota');
-  if (status === 503 || status === 500) return new AppError('gemini_busy', `HTTP ${status}`);
+  // 502、504、524 是网关一侧的超时或中断（2026-11-26 线上实际遇到 524：核对请求等了一百多秒没有响应）。和 503 一样按繁忙处理：
+  // 可以重试，结构化请求还可以换备用模型，不直接让整次生成失败
+  if ([500, 502, 503, 504, 524].includes(status)) return new AppError('gemini_busy', `HTTP ${status}`);
   if (/api key/i.test(message)) return new AppError('gemini_error', 'API key 无效');
   return new AppError('gemini_error', `HTTP ${status}`);
 }

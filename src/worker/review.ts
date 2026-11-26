@@ -136,7 +136,7 @@ export interface ReviewIssue {
   replacement: string;
 }
 
-export type RejectReason = 'malformed' | 'quote_not_found' | 'quote_not_unique' | 'evidence_not_in_transcript' | 'no_change' | 'structure' | 'too_long' | 'limit' | 'reverts_earlier';
+export type RejectReason = 'malformed' | 'quote_not_found' | 'quote_not_unique' | 'evidence_not_in_transcript' | 'no_change' | 'structure' | 'too_long' | 'limit' | 'reverts_earlier' | 'overlaps_earlier';
 
 export interface ReviewOutcome {
   markdown: string;
@@ -172,14 +172,21 @@ export function parseIssues(raw: unknown): { issues: ReviewIssue[]; malformed: u
  * - 不改变结构：quote 和 replacement 都不跨段落，不新增或去掉标题行；
  * - replacement 不比 quote 长出太多（局部修订不是扩写）。
  * 依次替换，后面的条目在已经替换过的文章上定位。
+ * earlier：更早的核对步骤已经采用的修订；quote 和其中某条修订改写后的文字重叠时记为 overlaps_earlier，不替换。
  */
-export function applyRevisions(markdown: string, issues: ReviewIssue[], transcriptText: string): ReviewOutcome {
+export function applyRevisions(markdown: string, issues: ReviewIssue[], transcriptText: string, earlier: Revision[] = []): ReviewOutcome {
   const haystack = normalizeEvidence(transcriptText);
   const applied: Revision[] = [];
   const rejected: ReviewOutcome['rejected'] = [];
   let current = markdown;
 
   for (const issue of issues) {
+    // 要替换的文字落在前面某一步已经改写过的文字里：两条建议改的是同一处，直接替换可能把同一个修正叠加两次
+    //（例如两路都给同一句补"似乎"）。这类不在这里应用，交给调用方做合并处理。
+    if (overlapsEarlier(current, issue.quote, earlier)) {
+      rejected.push({ issue, reason: 'overlaps_earlier' });
+      continue;
+    }
     const reason = check(issue, current, haystack, applied.length);
     if (reason) {
       rejected.push({ issue, reason });
@@ -210,6 +217,17 @@ function check(issue: ReviewIssue, markdown: string, haystack: string, appliedCo
   if (replacement.trim() === '' && isWholeLine(markdown, first, quote.length)) return 'structure';
   if (replacement.length > Math.max(quote.length * 2, quote.length + 80)) return 'too_long';
   return null;
+}
+
+function overlapsEarlier(markdown: string, quote: string, earlier: Revision[]): boolean {
+  const start = markdown.indexOf(quote);
+  if (start < 0) return false;
+  const end = start + quote.length;
+  return earlier.some((r) => {
+    if (r.after.trim() === '') return false;
+    const from = markdown.indexOf(r.after);
+    return from >= 0 && from < end && start < from + r.after.length;
+  });
 }
 
 const crossesBlock = (text: string) => /\n\s*\n/.test(text);

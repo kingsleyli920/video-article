@@ -256,6 +256,28 @@ describe('classifyHttpError', () => {
   ])('HTTP %i → %s', (status, body, code) => {
     expect(classifyHttpError(status, body).code).toBe(code);
   });
+
+  // 抓：网关超时或中断（线上核对请求实际遇到过 524）被当成不可重试的 gemini_error，整次生成直接失败，不换备用模型
+  it.each([
+    [500, '{"error":{"code":500,"message":"Internal error encountered.","status":"INTERNAL"}}'],
+    [502, '<html><body>502 Bad Gateway</body></html>'],
+    [504, '{"error":{"code":504,"message":"Deadline expired before operation could complete.","status":"DEADLINE_EXCEEDED"}}'],
+    [524, 'error code: 524'],
+  ])('HTTP %i → gemini_busy，带状态码', (status, body) => {
+    const err = classifyHttpError(status, body);
+    expect({ code: err.code, detail: err.detail }).toEqual({ code: 'gemini_busy', detail: `HTTP ${status}` });
+  });
+
+  // 抓：把所有 5xx 或 4xx 都放宽成繁忙，请求本身有错时还白白重试、换模型
+  it.each([
+    [400, '{"error":{"code":400,"message":"Invalid JSON payload received.","status":"INVALID_ARGUMENT"}}'],
+    [404, '{"error":{"code":404,"message":"models/x is not found for API version v1beta","status":"NOT_FOUND"}}'],
+    [501, 'not implemented'],
+    [520, 'error code: 520'],
+  ])('HTTP %i → gemini_error', (status, body) => {
+    const err = classifyHttpError(status, body);
+    expect({ code: err.code, detail: err.detail }).toEqual({ code: 'gemini_error', detail: `HTTP ${status}` });
+  });
 });
 
 describe('generateJson', () => {

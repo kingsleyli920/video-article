@@ -3,6 +3,7 @@ import { LIMITS, REVIEW_TIMING } from '../shared/limits';
 import type { ArticleReview, Revision, SuggestionStage, UnappliedSuggestion } from '../shared/types';
 import { AppError } from './app-error';
 import type { Prompt } from './gemini';
+import { chunkExcerpts, hedgedExcerpts, hedgeReviewPrompt, parseToneChecks, TONE_SCHEMA } from './hedges';
 import { checkRequirements, describeRequirements, hasRequirements, rewritePrompt, type Requirements } from './requirements';
 import { applyRevisions, evidenceInTranscript, fidelityReviewPrompt, parseIssues, parseReconcile, reconcilePrompt, reviewPrompt, splitForReview, RECONCILE_SCHEMA, REVIEW_SCHEMA, type RejectReason, type ReviewIssue } from './review';
 import type { VideoMeta } from './youtube';
@@ -43,7 +44,7 @@ export function assertArticleLength(markdown: string): void {
  * 文章流式写完之后、保存之前的收尾：
  * 1. 核对可计算约束，并在有字数上限时尽量为核对补字预留两成空间；两种需要共用至多一次整篇修订。
  *    修订后仍不满足用户原约束时报 requirements_unmet；内部预留目标不是新的硬性约束，不用截断来凑字数。
- * 2. 按章核对与一次整篇语义限定复核并行；先合并逐章修订，再应用整篇建议，所有替换经过相同校验（见 review.ts）。
+ * 2. 按章核对、一次整篇语义限定复核和一次语气清单核对（见 hedges.ts）并行；先合并逐章修订，再依次应用整篇建议和语气建议，所有替换经过相同校验（见 review.ts）。
  *    要改的句子已被另一条修订改过、按原文定位不到的建议，不直接丢弃：重复的记为已覆盖，其余基于当前文章再做一次合并处理。
  *    没有采用的建议连同来源阶段和处置结果记进 review.unapplied。
  * 3. 修订完再核对一遍结构和约束，确认局部修订没有破坏它们。
@@ -72,27 +73,45 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
   }
 
   await onStage('reviewing');
-  // 总并行预算中预留一个连接给整篇语义限定复核，其余连接用于逐章核对。
-  const sections = groupSections(splitForReview(markdown) ?? [markdown], Math.max(1, REVIEW_TIMING.maxUnits - 1));
+  // 总并行预算中预留两个连接给整篇语义限定复核和语气清单核对，其余连接用于逐章核对。
+  // 语气清单：程序从字幕里摘出带不确定语气的原话，另发一路只核对这一件事，要求逐条给出结论；清单长时分成至多三份并行。
+  // 字幕里没有这类说法时不发。并行请求超过 Workers 的同时连接数时，多出的请求会排队，不会失败。
+  const hedges = hedgedExcerpts(transcriptText);
+  const toneChunks = chunkExcerpts(hedges.excerpts);
+  const sections = groupSections(splitForReview(markdown) ?? [markdown], Math.max(1, REVIEW_TIMING.maxUnits - 2));
   const outline = parseArticle(markdown).chapters.map((c) => c.title);
   const readIssues = async (prompt: Prompt) => {
     const parsed = parseIssues(await model.json(prompt, REVIEW_SCHEMA));
     if (parsed === null) throw new AppError('summary_invalid', '核对结果不是有效的问题列表');
     return parsed;
   };
-  const [chapterOutcomes, fidelity] = await Promise.all([
+  const [chapterOutcomes, fidelity, tone] = await Promise.all([
     Promise.all(sections.map(async (section) => {
       const { issues, malformed } = await readIssues(reviewPrompt({ video, transcriptText, instructions, outline, section }));
       return { ...applyRevisions(section, issues, transcriptText), malformed: malformed.length };
     })),
     readIssues(fidelityReviewPrompt({ video, transcriptText, instructions, outline, section: markdown })),
+    Promise.all(
+      toneChunks.map(async (excerpts, i) => {
+        const first = toneChunks.slice(0, i).reduce((n, c) => n + c.length, 0) + 1;
+        const parsed = parseToneChecks(await model.json(hedgeReviewPrompt({ video, excerpts, first, section: markdown }), TONE_SCHEMA), first, excerpts.length);
+        if (parsed === null) throw new AppError('summary_invalid', '语气清单核对没有对每一条给出结论');
+        return parsed;
+      }),
+    ).then((parts) => ({ issues: parts.flatMap((p) => p.issues), malformed: parts.flatMap((p) => p.malformed) })),
   ]).catch((err: unknown) => failReview(err, '对照字幕核对没有完成'));
 
   // 两路基于同一份核对前文章：先合并逐章修订，再应用整篇建议。
   const combined = chapterOutcomes.map((o) => o.markdown).join('');
-  const fidelityOutcome = { ...applyRevisions(combined, fidelity.issues, transcriptText), malformed: fidelity.malformed.length };
-  const staged: { stage: SuggestionStage; outcome: (typeof chapterOutcomes)[number] }[] = [...chapterOutcomes.map((outcome) => ({ stage: 'chapter' as const, outcome })), { stage: 'article', outcome: fidelityOutcome }];
-  let reviewed = fidelityOutcome.markdown;
+  const chapterRevisions = chapterOutcomes.flatMap((o) => o.applied);
+  const fidelityOutcome = { ...applyRevisions(combined, fidelity.issues, transcriptText, chapterRevisions), malformed: fidelity.malformed.length };
+  const toneOutcome = { ...applyRevisions(fidelityOutcome.markdown, tone.issues, transcriptText, [...chapterRevisions, ...fidelityOutcome.applied]), malformed: tone.malformed.length };
+  const staged: { stage: SuggestionStage; outcome: (typeof chapterOutcomes)[number] }[] = [
+    ...chapterOutcomes.map((outcome) => ({ stage: 'chapter' as const, outcome })),
+    { stage: 'article', outcome: fidelityOutcome },
+    { stage: 'tone', outcome: toneOutcome },
+  ];
+  let reviewed = toneOutcome.markdown;
   const revisions = staged.flatMap((s) => s.outcome.applied);
   const rejected: FinalizeResult['rejected'] = {};
   const count = (reason: RejectReason, n = 1) => (rejected[reason] = (rejected[reason] ?? 0) + n);
@@ -103,7 +122,7 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
     for (const { issue, reason } of outcome.rejected) {
       // 引文在核对前的文章里有、轮到它时却定位不到：多数是它要改的句子已被另一条修订改过（也可能是引了别的章的句子）。
       // 这类建议不能直接丢，见 reconcilePrompt；rejected 里按最终处置计数，不记成 quote_not_found。
-      const overlapped = reason === 'quote_not_found' && markdown.includes(issue.quote);
+      const overlapped = reason === 'overlaps_earlier' || (reason === 'quote_not_found' && markdown.includes(issue.quote));
       if (!overlapped) {
         count(reason);
         unapplied.push({ stage, disposition: reason, ...issue });
@@ -157,6 +176,7 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
     rejected,
     review: {
       sections: sections.length,
+      ...(hedges.excerpts.length > 0 ? { toneExcerpts: hedges.excerpts.length } : {}),
       revisions: revisions.length,
       rewritten,
       checks: hasRequirements(requirements) ? describeRequirements(reviewed, requirements) : [],

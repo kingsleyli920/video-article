@@ -5,7 +5,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GenerationStore, openStore } from '../../src/worker/store';
-import { geminiJson, geminiSse, OTHER_VIDEO_ID, srv1 } from '../fixtures/upstream';
+import { geminiJson, geminiSse, OTHER_VIDEO_ID, srv1, toneChecks } from '../fixtures/upstream';
 import { billingResponse, busyResponse, eventOf, generate, hangingResponse, mockUpstream } from './helpers';
 import { CAPTIONS, DRAFT, DRAFT_STREAM, modelOf, promptOf, REVIEWED, SECTION_1, SECTION_2, TIME_ISSUE, TRANSCRIPT_TEXT, url } from './review-fixtures';
 
@@ -28,15 +28,17 @@ describe('对照字幕核对：没有问题', () => {
     expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(DRAFT);
   });
 
-  // 抓：没有核对阶段就保存；没问题时也发 revised；done.review 缺字段；章节或整篇专项请求漏了对应原文、整段字幕
-  it('事件里有 reviewing、没有 revised；每章和整篇专项带对应原文及完整字幕', async () => {
+  // 抓：没有核对阶段就保存；没问题时也发 revised；done.review 缺字段；章节或整篇专项请求漏了对应原文、整段字幕；
+  // 字幕里有约数说法时没发语气核对，或语气核对带了整段字幕
+  it('事件里有 reviewing、没有 revised；每章和整篇专项带对应原文及完整字幕，语气核对带清单和整篇文章', async () => {
     const upstream = mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
 
     expect(events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'stage', 'done']);
     expect(events[6]!.data).toEqual({ stage: 'reviewing' });
     const done = eventOf(events, 'done')!;
-    expect(done.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: [] });
+    // 字幕里 "about five" 一条语气片段
+    expect(done.review).toEqual({ sections: 2, toneExcerpts: 1, revisions: 0, rewritten: null, checks: [] });
     expect(done.chars).toBe(61);
     const { modelDoneMs, reviewedMs, savedMs } = done.timing;
     expect(modelDoneMs).toBeLessThanOrEqual(reviewedMs!);
@@ -60,9 +62,19 @@ describe('对照字幕核对：没有问题', () => {
     // 核对用主模型和它的思考档
     expect(reviews.map((r) => promptOf(r.body).generationConfig.thinkingConfig)).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'high' }, { thinkingLevel: 'high' }]);
 
+    // 语气核对：一份清单、一次请求；带编号 1 的片段和整篇初稿，不带整段字幕
+    const tones = upstream.gemini('tone');
+    expect(tones).toHaveLength(1);
+    const tone = promptOf(tones[0]!.body);
+    expect(modelOf(tones[0]!.url)).toBe('test-model');
+    expect(tone.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'high' });
+    expect(tone.user).toContain('\n1. [about five] Over the next ten years the fund backed Alpha, Beta and Gamma we are at about five portfolio companies now and I expect that to grow to five or six\n');
+    expect(tone.user).toContain(`<section>\n${DRAFT}\n</section>`);
+    expect(tone.user).not.toContain('<transcript>');
+
     const saved = await openStore(env, eventOf(events, 'meta')!.generationId).load();
     expect(saved!.article.markdown).toBe(DRAFT);
-    expect(saved!.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: [], items: [], requirements: { maxChars: null, minChars: null, chaptersMin: null, chaptersMax: null, sectionsPerChapter: null, sectionTitles: [] } });
+    expect(saved!.review).toEqual({ sections: 2, toneExcerpts: 1, revisions: 0, rewritten: null, checks: [], items: [], requirements: { maxChars: null, minChars: null, chaptersMin: null, chaptersMax: null, sectionsPerChapter: null, sectionTitles: [] } });
   });
 });
 
@@ -94,7 +106,7 @@ describe('对照字幕核对：有修订', () => {
       { id: '1', title: '柏林岁月' },
       { id: '2', title: '现在的组合' },
     ]);
-    expect(done.review).toEqual({ sections: 2, revisions: 1, rewritten: null, checks: [] });
+    expect(done.review).toEqual({ sections: 2, toneExcerpts: 1, revisions: 1, rewritten: null, checks: [] });
 
     const generationId = eventOf(events, 'meta')!.generationId;
     const saved = await openStore(env, generationId).load();
@@ -125,7 +137,7 @@ describe('对照字幕核对：有修订', () => {
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
     expect(events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'stage', 'done']);
     const unapplied = [{ stage: 'chapter', disposition, ...issue }];
-    expect(eventOf(events, 'done')!.review).toEqual({ sections: 2, revisions: 0, rewritten: null, checks: [], unapplied });
+    expect(eventOf(events, 'done')!.review).toEqual({ sections: 2, toneExcerpts: 1, revisions: 0, rewritten: null, checks: [], unapplied });
     const saved = await openStore(env, eventOf(events, 'meta')!.generationId).load();
     expect(saved!.article.markdown).toBe(DRAFT);
     expect(saved!.review).not.toHaveProperty('draft');
@@ -266,15 +278,36 @@ describe('对照字幕核对：模型失败', () => {
   });
 });
 
+describe('对照字幕核对：网关超时', () => {
+  // 抓（线上实际遇到）：核对请求被网关回 524 时当成不可重试的错误，整次生成报失败，没有换备用模型
+  it('核对时主模型返回 524：每路主模型请求两次后换备用模型，照常完成，不是 review_failed', async () => {
+    const upstream = mockUpstream({
+      captions: CAPTIONS,
+      geminiStream: DRAFT_STREAM,
+      reviewJson: firstChapterIssue,
+      geminiOverride: ({ purpose, model }) => (purpose === 'review' && model === 'test-model' ? new Response('error code: 524', { status: 524 }) : undefined),
+    });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    expect(events.at(-1)!.event).toBe('done');
+    expect(eventOf(events, 'error')).toBeUndefined();
+    expect(eventOf(events, 'revised')!.markdown).toBe(REVIEWED);
+    for (const section of [SECTION_1, SECTION_2, DRAFT]) {
+      const scope = upstream.gemini('review').filter((r) => promptOf(r.body).user.includes(`<section>\n${section}\n</section>`));
+      expect(scope.map((r) => modelOf(r.url))).toEqual(['test-model', 'test-model', 'test-fallback']);
+    }
+    expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(REVIEWED);
+  });
+});
+
 describe('对照字幕核对：客户端断开', () => {
-  // 抓：核对进行中用户关掉页面，服务端照样等核对结束并保存；核对请求没被取消，白白消耗额度
-  it('核对进行中断开：核对请求被中止，不保存', async () => {
+  // 抓：核对进行中用户关掉页面，服务端照样等核对结束并保存；核对请求（含语气核对）没被取消，白白消耗额度
+  it('核对进行中断开：两章、整篇和语气核对四个请求都被中止，不保存', async () => {
     const signals: AbortSignal[] = [];
     mockUpstream({
       captions: CAPTIONS,
       geminiStream: DRAFT_STREAM,
       geminiOverride: ({ purpose, signal }) => {
-        if (purpose !== 'review') return undefined;
+        if (purpose !== 'review' && purpose !== 'tone') return undefined;
         signals.push(signal!);
         return hangingResponse(signal);
       },
@@ -290,11 +323,12 @@ describe('对照字幕核对：客户端断开', () => {
       received += decoder.decode(value, { stream: true });
     }
     const generationId = /"generationId":"([0-9a-f]{64})"/.exec(received)![1]!;
-    await vi.waitFor(() => expect(signals).toHaveLength(3));
-    expect(signals.map((s) => s.aborted)).toEqual([false, false, false]);
+    // 两章 + 整篇 + 语气（字幕里 "about five" 一条）
+    await vi.waitFor(() => expect(signals).toHaveLength(4));
+    expect(signals.map((s) => s.aborted)).toEqual([false, false, false, false]);
 
     await reader.cancel('user closed the tab');
-    await vi.waitFor(() => expect(signals.map((s) => s.aborted)).toEqual([true, true, true]), { timeout: 1_000 });
+    await vi.waitFor(() => expect(signals.map((s) => s.aborted)).toEqual([true, true, true, true]), { timeout: 1_000 });
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(save).not.toHaveBeenCalled();
     expect(await openStore(env, generationId).load()).toBeNull();
@@ -333,7 +367,8 @@ describe('对照字幕核对：重叠修订的合并处理', () => {
     ];
     expect(eventOf(events, 'revised')).toEqual({ markdown: FINAL, revisions });
     const unapplied = [{ stage: 'article', disposition: 'superseded', ...ARTICLE_FIX, note: '数字已改对，归属仍错' }];
-    expect(eventOf(events, 'done')!.review).toEqual({ sections: 1, revisions: 2, rewritten: null, checks: [], unapplied });
+    // 字幕里 "about 20 dollars" 一条语气片段，替身判 kept
+    expect(eventOf(events, 'done')!.review).toEqual({ sections: 1, toneExcerpts: 1, revisions: 2, rewritten: null, checks: [], unapplied });
 
     const reconciles = upstream.gemini('reconcile');
     expect(reconciles).toHaveLength(1);
@@ -376,3 +411,64 @@ describe('对照字幕核对：重叠修订的合并处理', () => {
   });
 });
 
+describe('对照字幕核对：语气清单核对', () => {
+  /** 字幕原话 "about five" 是约数，初稿第二章写成了确定的"五到六家" */
+  const HEDGE = { type: 'quantity' as const, quote: '现在有五到六家被投公司。', replacement: '现在大约有五家被投公司，预计会增加到五到六家。', evidence: 'we are at about five portfolio companies now', problem: '原话是约五家，五到六家是预期' };
+  /** 采用 HEDGE 之后：61 - 12 + 23 = 72 字 */
+  const TONED = '# 柏林与基金\n\n## 柏林岁月\n\n**嘉宾:** 2003 年那家基金投资了 Alpha、Beta 和 Gamma。\n\n## 现在的组合\n\n**嘉宾:** 现在大约有五家被投公司，预计会增加到五到六家。';
+
+  // 抓：语气核对的修订没进 revised；保存的上下文、done 的字数、随后 5W1H 用的还是初稿
+  it('语气核对查出一处：revised 带这条修订，保存的就是它，5W1H 用修订后的句子', async () => {
+    const upstream = mockUpstream({
+      captions: CAPTIONS,
+      geminiStream: DRAFT_STREAM,
+      toneJson: (body) => geminiJson(toneChecks(promptOf(body).user, [{ match: 'about five', ...HEDGE }])),
+      geminiJson: geminiJson(SUMMARY),
+    });
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+
+    expect(events.map((e) => e.event)).toEqual(['stage', 'meta', 'stage', 'delta', 'delta', 'delta', 'stage', 'revised', 'done']);
+    const revisions = [{ type: 'quantity', before: '现在有五到六家被投公司。', after: '现在大约有五家被投公司，预计会增加到五到六家。', reason: '原话是约五家，五到六家是预期', evidence: 'we are at about five portfolio companies now' }];
+    expect(eventOf(events, 'revised')).toEqual({ markdown: TONED, revisions });
+    const done = eventOf(events, 'done')!;
+    expect(done.chars).toBe(72);
+    expect(done.review).toEqual({ sections: 2, toneExcerpts: 1, revisions: 1, rewritten: null, checks: [] });
+    // 两章、整篇各一次，语气一次（一条片段）；没有重叠，不调合并处理
+    expect(upstream.gemini('review')).toHaveLength(3);
+    expect(upstream.gemini('tone')).toHaveLength(1);
+    expect(upstream.gemini('reconcile')).toHaveLength(0);
+
+    const generationId = eventOf(events, 'meta')!.generationId;
+    const saved = await openStore(env, generationId).load();
+    expect(saved!.article.markdown).toBe(TONED);
+    expect(saved!.review!.draft).toBe(DRAFT);
+    expect(saved!.review!.items).toEqual(revisions);
+    expect(saved!.review!.toneExcerpts).toBe(1);
+
+    const res = await exports.default.fetch(`https://app.test/api/generations/${generationId}/chapters/2/summary`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const user = promptOf(upstream.gemini('summary')[0]!.body).user;
+    expect(user).toContain('<current_chapter id="2">\n## 现在的组合\n\n**嘉宾:** 现在大约有五家被投公司，预计会增加到五到六家。\n</current_chapter>');
+    expect(user).not.toContain('现在有五到六家被投公司');
+  });
+
+  // 抓：语气核对漏了条目（只返回有问题的几条或什么都不给）时当成"没有问题"，没核对完的文章被保存
+  it.each([
+    ['缺条目', { checks: [] }],
+    ['不是清单格式', { issues: [] }],
+  ])('语气核对响应%s：error review_failed，没有 revised 和 done，不保存', async (_label, raw) => {
+    const upstream = mockUpstream({ captions: CAPTIONS, geminiStream: DRAFT_STREAM, toneJson: geminiJson(raw) });
+    const save = vi.spyOn(GenerationStore.prototype, 'save');
+    const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+    expect(events.at(-1)).toEqual({
+      event: 'error',
+      data: { code: 'review_failed', message: '内容核对没有完成，这次生成没有保存（对照字幕核对没有完成：模型返回的格式无效（语气清单核对没有对每一条给出结论））', partial: true },
+    });
+    expect(eventOf(events, 'done')).toBeUndefined();
+    expect(eventOf(events, 'revised')).toBeUndefined();
+    expect(upstream.gemini('tone')).toHaveLength(1);
+    expect(upstream.gemini('summary')).toHaveLength(0);
+    expect(save).not.toHaveBeenCalled();
+    expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
+  });
+});

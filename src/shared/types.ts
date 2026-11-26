@@ -66,8 +66,8 @@ export interface Revision {
   evidence: string;
 }
 
-/** 修订建议来自哪一步：逐章核对、整篇复核，或两路建议重叠后的合并处理 */
-export type SuggestionStage = 'chapter' | 'article' | 'reconcile';
+/** 修订建议来自哪一步：逐章核对、整篇复核、语气清单核对，或几路建议重叠后的合并处理 */
+export type SuggestionStage = 'chapter' | 'article' | 'tone' | 'reconcile';
 
 /**
  * 没有采用的修订建议和处置结果，供核验。disposition：
@@ -90,6 +90,8 @@ export interface UnappliedSuggestion {
 export interface ArticleReview {
   /** 并行对照字幕核对的单元数（按章） */
   sections: number;
+  /** 语气清单核对用到的字幕片段数；字幕里没有不确定语气的说法、没有发这一路时不带（旧版本也没有） */
+  toneExcerpts?: number;
   /** 采用的局部修订数 */
   revisions: number;
   /** 为满足可计算约束或给核对预留篇幅，整篇修订过一次的记录；纯预留时 unmet 为空，没发生是 null */
