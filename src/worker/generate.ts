@@ -11,6 +11,7 @@ import { checkDamagedNumbers } from './number-check';
 import { articlePrompt } from './prompts';
 import { NO_REQUIREMENTS, parseRequirements, REQUIREMENTS_SCHEMA, requirementsPrompt, type Requirements } from './requirements';
 import { createStore, type GenerationContext } from './store';
+import { relayOptions } from './transcript-relay';
 import { loadTranscript } from './transcripts';
 import { transcriptPreview } from './transcript-preview';
 import { prepareTranscript, TranscriptError } from './youtube';
@@ -77,7 +78,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
 
   try {
     await events.send('stage', { stage: 'transcript' });
-    const { transcript, info } = await loadTranscript(input.videoId, { ...transcriptOptions(env), signal: events.signal });
+    const { transcript, info } = await loadTranscript(input.videoId, { ...transcriptOptions(env), ...relayOptions(env), signal: events.signal });
     const { text: transcriptText, damagedNumbers } = prepareTranscript(transcript.cues);
     if (transcriptText.length > LIMITS.transcriptChars) {
       throw new AppError('transcript_too_long', `${transcriptText.length} 字符，上限 ${LIMITS.transcriptChars}`);
@@ -87,6 +88,7 @@ async function runGeneration(input: GenerationInput, env: Env, events: EventStre
     const { generationId, store } = createStore(env);
     Object.assign(log, {
       source: info.source,
+      transcriptVia: info.via ?? null,
       transcriptAttempts: transcript.attempts,
       transcriptChars: transcriptText.length,
       damagedNumbers: damagedNumbers.map((d) => `${d.time} ${d.fragment}`),

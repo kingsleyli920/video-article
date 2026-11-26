@@ -3,6 +3,7 @@ import { handleGenerate } from './generate';
 import { handleSummary } from './summary';
 
 export { GenerationStore } from './store';
+export { TranscriptRelay } from './transcript-relay';
 
 const SUMMARY_ROUTE = /^\/api\/generations\/([^/]+)\/chapters\/([^/]+)\/summary$/;
 

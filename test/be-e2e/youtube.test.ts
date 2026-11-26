@@ -1,6 +1,8 @@
 /**
- * L3 YouTube 字幕获取：各类失败的错误码、超时、被拦后换客户端重试、示例视频改用内置备份。
- * TIMEOUT_SCALE=0.05：前两次尝试 player 0.2 秒、字幕 0.25 秒，最后一次 player 0.5 秒、字幕 0.75 秒。
+ * L3 YouTube 字幕获取：各类失败的错误码、超时、被拦后换客户端重试、再换区域代取、示例视频改用内置备份。
+ * TIMEOUT_SCALE=0.05：前两次尝试 player 0.2 秒、字幕 0.25 秒，最后一次 player 0.5 秒、字幕 0.75 秒；每个区域代取上限 2.25 秒。
+ * wrangler dev 里代取的 Durable Object 和 Worker 在同一个进程，出站请求同样指向模拟上游：
+ * 前 3 次播放器请求是本地的三种客户端，第 4 次起是各区域（每个区域最多 3 次），一共最多 12 次。
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { defaultScenario, MOCK_VIDEO_ID, type OkVideo, type VideoScenario } from '../harness/mock-upstream';
@@ -27,9 +29,9 @@ const player = (r: { body: unknown }) => (r.body as { context: { client: { clien
 
 describe('YouTube 字幕失败', () => {
   // 抓：YouTube 侧的不同失败被归成同一个笼统错误（用户不知道是被拦、视频问题还是没字幕）；失败后仍去调用模型；
-  // 视频本身的问题（不可播放、没有字幕轨）也去换客户端重试
+  // 视频本身的问题（不可播放、没有字幕轨）也去换客户端重试或换区域；一直被拦时换区域没有上限
   it.each([
-    ['blocked', 'youtube_blocked', 'YouTube 拒绝了字幕请求，可能触发了人机验证（共试 3 次：人机验证、人机验证、人机验证）', 3],
+    ['blocked', 'youtube_blocked', 'YouTube 拒绝了字幕请求，可能触发了人机验证（本地试 3 次，换 3 个区域后仍被拦）', 12],
     ['unplayable', 'video_unavailable', '视频不存在或无法播放（Video unavailable）', 1],
     ['no-captions', 'no_captions', '这个视频没有可用的字幕', 1],
   ] as const)('播放器接口 %s：SSE 报 %s，不请求字幕和模型', async (kind, code, message, players) => {
@@ -86,22 +88,40 @@ describe('被拦截后换客户端重试', () => {
     expect(promptOf(stream[0]!).user).toContain('welcome to the show Alex here');
   });
 
-  // 抓：重试次数没有上限；全部被拦后仍去调用模型；说明里看不出试了几次
-  it('前 3 次都是 HTTP 403：试满 3 次后报 youtube_blocked，不请求字幕和模型', async () => {
-    await stack.scenario({ videos: { mockvideo01: { kind: 'blocked-first', times: 3, mode: 'http403', then: MOCK_VIDEO } } });
+  // 抓：重试次数没有上限；全部被拦后仍去调用模型；说明里看不出试了几次、换过区域
+  it('本地和三个区域一共 12 次都是 HTTP 403：报 youtube_blocked，不请求字幕和模型', async () => {
+    await stack.scenario({ videos: { mockvideo01: { kind: 'blocked-first', times: 12, mode: 'http403', then: MOCK_VIDEO } } });
     const gen = await generate(stack, { url: MOCK_URL });
     expect(gen.events.map((e) => e.event)).toEqual(['stage', 'error']);
-    expect(eventOf(gen.events, 'error')).toEqual({ code: 'youtube_blocked', message: 'YouTube 拒绝了字幕请求，可能触发了人机验证（共试 3 次：HTTP 403、HTTP 403、HTTP 403）', partial: false });
-    expect((await stack.requests()).map((r) => r.kind)).toEqual(['player', 'player', 'player']);
+    expect(eventOf(gen.events, 'error')).toEqual({ code: 'youtube_blocked', message: 'YouTube 拒绝了字幕请求，可能触发了人机验证（本地试 3 次，换 3 个区域后仍被拦）', partial: false });
+    expect((await stack.requests()).map((r) => r.kind)).toEqual(Array.from({ length: 12 }, () => 'player'));
+  });
+
+  // 抓：本地三种客户端都被人机验证拦住后不换区域就报错；换区域取到后 meta 里没有 via；区域给的字幕地址没用区域里成功的那个客户端的 UA 去拉；
+  // 取到后还接着请后面的区域
+  it('本地 3 次人机验证、第 4 次（第一个区域）正常：改由 enam 取到字幕，照常写完文章，meta 带 via', async () => {
+    await stack.scenario({ videos: { mockvideo01: { kind: 'blocked-first', times: 3, mode: 'login', then: MOCK_VIDEO } } });
+    const gen = await generate(stack, { url: MOCK_URL });
+    expect(gen.events.find((e) => e.event === 'error')).toBeUndefined();
+    expect(gen.events.at(-1)!.event).toBe('done');
+    expect(eventOf(gen.events, 'meta')!.transcript).toMatchObject({ source: 'live', language: 'en', kind: 'asr', via: 'enam' });
+
+    const requests = await stack.requests();
+    const players = ofKind(requests, 'player');
+    expect(players.map((r) => `${player(r).clientName} ${player(r).clientVersion}`)).toEqual(['ANDROID 21.26.364', 'IOS 21.26.4', 'ANDROID 20.10.38', 'ANDROID 21.26.364']);
+    expect(ofKind(requests, 'captions').map((r) => r.userAgent)).toEqual([ANDROID_UA]);
+    const stream = ofKind(requests, 'stream');
+    expect(stream).toHaveLength(1);
+    expect(promptOf(stream[0]!).user).toContain('welcome to the show Alex here');
   });
 });
 
 describe('示例视频的内置备份', () => {
   // 抓：示例视频实时获取失败时直接报错，或者用了备份却不告诉用户（source、liveError 缺失），或者备份字幕没进模型请求
   it.each([
-    ['被 YouTube 拦截', 'blocked', 'YouTube 拒绝了字幕请求，可能触发了人机验证（共试 3 次：人机验证、人机验证、人机验证）'],
-    ['播放器接口不响应', 'hang', '获取字幕超时，请稍后重试（共试 3 次：超时、超时、超时）'],
-  ] as const)('xRh2sVcNXQ8 %s：改用内置备份写完文章，meta 标明 backup 和失败原因', async (_, kind, liveError) => {
+    ['被 YouTube 拦截', 'blocked', 'YouTube 拒绝了字幕请求，可能触发了人机验证（本地试 3 次，换 3 个区域后仍被拦）', 12],
+    ['播放器接口不响应', 'hang', '获取字幕超时，请稍后重试（共试 3 次：超时、超时、超时）', 3],
+  ] as const)('xRh2sVcNXQ8 %s：改用内置备份写完文章，meta 标明 backup 和失败原因', async (_, kind, liveError, players) => {
     await stack.scenario({ videos: { xRh2sVcNXQ8: { kind } as VideoScenario } });
     const gen = await generate(stack, { url: SAMPLE_URL });
     expect(gen.events.at(-1)!.event).toBe('done');
@@ -120,16 +140,14 @@ describe('示例视频的内置备份', () => {
     expect(preview[0]!.text.startsWith('this new wave of AI companies is is growing revenue')).toBe(true);
     expect(preview.every((s) => s.text.length > 0 && s.text.length <= 200)).toBe(true);
 
-    // 先换客户端试满 3 次，再用备份；核对阶段的请求不在这里核对
+    // 先换客户端试满 3 次（被拦时再换 3 个区域各试 3 次；超时不换区域），再用备份；核对阶段的请求不在这里核对
     const requests = (await stack.requests()).filter((r) => r.kind === 'player' || r.kind === 'captions' || r.kind === 'stream');
     expect(requests.map((r) => [r.kind, r.videoId ?? r.model])).toEqual([
-      ['player', 'xRh2sVcNXQ8'],
-      ['player', 'xRh2sVcNXQ8'],
-      ['player', 'xRh2sVcNXQ8'],
+      ...Array.from({ length: players }, () => ['player', 'xRh2sVcNXQ8']),
       ['stream', 'mock-primary'],
     ]);
     // 模型收到的是备份字幕全文：开头、结尾都在，meta 里的字数就是这段正文的长度
-    const user = promptOf(requests[3]!).user;
+    const user = promptOf(requests[players]!).user;
     const transcript = /<transcript>\n([\s\S]*)\n<\/transcript>/.exec(user)![1]!;
     expect(transcript.startsWith('[00:00] this new wave of AI companies is is growing revenue like just like actual')).toBe(true);
     expect(transcript.endsWith('Mars, so I will be just fine.')).toBe(true);

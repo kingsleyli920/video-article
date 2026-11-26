@@ -6,6 +6,7 @@ import {
   SAMPLE_URL,
   VIDEO_URL,
   advance,
+  PREVIEW,
   closePage,
   meta,
   openPage,
@@ -90,6 +91,20 @@ describe('来源面板', () => {
       preview: { open: false, summary: '字幕原文片段（节选 1 段）', items: ['[1:02:03] 我们先从公司怎么起步讲起。'] },
     });
     expect(page.status.detail).toBe('');
+  });
+
+  // 抓：本服务器被拦、改由其他区域取到字幕时，面板仍只写"YouTube 实时获取"，用户看不出换过节点；区域代码直接露给用户；
+  // 这种情况被标成警告样式（字幕是实时取到的，不是备份）
+  it.each([
+    ['enam', 'YouTube 实时获取（本服务器被 YouTube 拦截，改由美国东部节点获取）'],
+    ['apac', 'YouTube 实时获取（本服务器被 YouTube 拦截，改由亚太节点获取）'],
+  ])('字幕由其他区域取到（via %s）：字幕来源一行写明改由哪个区域获取', async (via, expected) => {
+    await submitWith(VIDEO_URL);
+    backend.stream.event('meta', meta('gen-1', { transcript: { source: 'live', language: 'en', kind: 'asr', chars: 52000, via, preview: PREVIEW } }));
+    await settle();
+
+    expect(page.source).toEqual({ hidden: false, rows: [LIVE_ROWS[0], LIVE_ROWS[1], ['字幕来源', expected]], preview: LIVE_PREVIEW });
+    expect(page.sourceBox.querySelector('.source-row-warn')).toBeNull();
   });
 
   // 抓：字幕片段默认展开占满页面或点不开；片段被改写、合并或多出别的字幕；原文里的尖括号和星号被当成 HTML/Markdown 解析（可被注入）

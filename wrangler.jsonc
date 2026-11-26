@@ -7,9 +7,16 @@
   "build": { "command": "npm run build", "watch_dir": ["src/client", "src/shared"] },
   "assets": { "directory": "./dist/client" },
   "durable_objects": {
-    "bindings": [{ "name": "GENERATIONS", "class_name": "GenerationStore" }]
+    "bindings": [
+      { "name": "GENERATIONS", "class_name": "GenerationStore" },
+      // 本地出口被人机验证拦住时，请其他区域的对象代取字幕（src/worker/transcript-relay.ts）
+      { "name": "TRANSCRIPT_RELAY", "class_name": "TranscriptRelay" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GenerationStore"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GenerationStore"] },
+    { "tag": "v2", "new_sqlite_classes": ["TranscriptRelay"] }
+  ],
   "vars": {
     "GEMINI_MODEL": "gemini-4-hydrogen",
     "GEMINI_THINKING_LEVEL": "high",

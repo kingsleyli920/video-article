@@ -16,6 +16,8 @@ export interface TranscriptInfo {
   chars: number;
   /** 使用内置备份时，实时获取失败的原因 */
   liveError?: string;
+  /** 本地出口被拦、改由其他区域取到字幕时，那个区域的名字（如 enam）；本地取到时没有这个字段 */
+  via?: string;
   /** 字幕原文的少量片段（带原始时间戳），只在 meta 里发给页面，不保存 */
   preview?: TranscriptPreviewSnippet[];
 }

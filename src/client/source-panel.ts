@@ -37,7 +37,7 @@ export function buildSource({ video, transcript }: SourceMeta): HTMLElement[] {
   const chars = typeof transcript.chars === 'number' && Number.isFinite(transcript.chars) ? `整理后 ${transcript.chars.toLocaleString('zh-CN')} 字符` : '';
   facts.append(row('字幕', [joinParts([languageName(transcript.language), transcript.kind === 'asr' ? '自动生成字幕' : '人工字幕']), chars]));
 
-  const origin = row('字幕来源', [transcript.source === 'live' ? 'YouTube 实时获取' : `内置备份（实时获取失败：${transcript.liveError || '未知原因'}）`]);
+  const origin = row('字幕来源', [transcript.source === 'live' ? liveOrigin(transcript.via) : `内置备份（实时获取失败：${transcript.liveError || '未知原因'}）`]);
   if (transcript.source !== 'live') origin.classList.add('source-row-warn');
   facts.append(origin);
 
@@ -66,6 +66,15 @@ export function buildSource({ video, transcript }: SourceMeta): HTMLElement[] {
   }
   details.append(summary, list);
   return [facts, details];
+}
+
+/** 代取字幕的区域代码（Durable Object 的 locationHint）对应的中文名 */
+const REGION_NAMES: Record<string, string> = { enam: '美国东部', wnam: '美国西部', apac: '亚太', weur: '西欧' };
+
+/** 实时获取的来源：本服务器被拦、改由其他区域取到时写明是哪个区域；认不出的区域代码原样显示 */
+export function liveOrigin(via: string | undefined): string {
+  if (!via) return 'YouTube 实时获取';
+  return `YouTube 实时获取（本服务器被 YouTube 拦截，改由${REGION_NAMES[via] ?? ` ${via} `}节点获取）`;
 }
 
 /** 视频时长：不到一小时写 mm:ss，否则写 h:mm:ss；时长未知（0 或缺失）时返回空字符串 */

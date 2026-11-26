@@ -26,8 +26,10 @@ export interface Transcript {
   attempts: TranscriptAttempt[];
 }
 
-/** 一次字幕获取尝试：用哪个客户端、成没成、失败在哪一步、错误码和原因、耗时 */
+/** 一次字幕获取尝试：在哪里发出、用哪个客户端、成没成、失败在哪一步、错误码和原因、耗时 */
 export interface TranscriptAttempt {
+  /** 发出的地方：local（本 Worker）或代取的区域名（如 enam），由 loadTranscript 标上；fetchTranscript 自己不填 */
+  from?: string;
   client: string;
   ok: boolean;
   step?: 'player' | 'captions';
