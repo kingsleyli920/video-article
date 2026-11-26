@@ -193,7 +193,7 @@ README 里五项说明的展开版：每一步具体怎么做、为什么这样�
 3. **程序把关，不满足就丢弃这一条**：
    - 字幕原文必须能在字幕里逐字找到（忽略空白、大小写和时间戳）；
    - 要替换的原句必须在当前核对文本里恰好出现一次；
-   - 替换后的文字和紧挨着的上下文重合一段时，程序不直接应用也不拒绝，交给下面第 5 步的合并处理判断（可能是把旁边的分句又写了一遍，也可能只是正常用到同一个词）；
+   - 替换后的文字和同一句话里没被替换的部分有一段相同的文字时，程序不直接应用也不拒绝，交给下面第 5 步的合并处理判断（可能是把旁边的分句又写了一遍，也可能只是正常用到同一个词）；
    - 不能跨段落，不能增删标题，不能把标题改空；
    - 替换后的文字不能比原句长出太多。
 4. **只替换点到的句子**，其余一个字都不动。先应用各章的修订，再应用整篇复核的，最后是语气清单的；全部改完再检查一遍结构、长度和用户约束。
@@ -235,7 +235,7 @@ README 里五项说明的展开版：每一步具体怎么做、为什么这样�
 
 - 逐条对应原题的验收结论、每个缺陷的原因和修复、字幕恢复的实测数据：[docs/REQUIREMENTS_ACCEPTANCE.md](REQUIREMENTS_ACCEPTANCE.md)。
 - 当前线上版本上的修复和复验（版本号见该文档开头）（独立审查提出的问题、语气清单核对、修订覆盖按位置判断、线上浏览器全流程），以及更早版本的六篇真实复验：[docs/FINAL_ACCEPTANCE.md](FINAL_ACCEPTANCE.md)。
-- 不调用真实模型的测试 1,053 项：vitest 963 项，Playwright 90 项。最近一轮只改了后端收尾逻辑，重跑的是后端三层 744 项；前端两层和 Playwright 是更早一轮的结果，之后页面和前端没有改动。分层结果见 [docs/history/TEST_MATRIX.md](history/TEST_MATRIX.md)。
+- 不调用真实模型的测试 1,060 项：vitest 970 项，Playwright 90 项。最近一轮只改了后端收尾逻辑，重跑的是后端三层 751 项；前端两层和 Playwright 是更早一轮的结果，之后页面和前端没有改动。分层结果见 [docs/history/TEST_MATRIX.md](history/TEST_MATRIX.md)。
 - 真实模型在线上跑过的案例都通读并回字幕核对过；V13、V15 两篇经过多轮才通过，过程见 [docs/history/CONTENT_REVALIDATION.md](history/CONTENT_REVALIDATION.md)。
 - 更早各轮的记录：[补充验收](history/ADDITIONAL_ACCEPTANCE.md)、[模型评估](history/MODEL_EVALUATION.md)、[受控运行记录](history/CODEX_VALIDATION.md)。
 
