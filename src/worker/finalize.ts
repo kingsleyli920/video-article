@@ -137,7 +137,8 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
   }
   let pending: Pending[] = [];
 
-  type Outcome = { result: 'applied' } | { result: 'overlap'; where: Span | null } | { result: RejectReason };
+  /** suspect：替换文字和紧挨着的上下文有一段重合。这只是疑似有问题（也可能是正常的纠错），不应用也不拒绝，交给合并处理判断 */
+  type Outcome = { result: 'applied' } | { result: 'overlap'; where: Span | null } | { result: 'suspect' } | { result: RejectReason };
 
   /** 在当前文章的 start 处落实一条修订并记下位置 */
   const commit = (issue: ReviewIssue, start: number, refining: boolean): Outcome => {
@@ -145,8 +146,9 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
     // 否则修订多的文章会因为这个上限让一条必须落实的修订落实不了，整次生成失败。
     if (!refining && revisions.length >= MAX_REVISIONS) return { result: 'limit' };
     const current = tracked.current;
-    const outcome = applyRevisionAt(current, issue, start, transcriptText);
-    if ('reason' in outcome) return { result: outcome.reason };
+    // 合并处理给出的修订是模型看着当前文章、知道上一次为什么没落实之后给的，不再用"和上下文重复"这个弱信号拦它
+    const outcome = applyRevisionAt(current, issue, start, transcriptText, { allowContextRepeat: refining });
+    if ('reason' in outcome) return outcome.reason === 'duplicates_context' ? { result: 'suspect' } : { result: outcome.reason };
     // 不能把前面已经改掉的初稿写法又改回来
     if (refining && revisions.some((r) => r.before.trim().length >= 4 && !current.includes(r.before) && outcome.markdown.includes(r.before))) return { result: 'reverts_earlier' };
     tracked.replace({ start, end: start + issue.quote.length }, issue.replacement);
@@ -186,21 +188,25 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
   };
 
   /**
-   * 建议指的那一处（初稿坐标 where）现在是不是已经改成了它想要的文字。
-   * 那一处连同改过它的替换合起来看：建议的替换文字必须出现在同一个位置上——紧接在没变的前文之后，或紧挨在没变的后文之前。
-   * 只在这段范围里"找得到"替换文字不算：一次较大的替换可能同时改了别的子句，那里出现相同的文字不能说明这一处改好了。
+   * 建议指的那一处（初稿坐标 where）现在是不是已经改成了它想要的结果。
+   * 把那一处连同改过它的替换合起来看：这段文字现在必须恰好等于"只做这一条建议"会得到的结果，一个字都不差，才算已覆盖。
+   * 只要有出入（前一条修订多改或少改了别的地方），程序就证明不了两者一致，交给合并处理，不去猜。
    */
   const coveredAt = (where: Span | null, issue: ReviewIssue): boolean => {
-    if (!where || issue.replacement.trim() === '' || !tracked.touched(where)) return false;
+    if (!where || !tracked.touched(where)) return false;
     const region = tracked.region(where);
     const before = region.original.slice(0, where.start - region.start);
     const after = region.original.slice(where.end - region.start);
-    return region.current.startsWith(before + issue.replacement) || region.current.endsWith(issue.replacement + after);
+    return region.current === before + issue.replacement + after;
   };
 
   const place = (stage: SuggestionStage, issue: ReviewIssue, scope: Span | null) => {
     const outcome = attempt(issue, scope);
     if (outcome.result === 'applied') return;
+    if (outcome.result === 'suspect') {
+      pending.push({ stage, issue, failure: 'duplicates_context' });
+      return;
+    }
     if (outcome.result !== 'overlap') {
       count(outcome.result);
       unapplied.push({ stage, disposition: outcome.result, ...issue });
@@ -248,7 +254,7 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
         unapplied.push({ stage, disposition: 'superseded', ...issue, note: item.note });
         continue;
       }
-      const reason = outcome.result === 'overlap' ? 'quote_not_found' : outcome.result;
+      const reason = outcome.result === 'overlap' || outcome.result === 'suspect' ? 'quote_not_found' : outcome.result;
       count(reason);
       unapplied.push({ stage: 'reconcile', disposition: reason, ...next, note: item.note });
       pending.push({ stage, issue, failure: reason });

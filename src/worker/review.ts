@@ -214,7 +214,7 @@ function check(issue: ReviewIssue, markdown: string, haystack: string, appliedCo
 }
 
 /** 位置已经确定之后的校验：依据在字幕里、不跨段落、不动标题、不比原句长出太多 */
-function checkAt(issue: ReviewIssue, markdown: string, first: number, haystack: string): RejectReason | null {
+function checkAt(issue: ReviewIssue, markdown: string, first: number, haystack: string, allowContextRepeat = false): RejectReason | null {
   const { quote, replacement, evidence } = issue;
   if (quote === replacement) return 'no_change';
   if (!markdown.startsWith(quote, first)) return 'quote_not_found';
@@ -223,7 +223,7 @@ function checkAt(issue: ReviewIssue, markdown: string, first: number, haystack: 
   // 整行标题不能被删空；标题行内的文字可以改，但不能把 # 标记改掉（上一行已保证）
   if (replacement.trim() === '' && isWholeLine(markdown, first, quote.length)) return 'structure';
   if (replacement.length > Math.max(quote.length * 2, quote.length + 80)) return 'too_long';
-  if (duplicatesContext(markdown, first, quote, replacement)) return 'duplicates_context';
+  if (!allowContextRepeat && duplicatesContext(markdown, first, quote, replacement)) return 'duplicates_context';
   return null;
 }
 
@@ -241,6 +241,8 @@ function seam(a: string, b: string): number {
  * 替换文字是不是把紧挨着的上下文又写了一遍：它的结尾和后文的开头、或它的开头和前文的结尾重复了一段。
  * 例：原文"…ChatGPT出现，这一切突然水到渠成，证明了…"，把"ChatGPT出现"换成"这一切突然水到渠成"，结果同一个分句连着出现两次。
  * 原文在这个位置本来就有同样长的重复时不算（不是这条修订造成的）。重复至少 4 个汉字或 10 个其他字符才算，避免误伤"的""了"这类单字。
+ * 这只是一个弱信号：正常的纠错也会和下一句用到同一个词（"这是银行存款。银行存款可以提取。"）。
+ * 所以收尾流程里命中它的建议既不应用也不拒绝，交给合并处理判断（见 finalize.ts）；只有直接调用 applyRevisions 时才当作拒绝原因。
  */
 function duplicatesContext(markdown: string, first: number, quote: string, replacement: string): boolean {
   const before = markdown.slice(Math.max(0, first - 80), first);
@@ -255,8 +257,14 @@ function duplicatesContext(markdown: string, first: number, quote: string, repla
  * 在已经确定的位置上落实一条修订：start 是 quote 在 markdown 里的起点，由调用方按位置确定
  *（同一句话在文章里出现不止一次时，不能靠"找到的那一处"来定位）。校验和 applyRevisions 相同，只是不再要求全文唯一。
  */
-export function applyRevisionAt(markdown: string, issue: ReviewIssue, start: number, transcriptText: string): { markdown: string; applied: Revision } | { reason: RejectReason } {
-  const reason = checkAt(issue, markdown, start, normalizeEvidence(transcriptText));
+export function applyRevisionAt(
+  markdown: string,
+  issue: ReviewIssue,
+  start: number,
+  transcriptText: string,
+  options: { allowContextRepeat?: boolean } = {},
+): { markdown: string; applied: Revision } | { reason: RejectReason } {
+  const reason = checkAt(issue, markdown, start, normalizeEvidence(transcriptText), options.allowContextRepeat);
   if (reason) return { reason };
   const next = markdown.slice(0, start) + issue.replacement + markdown.slice(start + issue.quote.length);
   if (!sameHeadings(markdown, next)) return { reason: 'structure' };
@@ -331,7 +339,7 @@ status 三选一：
 - revise：问题还有一部分没有改正（例如数字已经改对，但发言归属、来源限定、不确定语气或条件仍然不对）。给出针对当前文章的修订：quote 从 <article> 逐字复制（标点和 ** 等标记照抄），在 <article> 里只出现一次，不跨段落，尽量短；replacement 只改正还没改正的部分，必须保留已采用修订改对的内容，不能改回初稿的写法，不能加入 evidence 里没有的信息，不改标题、不分段；evidence 从这条建议的 evidence 里逐字复制。
 - unfounded：对照 evidence 后，这条建议本身不成立，或 evidence 不足以支持它。
 
-带有 previousAttempt 的条目是上一轮处理过、但给出的修订没能落实的，previousAttempt 写了原因，这一次要避开。
+带有 previousAttempt 的条目没能直接落实，previousAttempt 写了原因：有的是上一轮给出的修订没通过校验，这一次要避开；有的是建议本身还没有应用（quote 仍在 <article> 里），按 previousAttempt 的说明判断。
 
 每条 pending 都必须按 index 给出恰好一个结论。note 用一句话说明理由。status 不是 revise 时，quote、replacement、evidence 填空字符串。`;
 
@@ -344,7 +352,8 @@ const RETRY_NOTE: Record<string, string> = {
   too_long: '上一次的 replacement 比 quote 长出太多：只改必要的几个字',
   no_change: '上一次的 replacement 和 quote 完全相同：问题已经改正就选 covered，否则给出确有改动的修订',
   reverts_earlier: '上一次的修订把已经改掉的初稿写法又改了回来：必须保留已采用修订改对的内容',
-  duplicates_context: '上一次的 replacement 把紧挨着 quote 的上下文又写了一遍：quote 之外已经有的文字不要重复',
+  duplicates_context:
+    '这条建议还没有应用，quote 仍在 <article> 里。程序发现按它替换后，替换文字会和紧挨着的上下文有一段重合，可能是把旁边已有的分句又写了一遍，也可能只是正常地用到了同一个词。请对照 evidence 判断：当前写法已经正确选 covered；确实要改就选 revise 并给出不会让同一个分句连着出现两次的修订（必要时把 quote 取大一些，把重复的那个分句一并包进去）；建议本身不成立选 unfounded',
 };
 
 const RECONCILE_STATUS = ['covered', 'revise', 'unfounded'] as const;

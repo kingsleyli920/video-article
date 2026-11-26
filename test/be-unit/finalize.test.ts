@@ -1148,14 +1148,19 @@ describe('finalizeArticle：修订目标位置的身份', () => {
     expect(reconcilePrompts).toHaveLength(2);
   });
 
-  // 抓：修好反例 A 之后矫枉过正，位置明确、确实已经改成同样文字的重复建议也不再自动记 covered
-  it('同一处已被整段替换改成建议想要的文字（替换文字紧接在没变的前文之后）：仍自动记 covered，不调合并处理', async () => {
+  // 抓：程序证明不了"这一处已经是建议想要的结果"时仍自动记 covered。这里逐章的整段替换除了把第一个金额改成 20，
+  // 还改了第二个金额，整段和"只做整篇这一条建议"的结果不相等，所以交给合并处理确认，不由程序猜
+  it('整段替换里顺带改了别处：结果和只做这一条建议不完全相等，不自动 covered，由合并处理确认', async () => {
     const chapter = { ...A_CHAPTER, replacement: '主持人介绍两个试点：第一个试点成本20美元，另一个试点成本20美元。' };
-    const { model, reconcilePrompts } = fakeModel({ review: () => ({ issues: [chapter] }), fidelity: () => ({ issues: [A_ARTICLE] }) });
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({ issues: [chapter] }),
+      fidelity: () => ({ issues: [A_ARTICLE] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'covered', note: '第一个金额已经是 20 美元', quote: '', replacement: '', evidence: '' }] }),
+    });
     const result = await finalizeArticle(input({ draft: A_DRAFT, transcriptText: A_TRANSCRIPT }), model, stages().onStage);
-    expect(reconcilePrompts).toHaveLength(0);
+    expect(reconcilePrompts).toHaveLength(1);
     expect(result.markdown).toBe('# 试点\n\n## 费用\n\n主持人介绍两个试点：第一个试点成本20美元，另一个试点成本20美元。');
-    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'covered', ...A_ARTICLE, note: '这一处已由另一条修订改成相同的文字' }]);
+    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'covered', ...A_ARTICLE, note: '第一个金额已经是 20 美元' }]);
   });
 
   // 审查方反例 B：初稿里同一句短引文出现两次，逐章只改了主持人那一处
@@ -1238,3 +1243,116 @@ describe('finalizeArticle：修订数上限与合并处理', () => {
     expect(result.rejected).toEqual({ limit: 1 });
   });
 });
+
+describe('finalizeArticle：已覆盖必须是完整结果相等', () => {
+  // 审查方反例 1：逐章只改了金额，整篇建议要把整段换成只剩第一句（删掉没有依据的尾句）
+  const HOST = 'Host: The pilot cost 20 dollars.';
+  const GUEST = 'Guest: I cannot guarantee that the project will succeed.';
+  const TRANSCRIPT_1 = `[00:00] ${HOST}\n\n[00:10] ${GUEST}`;
+  const PARAGRAPH = '主持人说成本200美元。嘉宾保证项目一定成功。';
+  const AFTER_CHAPTER = '主持人说成本20美元。嘉宾保证项目一定成功。';
+  const DRAFT_1 = `# 试点\n\n## 费用\n\n${PARAGRAPH}`;
+  const chapterFix = { type: 'quantity', quote: PARAGRAPH, replacement: AFTER_CHAPTER, evidence: HOST, problem: '成本是 20 美元' };
+  const articleFix = { type: 'unsupported', quote: PARAGRAPH, replacement: '主持人说成本20美元。', evidence: `${HOST} … ${GUEST}`, problem: '成本是 20 美元；嘉宾没有保证成功' };
+
+  // 抓（审查方反例 1）：当前段落以"主持人说成本20美元。"开头就被前缀匹配判成 covered，没有依据的尾句"嘉宾保证项目一定成功。"留在文章里
+  it('当前段落只是以替换文字开头：不算已覆盖，进合并处理后尾句被处理', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({ issues: [chapterFix] }),
+      fidelity: () => ({ issues: [articleFix] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '尾句仍在', quote: '嘉宾保证项目一定成功。', replacement: '嘉宾表示无法保证项目成功。', evidence: GUEST }] }),
+    });
+    const result = await finalizeArticle(input({ draft: DRAFT_1, transcriptText: TRANSCRIPT_1 }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(result.markdown).toBe('# 试点\n\n## 费用\n\n主持人说成本20美元。嘉宾表示无法保证项目成功。');
+    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...articleFix, note: '尾句仍在' }]);
+  });
+
+  // 审查方反例 2：逐章只补了来源限定，整篇建议要去掉否定词
+  const EVIDENCE_2 = 'The demonstrated system supports offline operation.';
+  const DRAFT_2 = '# 系统\n\n## 能力\n\n该系统不支持离线运行。';
+  const sourceFix = { type: 'unsupported', quote: '该系统不支持离线运行。', replacement: '视频中演示的系统不支持离线运行。', evidence: EVIDENCE_2, problem: '补上来源限定' };
+  const negationFix = { type: 'unsupported', quote: '不支持离线运行', replacement: '支持离线运行', evidence: EVIDENCE_2, problem: '字幕说的是支持离线运行' };
+
+  // 抓（审查方反例 2）："视频中演示的系统不支持离线运行。"以"支持离线运行。"结尾就被后缀匹配判成 covered，否定词还在
+  it('当前文字只是以替换文字结尾：不算已覆盖，进合并处理后否定词被去掉', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({ issues: [sourceFix] }),
+      fidelity: () => ({ issues: [negationFix] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '否定词仍在', quote: '视频中演示的系统不支持离线运行。', replacement: '视频中演示的系统支持离线运行。', evidence: '' }] }),
+    });
+    const result = await finalizeArticle(input({ draft: DRAFT_2, transcriptText: `[00:00] ${EVIDENCE_2}` }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(result.markdown).toBe('# 系统\n\n## 能力\n\n视频中演示的系统支持离线运行。');
+  });
+
+  // 抓：改成完整相等之后，连"两路给出一模一样的修订"这种确定的重复也不再自动去重，多发一次合并请求
+  it('两路对同一句给出完全相同的修订：完整结果相等，仍自动 covered，不调合并处理', async () => {
+    const { model, reconcilePrompts } = fakeModel({ review: () => ({ issues: [sourceFix] }), fidelity: () => ({ issues: [sourceFix] }) });
+    const result = await finalizeArticle(input({ draft: DRAFT_2, transcriptText: `[00:00] ${EVIDENCE_2}` }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(0);
+    expect(result.markdown).toBe('# 系统\n\n## 能力\n\n视频中演示的系统不支持离线运行。');
+    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'covered', ...sourceFix, note: '这一处已由另一条修订改成相同的文字' }]);
+  });
+});
+
+describe('finalizeArticle：替换文字和上下文重合只是疑似问题', () => {
+  const BANK = 'This is a bank deposit. Bank deposits can be withdrawn.';
+  const BANK_DRAFT = '# 银行\n\n## 存款\n\n这是银行贷款。银行存款可以提取。';
+  const bankFix = { type: 'unsupported', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: BANK, problem: '字幕说的是存款' };
+
+  // 抓（审查方反例 3）：合法的纠错因为和下一句共用"银行存款"被当成"和上下文重复"拒掉，"银行贷款"这个错误留在文章里
+  it('合法纠错和下一句共用一个词：不拒绝，交合并处理确认后落实，错误被改掉', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      fidelity: () => ({ issues: [bankFix] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '只是用到同一个词，照改', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: '' }] }),
+    });
+    const result = await finalizeArticle(input({ draft: BANK_DRAFT, transcriptText: `[00:00] ${BANK}` }), model, stages().onStage);
+    expect(result.markdown).toBe('# 银行\n\n## 存款\n\n这是银行存款。银行存款可以提取。');
+    expect(reconcilePrompts).toHaveLength(1);
+    // 合并请求里写明这条建议还没应用、为什么没直接应用
+    expect(reconcilePrompts[0]!.user).toContain('这条建议还没有应用');
+    expect(result.revisions).toEqual([{ type: 'unsupported', before: '这是银行贷款。', after: '这是银行存款。', reason: '字幕说的是存款', evidence: BANK }]);
+    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...bankFix, note: '只是用到同一个词，照改' }]);
+    expect(result.rejected).toEqual({});
+  });
+
+  // 抓：同一个弱信号把合并处理确认过的合法修订再拒一次，两轮之后整次生成失败
+  it('合并处理确认后的修订不再被同一个信号拦住：一轮就落实，不会 review_failed', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      fidelity: () => ({ issues: [bankFix] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '照改', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: '' }] }),
+    });
+    await expect(finalizeArticle(input({ draft: BANK_DRAFT, transcriptText: `[00:00] ${BANK}` }), model, stages().onStage)).resolves.toMatchObject({ markdown: '# 银行\n\n## 存款\n\n这是银行存款。银行存款可以提取。' });
+    expect(reconcilePrompts).toHaveLength(1);
+  });
+
+  // 线上真实出现过的句子：修订把后一个分句又写了一遍
+  const XMAS = 'it was the Christmas of 22 when the whole thing suddenly worked';
+  const XMAS_DRAFT = '# 标题\n\n## 第一章\n\n直到2022年圣诞节前后ChatGPT出现，这一切突然水到渠成，证明了这条路线可行。';
+  const xmasFix = { type: 'time', quote: '直到2022年圣诞节前后ChatGPT出现', replacement: '直到2022年圣诞节前后，这一切突然水到渠成', evidence: XMAS, problem: '字幕没有说是 ChatGPT 出现' };
+
+  // 抓：把检查降级之后，已知的"这一切突然水到渠成，这一切突然水到渠成"原样回归（建议被直接应用）
+  it('会让同一分句连着出现两次的建议：不直接应用；合并处理判为不成立时文章不变并留痕', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      fidelity: () => ({ issues: [xmasFix] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'unfounded', note: '后一个分句已经是这句话，照改会重复', quote: '', replacement: '', evidence: '' }] }),
+    });
+    const result = await finalizeArticle(input({ draft: XMAS_DRAFT, transcriptText: `[00:00] ${XMAS}` }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(result.markdown).toBe(XMAS_DRAFT);
+    expect(result.revisions).toEqual([]);
+    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'unfounded', ...xmasFix, note: '后一个分句已经是这句话，照改会重复' }]);
+  });
+
+  // 抓：合并处理把重复的分句一并包进 quote 给出的修订被拒，或落实后仍然重复
+  it('合并处理把重复的分句一并改掉：落实后不重复', async () => {
+    const { model } = fakeModel({
+      fidelity: () => ({ issues: [xmasFix] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '把两个分句并成一个', quote: '直到2022年圣诞节前后ChatGPT出现，这一切突然水到渠成', replacement: '直到2022年圣诞节前后，这一切突然水到渠成', evidence: '' }] }),
+    });
+    const result = await finalizeArticle(input({ draft: XMAS_DRAFT, transcriptText: `[00:00] ${XMAS}` }), model, stages().onStage);
+    expect(result.markdown).toBe('# 标题\n\n## 第一章\n\n直到2022年圣诞节前后，这一切突然水到渠成，证明了这条路线可行。');
+  });
+});
+

@@ -570,6 +570,89 @@ describe('对照字幕核对：重叠修订的合并处理', () => {
     });
   });
 
+  // 审查方第三轮反例：已覆盖必须是完整结果相等；和上下文重合只是疑似问题。都经过真实 Worker 入口
+  describe('完整结果相等与疑似重复（经过 Worker 入口）', () => {
+    // 抓（反例 1）：段落以替换文字开头就被判 covered，没有依据的尾句随文章保存
+    it('整篇建议要删掉尾句、逐章只改了金额：进合并处理，revised 和保存的文章里尾句已处理', async () => {
+      const HOST = 'Host: The pilot cost 20 dollars.';
+      const GUEST = 'Guest: I cannot guarantee that the project will succeed.';
+      const PARAGRAPH = '主持人说成本200美元。嘉宾保证项目一定成功。';
+      const FINAL = '# 试点\n\n## 费用\n\n主持人说成本20美元。嘉宾表示无法保证项目成功。';
+      const chapterFix = { type: 'quantity', quote: PARAGRAPH, replacement: '主持人说成本20美元。嘉宾保证项目一定成功。', evidence: HOST, problem: '成本是 20 美元' };
+      const articleFix = { type: 'unsupported', quote: PARAGRAPH, replacement: '主持人说成本20美元。', evidence: `${HOST} … ${GUEST}`, problem: '成本是 20 美元；嘉宾没有保证成功' };
+      const upstream = mockUpstream({
+        captions: srv1([
+          [0, HOST],
+          [10, GUEST],
+        ]),
+        geminiStream: geminiSse(['# 试点\n\n## 费用\n\n', PARAGRAPH]),
+        reviewJson: (body) => geminiJson({ issues: isFidelityReview(body) ? [articleFix] : [chapterFix] }),
+        reconcileJson: geminiJson({ items: [{ index: 0, status: 'revise', note: '尾句仍在', quote: '嘉宾保证项目一定成功。', replacement: '嘉宾表示无法保证项目成功。', evidence: GUEST }] }),
+      });
+      const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+      expect(events.at(-1)!.event).toBe('done');
+      expect(upstream.gemini('reconcile')).toHaveLength(1);
+      expect(eventOf(events, 'revised')!.markdown).toBe(FINAL);
+      expect(eventOf(events, 'done')!.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...articleFix, note: '尾句仍在' }]);
+      expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(FINAL);
+    });
+
+    // 抓（反例 2）：当前文字以替换文字结尾就被判 covered，否定词随文章保存
+    it('整篇建议要去掉否定词、逐章只补了来源限定：进合并处理，保存的文章里否定词已去掉', async () => {
+      const EVIDENCE = 'The demonstrated system supports offline operation.';
+      const FINAL = '# 系统\n\n## 能力\n\n视频中演示的系统支持离线运行。';
+      const sourceFix = { type: 'unsupported', quote: '该系统不支持离线运行。', replacement: '视频中演示的系统不支持离线运行。', evidence: EVIDENCE, problem: '补上来源限定' };
+      const negationFix = { type: 'unsupported', quote: '不支持离线运行', replacement: '支持离线运行', evidence: EVIDENCE, problem: '字幕说的是支持离线运行' };
+      const upstream = mockUpstream({
+        captions: srv1([[0, EVIDENCE]]),
+        geminiStream: geminiSse(['# 系统\n\n## 能力\n\n', '该系统不支持离线运行。']),
+        reviewJson: (body) => geminiJson({ issues: isFidelityReview(body) ? [negationFix] : [sourceFix] }),
+        reconcileJson: geminiJson({ items: [{ index: 0, status: 'revise', note: '否定词仍在', quote: '视频中演示的系统不支持离线运行。', replacement: '视频中演示的系统支持离线运行。', evidence: '' }] }),
+      });
+      const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+      expect(events.at(-1)!.event).toBe('done');
+      expect(upstream.gemini('reconcile')).toHaveLength(1);
+      expect(eventOf(events, 'revised')!.markdown).toBe(FINAL);
+      expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(FINAL);
+    });
+
+    const BANK = 'This is a bank deposit. Bank deposits can be withdrawn.';
+    const BANK_FINAL = '# 银行\n\n## 存款\n\n这是银行存款。银行存款可以提取。';
+    const bankFix = { type: 'unsupported', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: BANK, problem: '字幕说的是存款' };
+    const bankUpstream = (reconcile: unknown) =>
+      mockUpstream({
+        captions: srv1([[0, BANK]]),
+        geminiStream: geminiSse(['# 银行\n\n## 存款\n\n', '这是银行贷款。银行存款可以提取。']),
+        reviewJson: (body) => geminiJson({ issues: isFidelityReview(body) ? [bankFix] : [] }),
+        reconcileJson: geminiJson(reconcile),
+      });
+
+    // 抓（反例 3）：合法纠错因为和下一句共用"银行存款"被拒，"银行贷款"随文章保存并报完成
+    it('合法纠错和下一句共用一个词：交合并处理确认后落实，revised 和保存的文章里错误已改', async () => {
+      const upstream = bankUpstream({ items: [{ index: 0, status: 'revise', note: '只是用到同一个词，照改', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: '' }] });
+      const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+      expect(events.at(-1)!.event).toBe('done');
+      const reconciles = upstream.gemini('reconcile');
+      expect(reconciles).toHaveLength(1);
+      expect(promptOf(reconciles[0]!.body).user).toContain('这条建议还没有应用');
+      expect(eventOf(events, 'revised')).toEqual({ markdown: BANK_FINAL, revisions: [{ type: 'unsupported', before: '这是银行贷款。', after: '这是银行存款。', reason: '字幕说的是存款', evidence: BANK }] });
+      expect(eventOf(events, 'done')!.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...bankFix, note: '只是用到同一个词，照改' }]);
+      expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(BANK_FINAL);
+    });
+
+    // 抓：疑似重复的建议被记成"已完成"——合并处理说还要改却两轮都落实不了时，带着"银行贷款"保存并发 done
+    it('疑似重复的建议合并处理两轮都落实不了：error review_failed，没有 done，不保存', async () => {
+      const upstream = bankUpstream({ items: [{ index: 0, status: 'revise', note: '照改', quote: '这是一笔银行贷款。', replacement: '这是银行存款。', evidence: '' }] });
+      const save = vi.spyOn(GenerationStore.prototype, 'save');
+      const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+      expect(events.at(-1)!.event).toBe('error');
+      expect((events.at(-1)!.data as { code: string }).code).toBe('review_failed');
+      expect(eventOf(events, 'done')).toBeUndefined();
+      expect(upstream.gemini('reconcile')).toHaveLength(2);
+      expect(save).not.toHaveBeenCalled();
+    });
+  });
+
   // 抓：合并处理响应无效时退回只采用逐章修订的文章并保存（归属仍错的稿子被当成核对过）
   it.each([
     ['缺条目', { items: [] }],
