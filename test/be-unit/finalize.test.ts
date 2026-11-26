@@ -1301,29 +1301,42 @@ describe('finalizeArticle：替换文字和上下文重合只是疑似问题', (
   const BANK_DRAFT = '# 银行\n\n## 存款\n\n这是银行贷款。银行存款可以提取。';
   const bankFix = { type: 'unsupported', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: BANK, problem: '字幕说的是存款' };
 
-  // 抓（审查方反例 3）：合法的纠错因为和下一句共用"银行存款"被当成"和上下文重复"拒掉，"银行贷款"这个错误留在文章里
-  it('合法纠错和下一句共用一个词：不拒绝，交合并处理确认后落实，错误被改掉', async () => {
-    const { model, reconcilePrompts } = fakeModel({
-      fidelity: () => ({ issues: [bankFix] }),
-      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '只是用到同一个词，照改', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: '' }] }),
-    });
+  // 抓（审查方反例 3）：合法的纠错因为和下一句共用"银行存款"被当成"和上下文重复"拒掉，"银行贷款"这个错误留在文章里。
+  // 现在只看同一句话里没被替换的部分，下一句用到同一个词不算，所以这条修订直接落实
+  it('合法纠错和下一句共用一个词：不算重复，直接落实，不调合并处理', async () => {
+    const { model, reconcilePrompts } = fakeModel({ fidelity: () => ({ issues: [bankFix] }) });
     const result = await finalizeArticle(input({ draft: BANK_DRAFT, transcriptText: `[00:00] ${BANK}` }), model, stages().onStage);
     expect(result.markdown).toBe('# 银行\n\n## 存款\n\n这是银行存款。银行存款可以提取。');
-    expect(reconcilePrompts).toHaveLength(1);
-    // 合并请求里写明这条建议还没应用、为什么没直接应用
-    expect(reconcilePrompts[0]!.user).toContain('这条建议还没有应用');
+    expect(reconcilePrompts).toHaveLength(0);
     expect(result.revisions).toEqual([{ type: 'unsupported', before: '这是银行贷款。', after: '这是银行存款。', reason: '字幕说的是存款', evidence: BANK }]);
-    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...bankFix, note: '只是用到同一个词，照改' }]);
     expect(result.rejected).toEqual({});
   });
 
-  // 抓：同一个弱信号把合并处理确认过的合法修订再拒一次，两轮之后整次生成失败
-  it('合并处理确认后的修订不再被同一个信号拦住：一轮就落实，不会 review_failed', async () => {
+  // 同一句话里和没被替换的部分重合：疑似，交合并处理
+  const SAME_SENTENCE_DRAFT = '# 银行\n\n## 存款\n\n这是银行贷款，银行存款可以提取。';
+  const sameSentenceFix = { type: 'unsupported', quote: '这是银行贷款', replacement: '这是银行存款可以提取的账户', evidence: BANK, problem: '字幕说的是存款' };
+
+  // 抓：疑似重复的建议被直接拒绝或直接应用，而不是带着原因交给合并处理；合并请求里没写明它还没应用
+  it('替换文字和同一句的后半句重合：不应用也不拒绝，带着原因进合并处理，按结论落实', async () => {
     const { model, reconcilePrompts } = fakeModel({
-      fidelity: () => ({ issues: [bankFix] }),
-      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '照改', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: '' }] }),
+      fidelity: () => ({ issues: [sameSentenceFix] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '把两半句并成一句', quote: '这是银行贷款，银行存款可以提取。', replacement: '这是可以提取的银行存款。', evidence: '' }] }),
     });
-    await expect(finalizeArticle(input({ draft: BANK_DRAFT, transcriptText: `[00:00] ${BANK}` }), model, stages().onStage)).resolves.toMatchObject({ markdown: '# 银行\n\n## 存款\n\n这是银行存款。银行存款可以提取。' });
+    const result = await finalizeArticle(input({ draft: SAME_SENTENCE_DRAFT, transcriptText: `[00:00] ${BANK}` }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(reconcilePrompts[0]!.user).toContain('这条建议还没有应用');
+    expect(result.markdown).toBe('# 银行\n\n## 存款\n\n这是可以提取的银行存款。');
+    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...sameSentenceFix, note: '把两半句并成一句' }]);
+    expect(result.rejected).toEqual({});
+  });
+
+  // 抓：同一个弱信号把合并处理确认过的修订再拒一次，两轮之后整次生成失败
+  it('合并处理确认后原样照改的修订不再被同一个信号拦住：一轮就落实，不会 review_failed', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      fidelity: () => ({ issues: [sameSentenceFix] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '照改', quote: '这是银行贷款', replacement: '这是银行存款可以提取的账户', evidence: '' }] }),
+    });
+    await expect(finalizeArticle(input({ draft: SAME_SENTENCE_DRAFT, transcriptText: `[00:00] ${BANK}` }), model, stages().onStage)).resolves.toMatchObject({ markdown: '# 银行\n\n## 存款\n\n这是银行存款可以提取的账户，银行存款可以提取。' });
     expect(reconcilePrompts).toHaveLength(1);
   });
 

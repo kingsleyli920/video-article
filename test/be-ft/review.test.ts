@@ -619,30 +619,45 @@ describe('对照字幕核对：重叠修订的合并处理', () => {
     const BANK = 'This is a bank deposit. Bank deposits can be withdrawn.';
     const BANK_FINAL = '# 银行\n\n## 存款\n\n这是银行存款。银行存款可以提取。';
     const bankFix = { type: 'unsupported', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: BANK, problem: '字幕说的是存款' };
-    const bankUpstream = (reconcile: unknown) =>
+    const bankUpstream = (body: string, fix: unknown, reconcile: unknown) =>
       mockUpstream({
         captions: srv1([[0, BANK]]),
-        geminiStream: geminiSse(['# 银行\n\n## 存款\n\n', '这是银行贷款。银行存款可以提取。']),
-        reviewJson: (body) => geminiJson({ issues: isFidelityReview(body) ? [bankFix] : [] }),
+        geminiStream: geminiSse(['# 银行\n\n## 存款\n\n', body]),
+        reviewJson: (request) => geminiJson({ issues: isFidelityReview(request) ? [fix] : [] }),
         reconcileJson: geminiJson(reconcile),
       });
 
     // 抓（反例 3）：合法纠错因为和下一句共用"银行存款"被拒，"银行贷款"随文章保存并报完成
-    it('合法纠错和下一句共用一个词：交合并处理确认后落实，revised 和保存的文章里错误已改', async () => {
-      const upstream = bankUpstream({ items: [{ index: 0, status: 'revise', note: '只是用到同一个词，照改', quote: '这是银行贷款。', replacement: '这是银行存款。', evidence: '' }] });
+    it('合法纠错和下一句共用一个词：直接落实，不调合并处理，revised 和保存的文章里错误已改', async () => {
+      const upstream = bankUpstream('这是银行贷款。银行存款可以提取。', bankFix, { items: [] });
+      const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+      expect(events.at(-1)!.event).toBe('done');
+      expect(upstream.gemini('reconcile')).toHaveLength(0);
+      expect(eventOf(events, 'revised')).toEqual({ markdown: BANK_FINAL, revisions: [{ type: 'unsupported', before: '这是银行贷款。', after: '这是银行存款。', reason: '字幕说的是存款', evidence: BANK }] });
+      expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(BANK_FINAL);
+    });
+
+    const sameSentenceFix = { type: 'unsupported', quote: '这是银行贷款', replacement: '这是银行存款可以提取的账户', evidence: BANK, problem: '字幕说的是存款' };
+
+    // 抓：和同一句后半句重合的建议被直接应用（重复的半句随文章保存），或没带原因就交给合并处理
+    it('替换文字和同一句的后半句重合：进合并处理，按结论落实，revised 和保存的文章一致', async () => {
+      const upstream = bankUpstream('这是银行贷款，银行存款可以提取。', sameSentenceFix, {
+        items: [{ index: 0, status: 'revise', note: '把两半句并成一句', quote: '这是银行贷款，银行存款可以提取。', replacement: '这是可以提取的银行存款。', evidence: '' }],
+      });
       const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
       expect(events.at(-1)!.event).toBe('done');
       const reconciles = upstream.gemini('reconcile');
       expect(reconciles).toHaveLength(1);
       expect(promptOf(reconciles[0]!.body).user).toContain('这条建议还没有应用');
-      expect(eventOf(events, 'revised')).toEqual({ markdown: BANK_FINAL, revisions: [{ type: 'unsupported', before: '这是银行贷款。', after: '这是银行存款。', reason: '字幕说的是存款', evidence: BANK }] });
-      expect(eventOf(events, 'done')!.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...bankFix, note: '只是用到同一个词，照改' }]);
-      expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(BANK_FINAL);
+      const final = '# 银行\n\n## 存款\n\n这是可以提取的银行存款。';
+      expect(eventOf(events, 'revised')!.markdown).toBe(final);
+      expect(eventOf(events, 'done')!.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...sameSentenceFix, note: '把两半句并成一句' }]);
+      expect((await openStore(env, eventOf(events, 'meta')!.generationId).load())!.article.markdown).toBe(final);
     });
 
-    // 抓：疑似重复的建议被记成"已完成"——合并处理说还要改却两轮都落实不了时，带着"银行贷款"保存并发 done
+    // 抓：疑似重复的建议被记成"已完成"——合并处理说还要改却两轮都落实不了时，带着错误保存并发 done
     it('疑似重复的建议合并处理两轮都落实不了：error review_failed，没有 done，不保存', async () => {
-      const upstream = bankUpstream({ items: [{ index: 0, status: 'revise', note: '照改', quote: '这是一笔银行贷款。', replacement: '这是银行存款。', evidence: '' }] });
+      const upstream = bankUpstream('这是银行贷款，银行存款可以提取。', sameSentenceFix, { items: [{ index: 0, status: 'revise', note: '照改', quote: '这是一笔银行贷款', replacement: '这是银行存款', evidence: '' }] });
       const save = vi.spyOn(GenerationStore.prototype, 'save');
       const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
       expect(events.at(-1)!.event).toBe('error');

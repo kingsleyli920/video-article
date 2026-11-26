@@ -227,30 +227,43 @@ function checkAt(issue: ReviewIssue, markdown: string, first: number, haystack: 
   return null;
 }
 
-const EDGE_PUNCTUATION = /^[\s，,。.；;：:、！!？?—–-]+|[\s，,。.；;：:、！!？?—–-]+$/g;
+const SENTENCE_REACH = 200;
+const BREAK = /[，,。.；;：:、！!？?—–\-（）()“”"'《》`*\n]/;
 
-/** a 的结尾和 b 的开头重合了多少个字符（都先去掉边上的标点和空白） */
-function seam(a: string, b: string): number {
-  const left = a.replace(EDGE_PUNCTUATION, '');
-  const right = b.replace(EDGE_PUNCTUATION, '');
-  for (let k = Math.min(left.length, right.length, 60); k > 0; k--) if (left.endsWith(right.slice(0, k))) return k;
-  return 0;
+/** a 和 b 的最长公共片段有多长。片段是连续的文字，标点会把它断开 */
+function longestShared(a: string, b: string): number {
+  let best = 0;
+  for (let i = 0; i < a.length; i++) {
+    for (let j = 0; j < b.length; j++) {
+      let k = 0;
+      while (i + k < a.length && j + k < b.length && a[i + k] === b[j + k] && !BREAK.test(a[i + k]!)) k++;
+      if (k > best) best = k;
+    }
+  }
+  return best;
 }
 
 /**
- * 替换文字是不是把紧挨着的上下文又写了一遍：它的结尾和后文的开头、或它的开头和前文的结尾重复了一段。
- * 例：原文"…ChatGPT出现，这一切突然水到渠成，证明了…"，把"ChatGPT出现"换成"这一切突然水到渠成"，结果同一个分句连着出现两次。
- * 原文在这个位置本来就有同样长的重复时不算（不是这条修订造成的）。重复至少 4 个汉字或 10 个其他字符才算，避免误伤"的""了"这类单字。
- * 这只是一个弱信号：正常的纠错也会和下一句用到同一个词（"这是银行存款。银行存款可以提取。"）。
+ * 替换文字是不是把同一句话里没被替换的部分又说了一遍：替换文字和这句话的其余部分有一段相同的文字，而被替换的原文没有（或没有这么长）。
+ * 核对给出的修订往往只引用半句话，改写时容易把紧挨着的前后文带进来，例如
+ * "…ChatGPT出现，这一切突然水到渠成" 里把前半句换成 "…这一切突然水到渠成"；
+ * "能够与之相提并论的是X" 里把 X 换成 "讲者认为可与之相提并论的是X"。
+ * 相同的片段至少 5 个汉字或 15 个其他字符才算。这只是一个弱信号（正常的句子偶尔也会重复一个短语），
  * 所以收尾流程里命中它的建议既不应用也不拒绝，交给合并处理判断（见 finalize.ts）；只有直接调用 applyRevisions 时才当作拒绝原因。
+ * 只看同一句话：下一句正常用到同一个词（"这是银行存款。银行存款可以提取。"）不算；替换文字自己内部的重复也不算。
  */
 function duplicatesContext(markdown: string, first: number, quote: string, replacement: string): boolean {
-  const before = markdown.slice(Math.max(0, first - 80), first);
-  const after = markdown.slice(first + quote.length, first + quote.length + 80);
-  const enough = (k: number, text: string) => k >= (/[\u4e00-\u9fff]/.test(text) ? 4 : 10);
-  const tail = seam(replacement, after);
-  const head = seam(before, replacement);
-  return (enough(tail, replacement) && tail > seam(quote, after)) || (enough(head, replacement) && head > seam(before, quote));
+  const end = first + quote.length;
+  // 这句话在被替换部分之前和之后的文字：到最近的句末标点或换行为止，最多各看 SENTENCE_REACH 个字符
+  let from = first;
+  while (from > 0 && first - from < SENTENCE_REACH && !/[。！？!?\n]/.test(markdown[from - 1]!)) from--;
+  let to = end;
+  while (to < markdown.length && to - end < SENTENCE_REACH && !/[。！？!?\n]/.test(markdown[to]!)) to++;
+  // 被替换的原文自己以句末标点结尾时，后面已经是下一句
+  const rest = [markdown.slice(from, first), /[。！？!?]\s*$/.test(quote) ? '' : markdown.slice(end, to)];
+  const shared = (text: string) => Math.max(...rest.map((part) => longestShared(text, part)));
+  const repeat = shared(replacement);
+  return repeat >= (/[\u4e00-\u9fff]/.test(replacement) ? 5 : 15) && repeat > shared(quote);
 }
 
 /**

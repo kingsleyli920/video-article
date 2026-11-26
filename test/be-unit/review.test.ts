@@ -452,48 +452,47 @@ describe('parseReconcile', () => {
 });
 
 
-describe('applyRevisions：替换文字和紧挨着的上下文重复', () => {
+describe('applyRevisions：替换文字重复了同一句里没被替换的部分', () => {
   const EVIDENCE_TEXT = 'it was the Christmas of 22 when the whole thing suddenly worked';
   const SOURCE = `[00:00] ${EVIDENCE_TEXT}`;
-  const issue = (quote: string, replacement: string): ReviewIssue => ({ type: 'time', quote, replacement, evidence: EVIDENCE_TEXT, problem: '时间对应的事情写错了' });
+  const issue = (quote: string, replacement: string): ReviewIssue => ({ type: 'time', quote, replacement, evidence: EVIDENCE_TEXT, problem: '写错了' });
+  const reasons = (markdown: string, quote: string, replacement: string) => applyRevisions(markdown, [issue(quote, replacement)], SOURCE).rejected.map((r) => r.reason);
+  const H = '# 标题\n\n## 第一章\n\n';
 
-  // 抓（线上真实出现）：把"ChatGPT出现"换成"这一切突然水到渠成"，而后一个分句本来就是这几个字，
-  // 结果成了"这一切突然水到渠成，这一切突然水到渠成"
-  it('替换文字的结尾和后文的开头是同一个分句：拒绝为 duplicates_context，文章不变', () => {
-    const markdown = '# 标题\n\n## 第一章\n\n直到2022年圣诞节前后ChatGPT出现，这一切突然水到渠成，证明了这条路线可行。';
-    const outcome = applyRevisions(markdown, [issue('直到2022年圣诞节前后ChatGPT出现', '直到2022年圣诞节前后，这一切突然水到渠成')], SOURCE);
-    expect(outcome.markdown).toBe(markdown);
-    expect(outcome.applied).toEqual([]);
+  // 抓（线上真实出现，三种形态）：修订只引用半句话，改写时把同一句的其余部分又说了一遍
+  it.each([
+    ['后半句本来就是这几个字', '直到2022年圣诞节前后ChatGPT出现，这一切突然水到渠成，证明了这条路线可行。', '直到2022年圣诞节前后ChatGPT出现', '直到2022年圣诞节前后，这一切突然水到渠成'],
+    ['前文已经有同样的引导语', '从数量级来看，它显然比互联网更大，能够与之相提并论的是微处理器、蒸汽机、电力和车轮。', '微处理器、蒸汽机、电力和车轮。', '讲者认为可与之相提并论的是微处理器、蒸汽机、电力和车轮。'],
+    ['前文已经有同样的限定语', '从目前的基准测试来看，它基本复刻了GPT-5的推理能力，而GPT-5原本需要耗费巨额资金。', '它基本复刻了GPT-5的推理能力', '至少根据目前的基准测试，它基本复刻了GPT-5的推理能力'],
+    ['开头和前文的结尾重复', '这一切突然水到渠成，随后ChatGPT出现了。', '随后ChatGPT出现了。', '这一切突然水到渠成之后才有了ChatGPT。'],
+  ])('%s：duplicates_context，文章不变', (_label, body, quote, replacement) => {
+    const outcome = applyRevisions(H + body, [issue(quote, replacement)], SOURCE);
+    expect(outcome.markdown).toBe(H + body);
     expect(outcome.rejected.map((r) => r.reason)).toEqual(['duplicates_context']);
   });
 
-  // 抓：只查了后文，没查前文
-  it('替换文字的开头和前文的结尾重复：同样拒绝', () => {
-    const markdown = '# 标题\n\n## 第一章\n\n这一切突然水到渠成，随后ChatGPT出现了。';
-    const outcome = applyRevisions(markdown, [issue('随后ChatGPT出现了。', '这一切突然水到渠成，是在2022年圣诞节前后。')], SOURCE);
-    expect(outcome.markdown).toBe(markdown);
-    expect(outcome.rejected.map((r) => r.reason)).toEqual(['duplicates_context']);
+  // 抓：检查过宽，正常的修订被当成重复
+  it.each([
+    ['下一句用到同一个词', '这是银行贷款。银行存款可以提取。', '这是银行贷款。', '这是银行存款。'],
+    ['只和同一句的其余部分重合两三个字', '直到2022年圣诞节前后ChatGPT出现，这一切才水到渠成。', '直到2022年圣诞节前后ChatGPT出现', '直到2022年圣诞节前后，这一切'],
+    ['替换文字自己内部有重复（整句重写，两个金额相同）', '第一个试点成本200美元，另一个试点成本300美元。', '第一个试点成本200美元，另一个试点成本300美元。', '第一个试点成本20美元，另一个试点成本20美元。'],
+    ['原文和同一句其余部分本来就有同样的重合，修订没有加重', '在2021年这一切突然水到渠成，这一切突然水到渠成，证明了这条路线可行。', '在2021年这一切突然水到渠成', '在2022年这一切突然水到渠成'],
+  ])('%s：照常替换', (_label, body, quote, replacement) => {
+    expect(reasons(H + body, quote, replacement)).toEqual([]);
   });
 
-  // 抓：校验过严，把只和上下文共用一两个字的正常修订也拒掉
-  it('只和上下文重合一两个字（"的""了"、一个词）：照常替换', () => {
-    const markdown = '# 标题\n\n## 第一章\n\n直到2022年圣诞节前后ChatGPT出现，这一切才水到渠成。';
-    const outcome = applyRevisions(markdown, [issue('直到2022年圣诞节前后ChatGPT出现', '直到2022年圣诞节前后，这一切')], SOURCE);
-    expect(outcome.applied).toHaveLength(1);
-    expect(outcome.markdown).toBe('# 标题\n\n## 第一章\n\n直到2022年圣诞节前后，这一切，这一切才水到渠成。');
-  });
-
-  // 抓：原文在这个位置本来就有同样的重复，修订没有让它变得更糟，却被拒绝
-  it('原文本来就重复、修订没有加重：不算这条修订的问题，照常替换', () => {
-    const markdown = '# 标题\n\n## 第一章\n\n在2021年这一切突然水到渠成，这一切突然水到渠成，证明了这条路线可行。';
-    const outcome = applyRevisions(markdown, [issue('在2021年这一切突然水到渠成', '在2022年这一切突然水到渠成')], SOURCE);
-    expect(outcome.applied).toHaveLength(1);
-  });
-
-  // 抓：英文按 4 个字符算重复，普通的冠词、短词被误判
-  it('英文只重合一个短词：照常替换；重合一整段：拒绝', () => {
+  // 抓：英文按 5 个字符算重复，冠词和短词被误判；或者空格把片段断开，整段重复反而查不出
+  it('英文只重合一个短词：照常替换；重合一整段：duplicates_context', () => {
     const markdown = '# Title\n\n## One\n\nIt was 2021 when the model shipped, the whole thing suddenly worked for everyone.';
-    expect(applyRevisions(markdown, [issue('It was 2021 when the model shipped', 'It was 2022 when the model shipped')], SOURCE).applied).toHaveLength(1);
-    expect(applyRevisions(markdown, [issue('It was 2021 when the model shipped', 'In 2022 the whole thing suddenly worked')], SOURCE).rejected.map((r) => r.reason)).toEqual(['duplicates_context']);
+    expect(reasons(markdown, 'It was 2021 when the model shipped', 'It was 2022 when the model shipped')).toEqual([]);
+    expect(reasons(markdown, 'It was 2021 when the model shipped', 'In 2022 the whole thing suddenly worked')).toEqual(['duplicates_context']);
+  });
+
+  // 抓：没有标点的超长文本让检查跑不完
+  it('十万字符没有标点的文本：很快给出结果', () => {
+    const long = '字'.repeat(50_000) + '这里有一处要改的地方' + '符'.repeat(50_000);
+    const started = Date.now();
+    expect(reasons(H + long, '这里有一处要改的地方', '这里有一处改好的地方')).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 });
