@@ -44,10 +44,12 @@ export interface LoadOptions extends TranscriptOptions {
 export const RELAY_TIMEOUT_MS = 45_000;
 
 const LOCAL = 'local';
+/** 某个区域代取失败后，还值得换下一个区域的错误 */
+const RELAY_RETRYABLE = new Set<ErrorCode>(['youtube_blocked', 'youtube_timeout', 'youtube_error']);
 
 /**
  * 先直连 YouTube（被拦时 fetchTranscript 内部会换客户端重试）。本地最终是 youtube_blocked（人机验证按出口 IP 池判定，
- * 换客户端没用）时，依次请 relays 里的其他区域代取：某个区域也被拦就试下一个；返回别的失败（视频不存在、超时等）就停下，
+ * 换客户端没用）时，依次请 relays 里的其他区域代取：某个区域也被拦、超时或调用失败就试下一个；返回和出口无关的失败（视频不存在、没有字幕）就停下，
  * 报那个区域的错误。本地是其他失败时不换区域。
  * 都失败（含超时）且该视频有内置备份时改用备份，并带上实时获取失败的原因。只有示例视频有备份，其他视频失败就报错。
  * 客户端已经断开导致的取消不兜底，也不再请下一个区域，直接把取消原因抛出去。
@@ -95,7 +97,8 @@ async function tryRelays(videoId: string, relays: TranscriptRelay[], options: Lo
     // RPC 本身失败或超时时区域里没有尝试记录，补一条，日志里能看出是哪个区域、多久
     const tried = result.attempts.length ? result.attempts : [{ client: 'relay', ok: false, code: result.code, ...(result.detail ? { detail: result.detail } : {}), ms: Date.now() - started }];
     attempts.push(...tagged(tried, relay.region));
-    if (result.code !== 'youtube_blocked') return new TranscriptError(result.code, result.detail, attempts);
+    // 这个区域也被拦、超时或调用失败：换下一个区域。视频不存在、没有字幕这类和出口无关的结果，换区域也一样，直接报
+    if (!RELAY_RETRYABLE.has(result.code)) return new TranscriptError(result.code, result.detail, attempts);
   }
   return new TranscriptError('youtube_blocked', `本地试 ${local.length} 次，换 ${relays.length} 个区域后仍被拦`, attempts);
 }

@@ -139,22 +139,22 @@ describe('本地被拦后换区域代取', () => {
     ]);
   });
 
-  // 抓：某个区域一直不返回时整次卡住；RPC 本身出错被当成"被拦"接着试；超时和出错的区域在记录里没有痕迹
+  // 抓：某个区域一直不返回时整次卡住；一个区域超时或 RPC 出错就整次放弃，不再试还能用的区域；超时和出错的区域在记录里没有痕迹
   it.each([
-    ['一直不返回', () => new Promise<RelayResult>(() => {}), { code: 'youtube_timeout', detail: 'enam 区域代取超过 0.03 秒' }, '获取字幕超时，请稍后重试（enam 区域代取超过 0.03 秒）'],
-    ['RPC 抛错', () => Promise.reject(new Error('Durable Object reset')), { code: 'youtube_error', detail: '其他区域的节点调用失败' }, '获取字幕失败（其他区域的节点调用失败）'],
-  ] as const)('第一个区域%s：按上限结束，报对应错误，不再请后面的区域', async (_, reply, failure, message) => {
+    ['一直不返回', () => new Promise<RelayResult>(() => {}), { code: 'youtube_timeout', detail: 'enam 区域代取超过 0.03 秒' }],
+    ['RPC 抛错', () => Promise.reject(new Error('Durable Object reset')), { code: 'youtube_error', detail: '其他区域的节点调用失败' }],
+  ] as const)('第一个区域%s：按上限结束，记下这次失败，接着由第二个区域取到', async (_, reply, failure) => {
     localPlayer(botBlocked);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const enam = relay('enam', reply);
     const wnam = relay('wnam', OK);
     const started = Date.now();
-    const err = await loadTranscript(OTHER_VIDEO_ID, { relays: [enam, wnam], relayTimeoutMs: 30 }).catch((e: unknown) => e);
+    const loaded = await loadTranscript(OTHER_VIDEO_ID, { relays: [enam, wnam], relayTimeoutMs: 30 });
 
     expect(Date.now() - started).toBeLessThan(1_000);
-    expect(err).toMatchObject({ code: failure.code, message });
-    expect(wnam.fetch).not.toHaveBeenCalled();
-    expect((err as { attempts: unknown[] }).attempts.at(-1)).toEqual({ from: 'enam', client: 'relay', ok: false, ...failure, ms: expect.any(Number) });
+    expect(loaded.info.via).toBe('wnam');
+    expect(wnam.fetch).toHaveBeenCalledTimes(1);
+    expect(loaded.transcript.attempts.find((a) => a.from === 'enam')).toEqual({ from: 'enam', client: 'relay', ok: false, ...failure, ms: expect.any(Number) });
   });
 });
 
