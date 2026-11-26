@@ -105,7 +105,7 @@ test('成功并展开 5W1H 后再生成一次：旧内容全部清掉，新 5W1H
 
   secondGate.resolve();
   await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok');
-  expect(await statusMain(page)).toBe('已完成，共 1 章、321 字，用时 0 秒。点击章节标题旁的 5W1H 查看总结。');
+  expect(await statusMain(page)).toBe('已完成，共 1 章、321 字，用时 0 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。');
   await expect(page.locator('#article h1')).toHaveText('第二篇：开源模型的商业逻辑');
   await expect(page.locator('#article h2')).toHaveText(['开源与闭源']);
   await expect(page.getByText('对话安德森：AI 革命的万亿美金之问')).toHaveCount(0);

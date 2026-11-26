@@ -82,7 +82,7 @@ test('主流程：正文逐步出现 → 完成状态、章节、数字提示 �
   console.log(`生成中的正文长度：${lengths.join(' → ')}；完成时 ${log[doneAt]!.len}`);
 
   // 完成：状态条、标题、章节、标题下方的数字提示，5W1H 可点，表单恢复
-  expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、68 字，用时 \d+ 秒。文中有 1 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。$/);
+  expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、68 字，用时 \d+ 秒。已对照字幕核对。文中有 1 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。$/);
   // 来源信息在状态条下方的面板里，状态条不再附带来源；结束后面板保留
   await expect(status.locator('.status-detail')).toHaveCount(0);
   expect(await sourceRows(page)).toEqual(SOURCE_ROWS);
@@ -126,10 +126,13 @@ test('主流程：正文逐步出现 → 完成状态、章节、数字提示 �
   expect(summaryRequests[0]!.body).toBeNull();
 
   // 上游：字幕只在生成时取了一次；5W1H 请求里的字幕、简介、用户要求和章节都来自服务端保存的上下文，系统提示带人物规则全文
+  // 有生成要求时，约束提取和写文章同时开始（两者到达上游的先后不固定，所以单独数）；文章写完后两章各核对一次，然后才是 5W1H
   const upstream = await upstreamRequests();
-  expect(upstream.map((r) => r.kind)).toEqual(['player', 'captions', 'stream', 'summary']);
-  const { system, user, config } = promptOf(upstream[3]);
-  expect(upstream[3]!.model).toBe('mock-primary');
+  expect(upstream.filter((r) => r.kind !== 'requirements').map((r) => r.kind)).toEqual(['player', 'captions', 'stream', 'review', 'review', 'summary']);
+  expect(upstream.filter((r) => r.kind === 'requirements')).toHaveLength(1);
+  const summaryRequest = upstream.find((r) => r.kind === 'summary');
+  const { system, user, config } = promptOf(summaryRequest);
+  expect(summaryRequest!.model).toBe('mock-primary');
   expect(system).toContain('人物身份与发言归属：');
   expect(system).toContain('依据不足时，提问写"主持人"，回答写"嘉宾"（单人演讲写"演讲者"）');
   expect(system).toContain('who 字段同样遵守上面的人物规则');
@@ -141,7 +144,7 @@ test('主流程：正文逐步出现 → 完成状态、章节、数字提示 �
   expect(user).toContain('<current_chapter id="2">\n## 第二章：数字\n\n**主持人:** 有多少项？\n\n**嘉宾:** 大约有1200项。\n</current_chapter>');
   expect(config.responseMimeType).toBe('application/json');
   // 生成请求同样带上了用户要求
-  expect(promptOf(upstream[2]).user).toContain(`<user_requirements>\n写给投资人看，语言简洁\n</user_requirements>`);
+  expect(promptOf(upstream.find((r) => r.kind === 'stream')).user).toContain(`<user_requirements>\n写给投资人看，语言简洁\n</user_requirements>`);
 
   // 同一章收起再展开：只切换显示，不重新请求（加载中状态不再出现）
   await toggle.click();
@@ -188,7 +191,7 @@ test('第二次生成：换生成要求再生成，旧文章、旧提示、旧 5
   await expect(page.locator('#article .summary-table')).toHaveCount(0);
 
   await expect(status).toHaveAttribute('data-tone', 'ok', { timeout: 15_000 });
-  expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、65 字，用时 \d+ 秒。点击章节标题旁的 5W1H 查看总结。$/);
+  expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、65 字，用时 \d+ 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。$/);
   await expect(page.locator('#article h1')).toHaveText('对话第二位嘉宾：新的要求');
   await expect(page.locator('#article h2')).toHaveText(['第一章：背景', '第二章：结论']);
   await expect(page.locator('#article .article-notice')).toHaveCount(0);

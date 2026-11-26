@@ -45,7 +45,7 @@ test('主模型繁忙：文章由备用模型完成并在状态条注明，5W1H 
 
   const status = page.locator('#status');
   await expect(status).toHaveAttribute('data-tone', 'ok', { timeout: 15_000 });
-  expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、65 字，用时 \d+ 秒。点击章节标题旁的 5W1H 查看总结。$/);
+  expect(await statusMessage(page)).toMatch(/^已完成，共 2 章、65 字，用时 \d+ 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。$/);
   await expect(status.locator('.status-detail')).toHaveText('主模型繁忙，本次由 mock-fallback 生成');
   expect(await sourceRows(page)).toEqual(SOURCE_ROWS);
   await expect(page.locator('#article h1')).toHaveText('备用模型写的对话：受控上游');

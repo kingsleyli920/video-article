@@ -124,7 +124,7 @@ describe('提交并生成', () => {
     expect(page.status).toEqual({
       hidden: false,
       tone: 'ok',
-      text: '已完成，共 2 章、36 字，用时 4 秒。点击章节标题旁的 5W1H 查看总结。',
+      text: '已完成，共 2 章、36 字，用时 4 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。',
       detail: '',
       hasRetry: false,
     });
@@ -145,7 +145,7 @@ describe('提交并生成', () => {
 
     await advance(5_000);
     expect(page.status.tone).toBe('ok');
-    expect(page.status.text).toBe('已完成，共 2 章、36 字，用时 4 秒。点击章节标题旁的 5W1H 查看总结。');
+    expect(page.status.text).toBe('已完成，共 2 章、36 字，用时 4 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。');
   });
 });
 
@@ -168,7 +168,7 @@ describe('完成时的提示', () => {
     expect(notice?.previousElementSibling?.tagName).toBe('H1');
     expect(notice?.getAttribute('role')).toBe('note');
     expect(page.status.tone).toBe('ok');
-    expect(page.status.text).toBe('已完成，共 2 章、36 字，用时 0 秒。文中有 2 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。');
+    expect(page.status.text).toBe('已完成，共 2 章、36 字，用时 0 秒。已对照字幕核对。文中有 2 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。');
   });
 
   // 抓：备用模型写的文章没有注明，用户以为是主模型的结果

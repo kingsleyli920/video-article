@@ -335,13 +335,17 @@ export const CHAPTERS = [
   { id: '2', title: '第二章 增长' },
 ];
 
+/** 现在的服务端在 done 里总带 review：两章各核对一次、没有修订、用户没提可计算的要求 */
+export const NO_REVIEW_CHANGES = { sections: 2, revisions: 0, rewritten: null, checks: [] };
+
 export function doneEvent(overrides: Record<string, unknown> = {}) {
   return {
     chapters: CHAPTERS,
     chars: 36,
-    timing: { transcriptMs: 800, firstTokenMs: 2100, modelDoneMs: 9000, savedMs: 9100 },
+    timing: { transcriptMs: 800, firstTokenMs: 2100, modelDoneMs: 9000, reviewedMs: 9050, savedMs: 9100 },
     numberWarnings: [],
     model: 'gemini-main',
+    review: NO_REVIEW_CHANGES,
     ...overrides,
   };
 }
@@ -349,12 +353,13 @@ export function doneEvent(overrides: Record<string, unknown> = {}) {
 /** 一篇两章的文章，按三段 delta 推送 */
 export const ARTICLE_DELTAS = ['# 示例文章标题\n\n这是导语。', '\n\n## 第一章 起步\n\n第一章的正文。', '\n\n## 第二章 增长\n\n第二章的正文。'];
 
-/** 推完整个成功流程（阶段、meta、全部正文、done），等页面处理完 */
+/** 推完整个成功流程（阶段、meta、全部正文、核对阶段、done），等页面处理完 */
 export async function streamFullArticle(stream: SseStream, generationId = 'gen-1', done: Record<string, unknown> = {}): Promise<void> {
   stream.event('stage', { stage: 'transcript' });
   stream.event('meta', meta(generationId));
   stream.event('stage', { stage: 'generating' });
   for (const text of ARTICLE_DELTAS) stream.event('delta', { text });
+  stream.event('stage', { stage: 'reviewing' });
   stream.event('done', doneEvent(done));
   await settle();
 }

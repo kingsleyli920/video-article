@@ -61,7 +61,7 @@ test('输入链接和生成要求后提交：请求体带两者，文章、5W1H�
     '字幕里有一处数字残缺（原文"3,"），文中写成了"3000"、"3万"，疑似补全了残缺数字，请核对原字幕或原视频。',
   ]);
 
-  expect(await statusMain(page)).toBe('已完成，共 2 章、1234 字，用时 0 秒。文中有 2 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。');
+  expect(await statusMain(page)).toBe('已完成，共 2 章、1234 字，用时 0 秒。已对照字幕核对。文中有 2 处疑似补全了残缺数字，见标题下方的提示。点击章节标题旁的 5W1H 查看总结。');
   // 来源只写在来源面板里，状态条不重复
   await expect(status.locator('.status-detail')).toHaveCount(0);
   await expect(status.getByRole('button', { name: '重新生成' })).toHaveCount(0);
@@ -88,7 +88,7 @@ test('没有数字问题时不显示数字提示，状态条也不提', async ({
   await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok');
   expect(JSON.parse(api.generations[0]!.postData ?? 'null')).toEqual({ url: SAMPLE_URL, instructions: '' });
   await expect(page.locator('.article-notice')).toHaveCount(0);
-  expect(await statusMain(page)).toBe('已完成，共 2 章、1234 字，用时 0 秒。点击章节标题旁的 5W1H 查看总结。');
+  expect(await statusMain(page)).toBe('已完成，共 2 章、1234 字，用时 0 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。');
 });
 
 // 抓：done.model 与 meta.model 不同时没有告诉用户换了备用模型（备用模型提示随来源说明一起被删掉）；字幕来自内置备份时没说明原因

@@ -53,7 +53,7 @@ describe('重新生成', () => {
 
     await streamFullArticle(backend.stream, 'gen-2');
     expect(page.status.tone).toBe('ok');
-    expect(page.status.text).toBe('已完成，共 2 章、36 字，用时 0 秒。点击章节标题旁的 5W1H 查看总结。');
+    expect(page.status.text).toBe('已完成，共 2 章、36 字，用时 0 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。');
     expect(page.chapterTitles).toEqual(['第一章 起步', '第二章 增长']);
     expect(page.incompleteNote).toBeNull();
   });
@@ -85,7 +85,7 @@ describe('重新生成', () => {
     expect(page.status).toEqual({
       hidden: false,
       tone: 'ok',
-      text: '已完成，共 2 章、36 字，用时 0 秒。点击章节标题旁的 5W1H 查看总结。',
+      text: '已完成，共 2 章、36 字，用时 0 秒。已对照字幕核对。点击章节标题旁的 5W1H 查看总结。',
       detail: '',
       hasRetry: false,
     });

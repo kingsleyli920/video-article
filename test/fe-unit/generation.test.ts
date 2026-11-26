@@ -132,6 +132,66 @@ describe('runGeneration', () => {
   });
 });
 
+describe('runGeneration：核对阶段', () => {
+  const REVISION = {
+    type: 'time',
+    before: '2003 年那家基金投资了三家芯片公司。',
+    after: '我 2003 年搬到硅谷，那家基金在之后十年里投资了三家芯片公司。',
+    reason: '字幕里 2003 年只修饰搬家',
+    evidence: 'I moved to the Valley in 2003. Over the next decade the fund backed three chip companies.',
+  };
+
+  // 抓：revising / reviewing 被映射成别的阶段（比如沿用 writing），页面状态条显示不出"正在核对"
+  it('stage 的 revising、reviewing 原样交给页面', async () => {
+    stream([['meta', META], ['delta', { text: '# 初稿' }], ['stage', { stage: 'revising' }], ['stage', { stage: 'reviewing' }], ['done', DONE]], 'close');
+    const { ui, calls } = recorder();
+    await expect(runGeneration(INPUT, ui)).resolves.toBe('done');
+    expect(calls).toEqual(['meta', 'stage:writing', 'delta:# 初稿', 'stage:revising', 'stage:reviewing', 'done:g1:# 初稿']);
+  });
+
+  // 抓：revised 不重绘、done 拿的仍是流式初稿，或者修订列表没传给页面；revised 之后又追加初稿
+  it('revised：整体换成最终全文并重绘，done 拿到最终全文和修订列表', async () => {
+    const final = '# 标题\n\n我 2003 年搬到硅谷，那家基金在之后十年里投资了三家芯片公司。';
+    stream(
+      [
+        ['meta', META],
+        ['delta', { text: '# 标题\n\n' }],
+        ['delta', { text: '2003 年那家基金投资了三家芯片公司。' }],
+        ['stage', { stage: 'reviewing' }],
+        ['revised', { markdown: final, revisions: [REVISION] }],
+        ['done', DONE],
+      ],
+      'close',
+    );
+    const calls: unknown[] = [];
+    const { ui } = recorder();
+    await runGeneration(INPUT, { ...ui, delta: (md) => calls.push(['delta', md]), done: (_r, md, id, revisions) => calls.push(['done', id, md, revisions]) });
+    expect(calls).toEqual([
+      ['delta', '# 标题\n\n'],
+      ['delta', '# 标题\n\n2003 年那家基金投资了三家芯片公司。'],
+      ['delta', final],
+      ['done', 'g1', final, [REVISION]],
+    ]);
+  });
+
+  // 抓：没有 revised 时 done 收到 undefined 而不是空数组，页面拿 revisions.length 时报错
+  it('没有 revised：done 的修订列表是空数组', async () => {
+    stream([['meta', META], ['delta', { text: '# 标题' }], ['done', DONE]], 'close');
+    const got: unknown[] = [];
+    const { ui } = recorder();
+    await runGeneration(INPUT, { ...ui, done: (_r, md, _id, revisions) => got.push(md, revisions) });
+    expect(got).toEqual(['# 标题', []]);
+  });
+
+  // 抓：revised 之后核对失败时，失败说明下方保留的是初稿而不是已经显示的最终全文
+  it('revised 之后收到 error：fail 拿到的是最终全文', async () => {
+    stream([['meta', META], ['delta', { text: '# 初稿' }], ['revised', { markdown: '# 终稿', revisions: [] }], ['error', { code: 'save_failed', message: '保存生成上下文失败，章节总结不可用', partial: true }]], 'close');
+    const { ui, calls } = recorder();
+    await expect(runGeneration(INPUT, ui)).resolves.toBe('failed');
+    expect(calls.at(-1)).toBe('fail:save_failed:# 终稿');
+  });
+});
+
 describe('requestSummary', () => {
   // 抓：5W1H 请求一直不返回时面板永远停在"正在生成"
   it('超时后以 client_timeout 失败，并中止请求', async () => {

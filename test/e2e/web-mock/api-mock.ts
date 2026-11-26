@@ -4,7 +4,7 @@
  */
 import { expect, test as base, type Page, type Route } from '@playwright/test';
 import { encodeSse } from '../../../src/shared/sse';
-import type { ChapterSummary, NumberWarning, StreamEvents, TranscriptPreviewSnippet } from '../../../src/shared/types';
+import type { ArticleReview, ChapterSummary, NumberWarning, Revision, StreamEvents, TranscriptPreviewSnippet } from '../../../src/shared/types';
 
 export type SseEvent = { [K in keyof StreamEvents]: [K, StreamEvents[K]] }[keyof StreamEvents];
 
@@ -130,23 +130,85 @@ export function deltas(markdown: string, pieces = 3): SseEvent[] {
   return out;
 }
 
-/** 生成接口的完整事件序列：stage → meta → stage → delta… → 结尾（done / error / 无结尾表示中断） */
+/**
+ * 生成接口的完整事件序列：stage → meta → stage → delta… → 核对阶段 → 结尾（done / error / 无结尾表示中断）。
+ * 核对阶段（beforeEnd）默认：结尾是 done 时发一个 stage: reviewing（现在的服务端在 done 之前总会核对），其他结尾不发。
+ */
 export function generationEvents(options: {
   meta?: StreamEvents['meta'];
   markdown?: string;
+  beforeEnd?: SseEvent[];
   end?: SseEvent | null;
 }): SseEvent[] {
   const markdown = options.markdown ?? ARTICLE_MD;
   const end = options.end === undefined ? (['done', done()] as SseEvent) : options.end;
+  const beforeEnd = options.beforeEnd ?? (end?.[0] === 'done' ? [stage('reviewing')] : []);
   const events: SseEvent[] = [
     ['stage', { stage: 'transcript' }],
     ['meta', options.meta ?? meta()],
     ['stage', { stage: 'generating' }],
     ...deltas(markdown),
+    ...beforeEnd,
   ];
   if (end) events.push(end);
   return events;
 }
+
+export function stage(name: StreamEvents['stage']['stage']): SseEvent {
+  return ['stage', { stage: name }];
+}
+
+/** 核对后的最终全文和采用的修订（服务端只在最终文章和初稿不同时发） */
+export function revised(markdown: string, revisions: Revision[]): SseEvent {
+  return ['revised', { markdown, revisions }];
+}
+
+/** done.review：sections 章并行核对；其余默认"没有修订、没有按要求修订、用户没提可计算的要求" */
+export function review(overrides: Partial<ArticleReview> = {}): ArticleReview {
+  return { sections: ARTICLE_CHAPTERS.length, revisions: 0, rewritten: null, checks: [], ...overrides };
+}
+
+// —— 核对阶段的数据：初稿里有错句，核对后换成有字幕依据的版本 ——
+
+/** 流式初稿：第一章把 2003 年安到了投资上，第二章把估计写成了确定的事实 */
+export const DRAFT_MD = ARTICLE_MD.replace(
+  '过去八十年，计算机一直是按指令执行的机器。',
+  '2003 年那家基金投资了三家芯片公司。过去八十年，计算机一直是按指令执行的机器。',
+).replace('开源让小团队也能用上前沿能力，竞争会集中在产品和分发上。', '开源模型的成本每年下降一半，这是确定的事实，竞争会集中在产品和分发上。');
+
+/** 核对后的最终全文：两处错句换成有字幕依据的写法 */
+export const REVIEWED_MD = ARTICLE_MD.replace(
+  '过去八十年，计算机一直是按指令执行的机器。',
+  '我 2003 年搬到硅谷，那家基金在之后十年里投资了三家芯片公司。过去八十年，计算机一直是按指令执行的机器。',
+).replace('开源让小团队也能用上前沿能力，竞争会集中在产品和分发上。', '开源模型的成本大概每年下降一半，竞争会集中在产品和分发上。');
+
+export const REVISIONS: Revision[] = [
+  {
+    type: 'time',
+    before: '2003 年那家基金投资了三家芯片公司。',
+    after: '我 2003 年搬到硅谷，那家基金在之后十年里投资了三家芯片公司。',
+    reason: '字幕里 2003 年只修饰搬家，投资发生在之后的十年里',
+    evidence: 'I moved to the Valley in 2003. Over the next decade the fund backed three chip companies.',
+  },
+  {
+    type: 'quantity',
+    before: '开源模型的成本每年下降一半，这是确定的事实，',
+    after: '开源模型的成本大概每年下降一半，',
+    reason: '字幕里是估计，文章写成了确定的事实',
+    evidence: 'the cost of running open models probably halves every year, roughly, I could be off',
+  },
+];
+
+/** 按要求修订过、约束已核对：用户要求"不超过 1200 字"，初稿 1,432 字 */
+export const REWRITTEN_REVIEW: ArticleReview = {
+  sections: 2,
+  revisions: 0,
+  rewritten: { unmet: ['全文 1,432 字，要求不超过 1,200 字'], charsBefore: 1432, charsAfter: 1018 },
+  checks: ['全文 1,018 字，上限 1,200 字'],
+};
+
+export const REVIEW_FAILED_MESSAGE = '内容核对没有完成，这次生成没有保存（对照字幕核对没有完成：Gemini 模型繁忙，请稍后重试（HTTP 503））';
+export const REQUIREMENTS_UNMET_MESSAGE = '文章没有满足生成要求里的硬性约束，修订后仍不满足（全文 1,356 字，要求不超过 1,200 字）';
 
 export function sseReply(events: SseEvent[], extra: Partial<Reply> = {}): Reply {
   return {
@@ -272,6 +334,69 @@ export async function holdGenerationAfterMeta(page: Page, data: StreamEvents['me
       return Promise.resolve(new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } }));
     };
   }, text);
+}
+
+export interface ScriptedGeneration {
+  /** 往最近一次生成请求的流里推事件（网络上到达一个分块），页面处理完之前不返回 */
+  push(...events: SseEvent[]): Promise<void>;
+  /** 浏览器发出的各次生成请求的请求体 */
+  bodies(): Promise<string[]>;
+  /** 最近一次生成请求是否已经被页面中止（停止生成、超时） */
+  aborted(): Promise<boolean>;
+}
+
+/**
+ * 生成接口由测试一步步推送事件，连接一直开着：用来看"初稿已显示、正在核对""revised 到达前后"这类中间状态。
+ * 和 holdGenerationAfterMeta 一样在页面脚本运行前替换 window.fetch，只接管 POST /api/generations（api.generations 里没有记录）。
+ * 页面中止请求时流以中止原因报错，和真实 fetch 一致；之后再 push 不会到达页面。
+ */
+export async function scriptedGeneration(page: Page): Promise<ScriptedGeneration> {
+  await page.addInitScript(() => {
+    type Slot = { controller: ReadableStreamDefaultController<Uint8Array>; aborted: boolean; closed: boolean };
+    const w = window as unknown as { __gen: { slots: Slot[]; bodies: string[] } };
+    w.__gen = { slots: [], bodies: [] };
+    const original = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (new URL(url, location.href).pathname !== '/api/generations' || init?.method !== 'POST') return original(input, init);
+      w.__gen.bodies.push(String(init.body ?? ''));
+      const signal = init.signal;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const slot: Slot = { controller, aborted: false, closed: false };
+          w.__gen.slots.push(slot);
+          signal?.addEventListener(
+            'abort',
+            () => {
+              slot.aborted = true;
+              if (!slot.closed) controller.error(signal.reason);
+              slot.closed = true;
+            },
+            { once: true },
+          );
+        },
+        cancel() {
+          const slot = w.__gen.slots.at(-1);
+          if (slot) slot.closed = true;
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } }));
+    };
+  });
+  return {
+    async push(...events) {
+      const text = events.map(([name, data]) => encodeSse(name, data)).join('');
+      await page.evaluate((chunk) => {
+        const slot = (window as unknown as { __gen: { slots: { controller: ReadableStreamDefaultController<Uint8Array>; closed: boolean }[] } }).__gen.slots.at(-1);
+        if (!slot) throw new Error('还没有生成请求');
+        if (!slot.closed) slot.controller.enqueue(new TextEncoder().encode(chunk));
+      }, text);
+      // 让页面读完这个分块、跑完 80ms 合并重绘
+      await page.waitForTimeout(150);
+    },
+    bodies: () => page.evaluate(() => (window as unknown as { __gen: { bodies: string[] } }).__gen.bodies),
+    aborted: () => page.evaluate(() => (window as unknown as { __gen: { slots: { aborted: boolean }[] } }).__gen.slots.at(-1)?.aborted ?? false),
+  };
 }
 
 /** 来源面板每一行的标签和内容：[标签, 内容…] */

@@ -493,8 +493,9 @@ button:disabled {
   font-size: 12px;
 }
 
+/* 原句加了删除线，再用最浅的灰色在手机上很难认，用次要文字色 */
 .article-review del {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .article-review ins {
@@ -509,8 +510,9 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+/* 字幕原文是 13px 的长段英文，最浅的灰色在浅灰底上对比度不到 3:1，用次要文字色，靠"字幕原文："前缀和原因区分 */
 .article-review .revision-evidence {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 /* 前缀 .article：和 .article p 同在文章里，选择器要比它具体，否则上边距会被 .article p 的 margin 盖掉 */
