@@ -195,7 +195,7 @@ describe('POST /api/generations', () => {
       source: 'backup',
       language: 'en',
       kind: 'asr',
-      liveError: 'YouTube 拒绝了字幕请求，可能触发了人机验证（HTTP 429）',
+      liveError: 'YouTube 拒绝了字幕请求，可能触发了人机验证（共试 3 次：HTTP 429、HTTP 429、HTTP 429）',
     });
     expect(upstream.gemini('article')[0]!.body).toContain('this new wave of AI companies');
     expect(eventOf(events, 'done')).toBeDefined();
@@ -206,7 +206,7 @@ describe('POST /api/generations', () => {
     const upstream = mockUpstream({ player: 429, geminiStream: geminiSse(ARTICLE_TEXTS) });
     const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
     expect(events.map((e) => e.event)).toEqual(['stage', 'error']);
-    expect(eventOf(events, 'error')).toEqual({ code: 'youtube_blocked', message: 'YouTube 拒绝了字幕请求，可能触发了人机验证（HTTP 429）', partial: false });
+    expect(eventOf(events, 'error')).toEqual({ code: 'youtube_blocked', message: 'YouTube 拒绝了字幕请求，可能触发了人机验证（共试 3 次：HTTP 429、HTTP 429、HTTP 429）', partial: false });
     expect(upstream.gemini()).toHaveLength(0);
   });
 

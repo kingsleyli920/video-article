@@ -218,12 +218,14 @@ describe('finalizeArticle：约束不满足', () => {
     expect({ code: err.code, message: err.message }).toEqual({ code: 'requirements_unmet', message: '文章没有满足生成要求里的硬性约束，修订后仍不满足（全文 74 字，要求不超过 61 字）' });
   });
 
-  // 抓：局部修订之后不复查结构，章节标题被删空的文章也被保存
-  it('局部修订删空了章节标题的文字：review_failed，说明结构问题', async () => {
+  // 抓：一条会把章节标题删空的修订建议被采用（文章结构坏掉），或者因为它让整次生成失败
+  it('把章节标题的文字删空的修订建议：只丢弃这一条，文章不变，照常完成', async () => {
     const emptyTitle = { ...TIME_ISSUE, type: 'language', quote: '柏林岁月', replacement: '' };
     const { model } = fakeModel({ review: (section) => ({ issues: section.includes('柏林岁月') ? [emptyTitle] : [] }) });
-    const err = await rejection(finalizeArticle(input(), model, stages().onStage));
-    expect({ code: err.code, message: err.message }).toEqual({ code: 'review_failed', message: '内容核对没有完成，这次生成没有保存（修订后的文章结构无效：第 1 章缺少标题或正文）' });
+    const result = await finalizeArticle(input(), model, stages().onStage);
+    expect(result.markdown).toBe(input().draft);
+    expect(result.revisions).toEqual([]);
+    expect(result.rejected).toEqual({ structure: 1 });
   });
 });
 

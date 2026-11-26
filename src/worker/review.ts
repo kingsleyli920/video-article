@@ -160,7 +160,13 @@ export function applyRevisions(markdown: string, issues: ReviewIssue[], transcri
       rejected.push({ issue, reason });
       continue;
     }
-    current = current.replace(issue.quote, () => issue.replacement);
+    const next = current.replace(issue.quote, () => issue.replacement);
+    // 标题不能被改没：替换前后标题的个数要一样，而且每个标题都还有文字（比如把章节标题整个删空）
+    if (!sameHeadings(current, next)) {
+      rejected.push({ issue, reason: 'structure' });
+      continue;
+    }
+    current = next;
     applied.push({ type: issue.type, before: issue.quote, after: issue.replacement, reason: issue.problem, evidence: issue.evidence.trim() });
   }
   return { markdown: current, applied, rejected };
@@ -182,6 +188,12 @@ function check(issue: ReviewIssue, markdown: string, haystack: string, appliedCo
 }
 
 const crossesBlock = (text: string) => /\n\s*\n/.test(text);
+
+function sameHeadings(before: string, after: string): boolean {
+  const headings = (markdown: string) => Lexer.lex(markdown).flatMap((t) => (t.type === 'heading' ? [`${t.depth}:${t.text.trim() ? 'x' : ''}`] : []));
+  const [a, b] = [headings(before), headings(after)];
+  return a.length === b.length && b.every((h, i) => h === a[i] && h.endsWith('x'));
+}
 const hasHeadingLine = (text: string) => /(^|\n)\s{0,3}#{1,6}\s/.test(text);
 
 function isWholeLine(markdown: string, start: number, length: number): boolean {

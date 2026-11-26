@@ -59,7 +59,8 @@ describe('numbersIn', () => {
   it.each([
     ['不超过 1500 字', [1500]],
     ['1,500 字以内', [1500]],
-    ['1，500 字以内', [1500]],
+    // 全角逗号是断句，不是千分位：读成两个数，不会拼成 1500
+    ['1500，3 章', [1500, 3]],
     ['控制在 1.5k 字', [1500]],
     ['1.5K', [1500]],
     ['800 到 1000 字', [800, 1000]],
@@ -222,7 +223,7 @@ describe('checkRequirements', () => {
     ['至少 4 章', { chaptersMin: 4 }, '全文 3 章，要求至少 4 章'],
     ['3 到 5 章', { chaptersMin: 3, chaptersMax: 5 }, null],
     ['1 到 3 章', { chaptersMin: 1, chaptersMax: 3 }, null],
-    ['4 到 6 章', { chaptersMin: 4, chaptersMax: 6 }, '全文 3 章，要求4 到 6 章'],
+    ['4 到 6 章', { chaptersMin: 4, chaptersMax: 6 }, '全文 3 章，要求在 4 到 6 章之间'],
   ])('3 章的文章，要求%s', (_label, patch, message) => {
     expect(checkRequirements(ARTICLE_3, req(patch))).toEqual(message ? [{ kind: 'chapters', message }] : []);
   });
@@ -273,7 +274,7 @@ describe('describeRequirements', () => {
     ['正好 3 章', { chaptersMin: 3, chaptersMax: 3 }, ['共 3 章，要求正好 3 章']],
     ['不超过 5 章', { chaptersMax: 5 }, ['共 3 章，要求不超过 5 章']],
     ['至少 2 章', { chaptersMin: 2 }, ['共 3 章，要求至少 2 章']],
-    ['2 到 4 章', { chaptersMin: 2, chaptersMax: 4 }, ['共 3 章，要求2 到 4 章']],
+    ['2 到 4 章', { chaptersMin: 2, chaptersMax: 4 }, ['共 3 章，要求在 2 到 4 章之间']],
     ['小节数和小节名', { sectionsPerChapter: 2, sectionTitles: ['核心观点', '原话依据'] }, ['每章 2 个小节：核心观点、原话依据']],
     ['只有小节数', { sectionsPerChapter: 2 }, ['每章 2 个小节']],
     ['只有小节名', { sectionTitles: ['核心观点', '原话依据'] }, ['每章都有小节：核心观点、原话依据']],

@@ -76,15 +76,16 @@ export function parseRequirements(raw: unknown, instructions: string): { require
 
   const maxChars = int(r.maxChars);
   const minChars = int(r.minChars);
-  if (quoted('chars', r.charsQuote, [maxChars, minChars]) && (maxChars === null || minChars === null || minChars <= maxChars)) {
-    requirements.maxChars = maxChars;
-    requirements.minChars = minChars;
+  if (quoted('chars', r.charsQuote, [maxChars, minChars])) {
+    // 上下限互相矛盾时不采用，并记下来
+    if (maxChars !== null && minChars !== null && minChars > maxChars) dropped.push('chars');
+    else Object.assign(requirements, { maxChars, minChars });
   }
   const chaptersMin = int(r.chaptersMin);
   const chaptersMax = int(r.chaptersMax);
-  if (quoted('chapters', r.chaptersQuote, [chaptersMin, chaptersMax]) && (chaptersMin === null || chaptersMax === null || chaptersMin <= chaptersMax)) {
-    requirements.chaptersMin = chaptersMin;
-    requirements.chaptersMax = chaptersMax;
+  if (quoted('chapters', r.chaptersQuote, [chaptersMin, chaptersMax])) {
+    if (chaptersMin !== null && chaptersMax !== null && chaptersMin > chaptersMax) dropped.push('chapters');
+    else Object.assign(requirements, { chaptersMin, chaptersMax });
   }
   const sectionsPerChapter = int(r.sectionsPerChapter);
   const titles = Array.isArray(r.sectionTitles) ? r.sectionTitles.filter((t): t is string => typeof t === 'string' && t.trim() !== '').map((t) => t.trim()) : [];
@@ -118,7 +119,7 @@ export function checkRequirements(markdown: string, r: Requirements): Violation[
   if (r.minChars !== null && chars < r.minChars) violations.push({ kind: 'min_chars', message: `全文 ${fmt(chars)} 字，要求至少 ${fmt(r.minChars)} 字` });
   const n = chapters.length;
   if ((r.chaptersMin !== null && n < r.chaptersMin) || (r.chaptersMax !== null && n > r.chaptersMax)) {
-    const want = r.chaptersMin === r.chaptersMax ? `正好 ${r.chaptersMin} 章` : r.chaptersMin === null ? `不超过 ${r.chaptersMax} 章` : r.chaptersMax === null ? `至少 ${r.chaptersMin} 章` : `${r.chaptersMin} 到 ${r.chaptersMax} 章`;
+    const want = r.chaptersMin === r.chaptersMax ? `正好 ${r.chaptersMin} 章` : r.chaptersMin === null ? `不超过 ${r.chaptersMax} 章` : r.chaptersMax === null ? `至少 ${r.chaptersMin} 章` : `在 ${r.chaptersMin} 到 ${r.chaptersMax} 章之间`;
     violations.push({ kind: 'chapters', message: `全文 ${n} 章，要求${want}` });
   }
   if (r.sectionsPerChapter !== null || r.sectionTitles.length > 0) {
@@ -144,7 +145,7 @@ export function describeRequirements(markdown: string, r: Requirements): string[
   else if (r.maxChars !== null) lines.push(`全文 ${fmt(chars)} 字，上限 ${fmt(r.maxChars)} 字`);
   else if (r.minChars !== null) lines.push(`全文 ${fmt(chars)} 字，下限 ${fmt(r.minChars)} 字`);
   if (r.chaptersMin !== null || r.chaptersMax !== null) {
-    const want = r.chaptersMin === r.chaptersMax ? `正好 ${r.chaptersMin} 章` : r.chaptersMin === null ? `不超过 ${r.chaptersMax} 章` : r.chaptersMax === null ? `至少 ${r.chaptersMin} 章` : `${r.chaptersMin} 到 ${r.chaptersMax} 章`;
+    const want = r.chaptersMin === r.chaptersMax ? `正好 ${r.chaptersMin} 章` : r.chaptersMin === null ? `不超过 ${r.chaptersMax} 章` : r.chaptersMax === null ? `至少 ${r.chaptersMin} 章` : `在 ${r.chaptersMin} 到 ${r.chaptersMax} 章之间`;
     lines.push(`共 ${chapters} 章，要求${want}`);
   }
   if (r.sectionsPerChapter !== null && r.sectionTitles.length > 0) lines.push(`每章 ${r.sectionsPerChapter} 个小节：${r.sectionTitles.join('、')}`);
@@ -199,8 +200,9 @@ const CN_UNITS: Record<string, number> = { 十: 10, 百: 100, 千: 1000 };
 /** 一段文字里出现的所有数：阿拉伯数字（1500、1,500、1.5k、2千、3万）和中文数字（三、十二、一千五百、一千五、两千） */
 export function numbersIn(text: string): number[] {
   const found: number[] = [];
-  for (const m of text.matchAll(/(\d[\d,，]*(?:\.\d+)?)\s*([kK千万wW])?/g)) {
-    const base = Number(m[1]!.replace(/[,，]/g, ''));
+  // 千分位只认半角逗号后面正好三位数字："1,500" 是 1500；"1500，3 章"里的全角逗号是断句，不是千分位
+  for (const m of text.matchAll(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([kK千万wW])?/g)) {
+    const base = Number(m[1]!.replace(/,/g, ''));
     const unit = m[2] ? (/[kK千]/.test(m[2]) ? 1000 : 10000) : 1;
     if (Number.isFinite(base)) found.push(Math.round(base * unit));
   }
