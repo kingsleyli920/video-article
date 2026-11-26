@@ -139,13 +139,15 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
   type Outcome = { result: 'applied' } | { result: 'overlap'; where: Span | null } | { result: RejectReason };
 
   /** 在当前文章的 start 处落实一条修订并记下位置 */
-  const commit = (issue: ReviewIssue, start: number, guardReverts: boolean): Outcome => {
-    if (revisions.length >= MAX_REVISIONS) return { result: 'limit' };
+  const commit = (issue: ReviewIssue, start: number, refining: boolean): Outcome => {
+    // 修订数上限只管逐章、整篇、语气这三路的建议。合并处理的修订是在已经改过的句子上再改，不代表文章又多了一处问题，不占上限；
+    // 否则修订多的文章会因为这个上限让一条必须落实的修订落实不了，整次生成失败。
+    if (!refining && revisions.length >= MAX_REVISIONS) return { result: 'limit' };
     const current = tracked.current;
     const outcome = applyRevisionAt(current, issue, start, transcriptText);
     if ('reason' in outcome) return { result: outcome.reason };
     // 不能把前面已经改掉的初稿写法又改回来
-    if (guardReverts && revisions.some((r) => r.before.trim().length >= 4 && !current.includes(r.before) && outcome.markdown.includes(r.before))) return { result: 'reverts_earlier' };
+    if (refining && revisions.some((r) => r.before.trim().length >= 4 && !current.includes(r.before) && outcome.markdown.includes(r.before))) return { result: 'reverts_earlier' };
     tracked.replace({ start, end: start + issue.quote.length }, issue.replacement);
     revisions.push(outcome.applied);
     return { result: 'applied' };

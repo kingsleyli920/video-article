@@ -1204,3 +1204,37 @@ describe('finalizeArticle：修订目标位置的身份', () => {
     void guestFix;
   });
 });
+
+describe('finalizeArticle：修订数上限与合并处理', () => {
+  const EVIDENCE = 'Each item cost about 10 dollars in the pilot.';
+  const TRANSCRIPT_40 = `[00:00] ${EVIDENCE}`;
+  const line = (i: number, amount: string) => `第${i}项成本${amount}美元。`;
+  const DRAFT_40 = `# 清单\n\n## 费用\n\n${Array.from({ length: 41 }, (_, i) => line(i + 1, '100')).join('\n\n')}`;
+  const about = (i: number) => ({ type: 'quantity', quote: line(i, '100'), replacement: line(i, '约100'), evidence: EVIDENCE, problem: '是约数' });
+
+  // 抓：文章已经有 40 条修订时，合并处理给出的必须落实的修订被"修订数超过上限"拒掉，重试仍被拒，整次生成 review_failed
+  it('已有 40 条修订时，合并处理的修订仍然落实：不占修订数上限，生成成功', async () => {
+    const overlapping = { type: 'quantity', quote: line(1, '100'), replacement: line(1, '约10'), evidence: EVIDENCE, problem: '第 1 项是约 10 美元' };
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({ issues: Array.from({ length: 40 }, (_, i) => about(i + 1)) }),
+      fidelity: () => ({ issues: [overlapping] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '数字仍是 100', quote: line(1, '约100'), replacement: line(1, '约10'), evidence: '' }] }),
+    });
+    const result = await finalizeArticle(input({ draft: DRAFT_40, transcriptText: TRANSCRIPT_40 }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(result.revisions).toHaveLength(41);
+    expect(result.markdown).toContain('第1项成本约10美元。');
+    expect(result.markdown).toContain('第40项成本约100美元。');
+    expect(result.markdown).toContain('第41项成本100美元。');
+    expect(result.rejected).toEqual({});
+  });
+
+  // 抓：放开合并处理之后，把逐章、整篇、语气这三路的上限也一起放开了
+  it('逐章建议超过 40 条：第 41 条按超过上限记为未采用，生成照常完成', async () => {
+    const { model } = fakeModel({ review: () => ({ issues: Array.from({ length: 41 }, (_, i) => about(i + 1)) }) });
+    const result = await finalizeArticle(input({ draft: DRAFT_40, transcriptText: TRANSCRIPT_40 }), model, stages().onStage);
+    expect(result.revisions).toHaveLength(40);
+    expect(result.markdown).toContain('第41项成本100美元。');
+    expect(result.rejected).toEqual({ limit: 1 });
+  });
+});
