@@ -205,18 +205,37 @@ export function applyRevisions(markdown: string, issues: ReviewIssue[], transcri
 }
 
 function check(issue: ReviewIssue, markdown: string, haystack: string, appliedCount: number): RejectReason | null {
-  const { quote, replacement, evidence } = issue;
   if (appliedCount >= MAX_REVISIONS) return 'limit';
-  if (quote === replacement) return 'no_change';
-  const first = markdown.indexOf(quote);
+  if (issue.quote === issue.replacement) return 'no_change';
+  const first = markdown.indexOf(issue.quote);
   if (first < 0) return 'quote_not_found';
-  if (markdown.indexOf(quote, first + 1) >= 0) return 'quote_not_unique';
+  if (markdown.indexOf(issue.quote, first + 1) >= 0) return 'quote_not_unique';
+  return checkAt(issue, markdown, first, haystack);
+}
+
+/** 位置已经确定之后的校验：依据在字幕里、不跨段落、不动标题、不比原句长出太多 */
+function checkAt(issue: ReviewIssue, markdown: string, first: number, haystack: string): RejectReason | null {
+  const { quote, replacement, evidence } = issue;
+  if (quote === replacement) return 'no_change';
+  if (!markdown.startsWith(quote, first)) return 'quote_not_found';
   if (!evidenceFound(evidence, haystack)) return 'evidence_not_in_transcript';
   if (crossesBlock(quote) || crossesBlock(replacement) || hasHeadingLine(replacement) !== hasHeadingLine(quote)) return 'structure';
   // 整行标题不能被删空；标题行内的文字可以改，但不能把 # 标记改掉（上一行已保证）
   if (replacement.trim() === '' && isWholeLine(markdown, first, quote.length)) return 'structure';
   if (replacement.length > Math.max(quote.length * 2, quote.length + 80)) return 'too_long';
   return null;
+}
+
+/**
+ * 在已经确定的位置上落实一条修订：start 是 quote 在 markdown 里的起点，由调用方按位置确定
+ *（同一句话在文章里出现不止一次时，不能靠"找到的那一处"来定位）。校验和 applyRevisions 相同，只是不再要求全文唯一。
+ */
+export function applyRevisionAt(markdown: string, issue: ReviewIssue, start: number, transcriptText: string): { markdown: string; applied: Revision } | { reason: RejectReason } {
+  const reason = checkAt(issue, markdown, start, normalizeEvidence(transcriptText));
+  if (reason) return { reason };
+  const next = markdown.slice(0, start) + issue.replacement + markdown.slice(start + issue.quote.length);
+  if (!sameHeadings(markdown, next)) return { reason: 'structure' };
+  return { markdown: next, applied: { type: issue.type, before: issue.quote, after: issue.replacement, reason: issue.problem, evidence: issue.evidence.trim() } };
 }
 
 function overlapsEarlier(markdown: string, quote: string, earlier: Revision[]): boolean {

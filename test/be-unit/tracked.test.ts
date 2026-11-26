@@ -40,8 +40,8 @@ describe('TrackedText', () => {
     expect(t.current).toBe('主持人说成本200美元。嘉宾说成本20美元。');
     expect(t.touched({ start: 4, end: 11 })).toBe(false);
     expect(t.touched({ start: second, end: second + 7 })).toBe(true);
-    expect(t.region({ start: second + 2, end: second + 5 })).toEqual({ original: '成本200美元', current: '成本20美元' });
-    expect(t.region({ start: 4, end: 11 })).toEqual({ original: '成本200美元', current: '成本200美元' });
+    expect(t.region({ start: second + 2, end: second + 5 })).toEqual({ start: second, end: second + 7, original: '成本200美元', current: '成本20美元' });
+    expect(t.region({ start: 4, end: 11 })).toEqual({ start: 4, end: 11, original: '成本200美元', current: '成本200美元' });
   });
 
   // 抓：紧挨着替换处的文字被误判成"碰到了替换"；替换内部的一段没被判成碰到
@@ -67,6 +67,6 @@ describe('TrackedText', () => {
     expect(t.current).toBe('一二五六柒八');
     expect(t.touchesEdit({ start: 1, end: 3 })).toBe(true);
     expect(t.touchesEdit({ start: 2, end: 4 })).toBe(false);
-    expect(t.region({ start: 6, end: 7 })).toEqual({ original: '七', current: '柒' });
+    expect(t.region({ start: 6, end: 7 })).toEqual({ start: 6, end: 7, original: '七', current: '柒' });
   });
 });

@@ -495,6 +495,81 @@ describe('对照字幕核对：重叠修订的合并处理', () => {
     expect(saved!.review!.unapplied).toEqual(unapplied);
   });
 
+  // 审查方反例 A、B：修订目标位置的身份。都经过真实 Worker 入口，断言事件流和保存的内容
+  describe('修订目标位置的身份（反例 A、B）', () => {
+    const A_EVIDENCE = 'Host: Our pilot cost about 20 dollars, and the other pilot cost exactly 20 dollars.';
+    const A_PARAGRAPH = '主持人介绍两个试点：第一个试点成本200美元，另一个试点成本300美元。';
+    const A_AFTER_CHAPTER = '主持人介绍两个试点：第一个试点成本约200美元，另一个试点成本20美元。';
+    const A_DRAFT = `# 试点\n\n## 费用\n\n${A_PARAGRAPH}`;
+    const A_FINAL = '# 试点\n\n## 费用\n\n主持人介绍两个试点：第一个试点成本约20美元，另一个试点成本20美元。';
+    const A_CHAPTER = { type: 'quantity', quote: A_PARAGRAPH, replacement: A_AFTER_CHAPTER, evidence: A_EVIDENCE, problem: '第一个是约数，第二个是 20 美元' };
+    const A_ARTICLE = { type: 'quantity', quote: '试点成本200美元', replacement: '试点成本20美元', evidence: A_EVIDENCE, problem: '第一个试点的金额也应是20美元，不是200美元。' };
+    const aUpstream = (reconcile: unknown) =>
+      mockUpstream({
+        captions: srv1([[0, A_EVIDENCE]]),
+        geminiStream: geminiSse(['# 试点\n\n## 费用\n\n', A_PARAGRAPH]),
+        reviewJson: (body) => geminiJson({ issues: isFidelityReview(body) ? [A_ARTICLE] : [A_CHAPTER] }),
+        reconcileJson: geminiJson(reconcile),
+      });
+
+    // 抓（反例 A）：整篇建议被扩大范围里第二个试点的"试点成本20美元"冒充成已覆盖，没有合并请求，
+    // 保存的文章第一个试点停在"约200美元"
+    it('反例 A：整篇建议不自动 covered，进一次合并处理；revised、done 和保存的文章里第一个金额改对、第二个金额不变', async () => {
+      const upstream = aUpstream({ items: [{ index: 0, status: 'revise', note: '第一个金额仍是约200', quote: '第一个试点成本约200美元', replacement: '第一个试点成本约20美元', evidence: '' }] });
+      const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+      expect(events.at(-1)!.event).toBe('done');
+      expect(upstream.gemini('reconcile')).toHaveLength(1);
+      expect(promptOf(upstream.gemini('reconcile')[0]!.body).user).toContain(`<article>\n# 试点\n\n## 费用\n\n${A_AFTER_CHAPTER}\n</article>`);
+      expect(eventOf(events, 'revised')!.markdown).toBe(A_FINAL);
+      expect(eventOf(events, 'done')!.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...A_ARTICLE, note: '第一个金额仍是约200' }]);
+      const saved = await openStore(env, eventOf(events, 'meta')!.generationId).load();
+      expect(saved!.article.markdown).toBe(A_FINAL);
+      expect(saved!.review!.draft).toBe(A_DRAFT);
+    });
+
+    // 抓（反例 A 的失败路径）：合并处理明确说还要改、两轮给出的修订都落实不了，却照样保存并发 done
+    it('反例 A：合并处理两轮都落实不了，error review_failed，没有 revised 和 done，不保存', async () => {
+      const upstream = aUpstream({ items: [{ index: 0, status: 'revise', note: '还要改', quote: '第一个试点成本200美元', replacement: '第一个试点成本20美元', evidence: '' }] });
+      const save = vi.spyOn(GenerationStore.prototype, 'save');
+      const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+      expect(events.at(-1)!.event).toBe('error');
+      expect((events.at(-1)!.data as { code: string }).code).toBe('review_failed');
+      expect(eventOf(events, 'done')).toBeUndefined();
+      expect(eventOf(events, 'revised')).toBeUndefined();
+      expect(upstream.gemini('reconcile')).toHaveLength(2);
+      expect(save).not.toHaveBeenCalled();
+      expect(await openStore(env, eventOf(events, 'meta')!.generationId).load()).toBeNull();
+    });
+
+    // 抓（反例 B）：初稿里"试点成本200美元"出现两次，主持人那处被逐章改掉后，整篇建议的短引文在当前文章里只剩嘉宾那一处，
+    // 被当成唯一定位直接替换，嘉宾正确的 200 美元被改成 20 美元并保存
+    it('反例 B：初稿里不唯一的引文进合并处理，嘉宾的 200 美元不被改；页面收到的最终稿和保存的文章一致', async () => {
+      const HOST = 'Host: Our pilot cost 20 dollars.';
+      const GUEST = 'Guest: Our other pilot cost 200 dollars.';
+      const B_DRAFT = '# 试点\n\n## 费用\n\n主持人：试点成本200美元。\n\n嘉宾：试点成本200美元。';
+      const B_FINAL = '# 试点\n\n## 费用\n\n主持人：试点成本20美元。\n\n嘉宾：试点成本200美元。';
+      const B_CHAPTER = { type: 'quantity', quote: '主持人：试点成本200美元。', replacement: '主持人：试点成本20美元。', evidence: HOST, problem: '主持人说20美元。' };
+      const B_ARTICLE = { type: 'quantity', quote: '试点成本200美元', replacement: '试点成本20美元', evidence: HOST, problem: '主持人说20美元，不是200美元。' };
+      const upstream = mockUpstream({
+        captions: srv1([
+          [0, HOST],
+          [10, GUEST],
+        ]),
+        geminiStream: geminiSse(['# 试点\n\n## 费用\n\n', '主持人：试点成本200美元。\n\n嘉宾：试点成本200美元。']),
+        reviewJson: (body) => geminiJson({ issues: isFidelityReview(body) ? [B_ARTICLE] : [B_CHAPTER] }),
+        reconcileJson: geminiJson({ items: [{ index: 0, status: 'covered', note: '主持人那一处已经是 20 美元', quote: '', replacement: '', evidence: '' }] }),
+      });
+      const { events } = await generate({ url: url(OTHER_VIDEO_ID) });
+      expect(events.at(-1)!.event).toBe('done');
+      expect(upstream.gemini('reconcile')).toHaveLength(1);
+      expect(eventOf(events, 'revised')).toEqual({ markdown: B_FINAL, revisions: [{ type: 'quantity', before: '主持人：试点成本200美元。', after: '主持人：试点成本20美元。', reason: '主持人说20美元。', evidence: HOST }] });
+      expect(eventOf(events, 'done')!.review.unapplied).toEqual([{ stage: 'article', disposition: 'covered', ...B_ARTICLE, note: '主持人那一处已经是 20 美元' }]);
+      const saved = await openStore(env, eventOf(events, 'meta')!.generationId).load();
+      expect(saved!.article.markdown).toBe(B_FINAL);
+      expect(saved!.review!.draft).toBe(B_DRAFT);
+    });
+  });
+
   // 抓：合并处理响应无效时退回只采用逐章修订的文章并保存（归属仍错的稿子被当成核对过）
   it.each([
     ['缺条目', { items: [] }],

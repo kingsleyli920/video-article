@@ -1112,3 +1112,95 @@ describe('groupSections', () => {
     expect(groupSections(['甲', '乙', '丙', '丁', '戊', '己'], 6)).toEqual(['甲', '乙', '丙', '丁', '戊', '己']);
   });
 });
+
+describe('finalizeArticle：修订目标位置的身份', () => {
+  // 审查方反例 A：逐章建议整段替换，把第一个金额改成"约200"、第二个金额改成 20；整篇建议要把第一个金额改成 20
+  const A_EVIDENCE = 'Host: Our pilot cost about 20 dollars, and the other pilot cost exactly 20 dollars.';
+  const A_TRANSCRIPT = `[00:00] ${A_EVIDENCE}`;
+  const A_PARAGRAPH = '主持人介绍两个试点：第一个试点成本200美元，另一个试点成本300美元。';
+  const A_AFTER_CHAPTER = '主持人介绍两个试点：第一个试点成本约200美元，另一个试点成本20美元。';
+  const A_DRAFT = `# 试点\n\n## 费用\n\n${A_PARAGRAPH}`;
+  const A_CHAPTER = { type: 'quantity', quote: A_PARAGRAPH, replacement: A_AFTER_CHAPTER, evidence: A_EVIDENCE, problem: '第一个是约数，第二个是 20 美元' };
+  const A_ARTICLE = { type: 'quantity', quote: '试点成本200美元', replacement: '试点成本20美元', evidence: A_EVIDENCE, problem: '第一个试点的金额也应是20美元，不是200美元。' };
+
+  // 抓（审查方反例 A）：判断"已覆盖"时把范围扩大到整次旧替换（整个段落），在里面找到第二个试点的"试点成本20美元"，
+  // 误以为第一个金额已经改好：不调合并处理，第一个试点停在"约200美元"却成功返回
+  it('反例 A：扩大后的范围里别的子句有相同文字，不算已覆盖；进合并处理后第一个金额改对，第二个金额不变', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({ issues: [A_CHAPTER] }),
+      fidelity: () => ({ issues: [A_ARTICLE] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '第一个金额仍是约200', quote: '第一个试点成本约200美元', replacement: '第一个试点成本约20美元', evidence: '' }] }),
+    });
+    const result = await finalizeArticle(input({ draft: A_DRAFT, transcriptText: A_TRANSCRIPT }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(result.markdown).toBe('# 试点\n\n## 费用\n\n主持人介绍两个试点：第一个试点成本约20美元，另一个试点成本20美元。');
+    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'superseded', ...A_ARTICLE, note: '第一个金额仍是约200' }]);
+  });
+
+  // 抓：反例 A 里合并处理明确说还要改、却两轮都落实不了时，被当成完成
+  it('反例 A：合并处理两轮都落实不了，review_failed', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({ issues: [A_CHAPTER] }),
+      fidelity: () => ({ issues: [A_ARTICLE] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'revise', note: '还要改', quote: '第一个试点成本200美元', replacement: '第一个试点成本20美元', evidence: '' }] }),
+    });
+    await expect(finalizeArticle(input({ draft: A_DRAFT, transcriptText: A_TRANSCRIPT }), model, stages().onStage)).rejects.toMatchObject({ code: 'review_failed' });
+    expect(reconcilePrompts).toHaveLength(2);
+  });
+
+  // 抓：修好反例 A 之后矫枉过正，位置明确、确实已经改成同样文字的重复建议也不再自动记 covered
+  it('同一处已被整段替换改成建议想要的文字（替换文字紧接在没变的前文之后）：仍自动记 covered，不调合并处理', async () => {
+    const chapter = { ...A_CHAPTER, replacement: '主持人介绍两个试点：第一个试点成本20美元，另一个试点成本20美元。' };
+    const { model, reconcilePrompts } = fakeModel({ review: () => ({ issues: [chapter] }), fidelity: () => ({ issues: [A_ARTICLE] }) });
+    const result = await finalizeArticle(input({ draft: A_DRAFT, transcriptText: A_TRANSCRIPT }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(0);
+    expect(result.markdown).toBe('# 试点\n\n## 费用\n\n主持人介绍两个试点：第一个试点成本20美元，另一个试点成本20美元。');
+    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'covered', ...A_ARTICLE, note: '这一处已由另一条修订改成相同的文字' }]);
+  });
+
+  // 审查方反例 B：初稿里同一句短引文出现两次，逐章只改了主持人那一处
+  const B_HOST = 'Host: Our pilot cost 20 dollars.';
+  const B_GUEST = 'Guest: Our other pilot cost 200 dollars.';
+  const B_TRANSCRIPT = `[00:00] ${B_HOST}\n\n[00:10] ${B_GUEST}`;
+  const B_DRAFT = '# 试点\n\n## 费用\n\n主持人：试点成本200美元。\n\n嘉宾：试点成本200美元。';
+  const B_FINAL = '# 试点\n\n## 费用\n\n主持人：试点成本20美元。\n\n嘉宾：试点成本200美元。';
+  const B_CHAPTER = { type: 'quantity', quote: '主持人：试点成本200美元。', replacement: '主持人：试点成本20美元。', evidence: B_HOST, problem: '主持人说20美元。' };
+  const B_ARTICLE = { type: 'quantity', quote: '试点成本200美元', replacement: '试点成本20美元', evidence: B_HOST, problem: '主持人说20美元，不是200美元。' };
+
+  // 抓（审查方反例 B）：主持人那处改掉后，短引文在当前文章里只剩嘉宾那一处，程序把它当成唯一定位，
+  // 把嘉宾原本正确的 200 美元也改成了 20 美元，没有合并调用，照常成功
+  it('反例 B：初稿里不唯一的引文不能因为只剩一处匹配就应用上去；进合并处理，嘉宾的 200 美元不变', async () => {
+    const { model, reconcilePrompts } = fakeModel({
+      review: () => ({ issues: [B_CHAPTER] }),
+      fidelity: () => ({ issues: [B_ARTICLE] }),
+      reconcile: () => ({ items: [{ index: 0, status: 'covered', note: '主持人那一处已经是 20 美元，嘉宾说的是另一个试点', quote: '', replacement: '', evidence: '' }] }),
+    });
+    const result = await finalizeArticle(input({ draft: B_DRAFT, transcriptText: B_TRANSCRIPT }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(1);
+    expect(result.markdown).toBe(B_FINAL);
+    expect(result.revisions).toEqual([{ type: 'quantity', before: '主持人：试点成本200美元。', after: '主持人：试点成本20美元。', reason: '主持人说20美元。', evidence: B_HOST }]);
+    expect(result.review.unapplied).toEqual([{ stage: 'article', disposition: 'covered', ...B_ARTICLE, note: '主持人那一处已经是 20 美元，嘉宾说的是另一个试点' }]);
+  });
+
+  // 抓：初稿里不唯一、而且哪一处都没被改过的引文，被送去合并处理或被随便应用到某一处（应当沿用原来的"定位不唯一"拒绝）
+  it('初稿里出现两次、两处都没被改过的引文：按定位不唯一拒绝，不调合并处理，文章不变', async () => {
+    const { model, reconcilePrompts } = fakeModel({ fidelity: () => ({ issues: [B_ARTICLE] }) });
+    const result = await finalizeArticle(input({ draft: B_DRAFT, transcriptText: B_TRANSCRIPT }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(0);
+    expect(result.markdown).toBe(B_DRAFT);
+    expect(result.rejected).toEqual({ quote_not_unique: 1 });
+  });
+
+  // 抓：前一条修订的替换文字里恰好含有后一条建议的引文（引文在当前文章里多出一处），后一条在初稿里位置明确、没被碰过，却因为"当前不唯一"被拒
+  it('建议的引文在初稿里唯一且没被改过，别处的修订又写出了同样的文字：照常在原来的位置替换', async () => {
+    const draft = '# 试点\n\n## 费用\n\n主持人：第一个试点很便宜。\n\n嘉宾：试点成本200美元。';
+    const hostFix = { type: 'unsupported', quote: '第一个试点很便宜。', replacement: '第一个试点成本200美元。', evidence: 'Guest: Our other pilot cost 200 dollars.', problem: '补上金额' };
+    const guestFix = { type: 'quantity', quote: '嘉宾：试点成本200美元', replacement: '嘉宾：另一个试点成本200美元', evidence: 'Guest: Our other pilot cost 200 dollars.', problem: '是另一个试点' };
+    const shortFix = { type: 'quantity', quote: '试点成本200美元', replacement: '试点成本约200美元', evidence: 'Guest: Our other pilot cost 200 dollars.', problem: '约数' };
+    const { model, reconcilePrompts } = fakeModel({ review: () => ({ issues: [hostFix] }), fidelity: () => ({ issues: [shortFix] }) });
+    const result = await finalizeArticle(input({ draft, transcriptText: B_TRANSCRIPT }), model, stages().onStage);
+    expect(reconcilePrompts).toHaveLength(0);
+    expect(result.markdown).toBe('# 试点\n\n## 费用\n\n主持人：第一个试点成本200美元。\n\n嘉宾：试点成本约200美元。');
+    void guestFix;
+  });
+});

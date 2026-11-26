@@ -5,7 +5,7 @@ import { AppError } from './app-error';
 import type { Prompt } from './gemini';
 import { chunkExcerpts, hedgedExcerpts, hedgeReviewPrompt, parseToneChecks, TONE_SCHEMA } from './hedges';
 import { checkRequirements, describeRequirements, hasRequirements, rewritePrompt, type Requirements } from './requirements';
-import { applyRevisions, MAX_REVISIONS, evidenceInTranscript, fidelityReviewPrompt, parseIssues, parseReconcile, reconcilePrompt, reviewPrompt, splitForReview, RECONCILE_SCHEMA, REVIEW_SCHEMA, type RejectReason, type ReviewIssue } from './review';
+import { applyRevisionAt, MAX_REVISIONS, evidenceInTranscript, fidelityReviewPrompt, parseIssues, parseReconcile, reconcilePrompt, reviewPrompt, splitForReview, RECONCILE_SCHEMA, REVIEW_SCHEMA, type RejectReason, type ReviewIssue } from './review';
 import { TrackedText, type Span } from './tracked';
 import type { VideoMeta } from './youtube';
 
@@ -136,48 +136,63 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
   }
   let pending: Pending[] = [];
 
-  /**
-   * 在当前文章里落实一条建议。scope：这条建议所属的核对单元在初稿里的范围（逐章核对），整篇的建议不限范围。
-   * 返回 applied；或 overlap（它要改的地方已经被改过，where 是那一处在初稿里的位置，无法确定时为 null）；或程序校验拒绝的原因。
-   * mayRefine：合并处理给出的修订本来就是针对改过的文字的，允许落在已有替换上，但不能把改掉的初稿写法改回来。
-   */
-  const attempt = (issue: ReviewIssue, scope: Span | null, mayRefine = false): { result: 'applied' } | { result: 'overlap'; where: Span | null } | { result: RejectReason } => {
+  type Outcome = { result: 'applied' } | { result: 'overlap'; where: Span | null } | { result: RejectReason };
+
+  /** 在当前文章的 start 处落实一条修订并记下位置 */
+  const commit = (issue: ReviewIssue, start: number, guardReverts: boolean): Outcome => {
+    if (revisions.length >= MAX_REVISIONS) return { result: 'limit' };
     const current = tracked.current;
-    const cur = scope ? tracked.toCurrent(scope) : { start: 0, end: current.length };
-    const text = current.slice(cur.start, cur.end);
-    const at = text.indexOf(issue.quote);
-    if (at >= 0 && text.indexOf(issue.quote, at + 1) < 0) {
-      const span = { start: cur.start + at, end: cur.start + at + issue.quote.length };
-      if (!mayRefine && tracked.touchesEdit(span)) return { result: 'overlap', where: tracked.toOriginal(span) };
-      if (revisions.length >= MAX_REVISIONS) return { result: 'limit' };
-      const outcome = applyRevisions(text, [issue], transcriptText);
-      const applied = outcome.applied[0];
-      if (!applied) return { result: outcome.rejected[0]!.reason };
-      const next = current.slice(0, cur.start) + outcome.markdown + current.slice(cur.end);
-      if (mayRefine && revisions.some((r) => r.before.trim().length >= 4 && !current.includes(r.before) && next.includes(r.before))) return { result: 'reverts_earlier' };
-      tracked.replace(span, issue.replacement);
-      revisions.push(applied);
-      return { result: 'applied' };
-    }
-    if (at >= 0) return { result: 'quote_not_unique' };
-    if (mayRefine) return { result: 'quote_not_found' };
-    // 当前文章里找不到：看它是不是初稿里有、后来被别的修订改掉了
-    const base = scope ? markdown.slice(scope.start, scope.end) : markdown;
-    const origin = base.indexOf(issue.quote);
-    if (origin >= 0) {
-      const unique = base.indexOf(issue.quote, origin + 1) < 0;
-      const start = (scope?.start ?? 0) + origin;
-      return { result: 'overlap', where: unique ? { start, end: start + issue.quote.length } : null };
-    }
-    // 逐章核对引了别的章里的句子，同样交给合并处理基于全文判断
-    return scope && markdown.includes(issue.quote) ? { result: 'overlap', where: null } : { result: 'quote_not_found' };
+    const outcome = applyRevisionAt(current, issue, start, transcriptText);
+    if ('reason' in outcome) return { result: outcome.reason };
+    // 不能把前面已经改掉的初稿写法又改回来
+    if (guardReverts && revisions.some((r) => r.before.trim().length >= 4 && !current.includes(r.before) && outcome.markdown.includes(r.before))) return { result: 'reverts_earlier' };
+    tracked.replace({ start, end: start + issue.quote.length }, issue.replacement);
+    revisions.push(outcome.applied);
+    return { result: 'applied' };
   };
 
-  /** 这一处（初稿坐标）现在是不是已经改成了这条建议想要的文字。只看这一处，不看全文别的地方 */
+  /**
+   * 落实逐章、整篇、语气核对的建议。这些建议都是对着核对前的文章提的，所以先在核对前的文章里确定它指的是哪一处
+   *（逐章建议限定在本单元 scope 内），再看那一处现在的状态。不能在当前文章里找：同一句话在初稿里出现两次、
+   * 其中一处已被改掉时，当前文章里只剩一处匹配，那不代表建议指的就是剩下的这一处。
+   * 返回 applied；或 overlap（它指的那一处已经被改过，where 是那一处在初稿里的位置，确定不了时为 null）；或程序校验拒绝的原因。
+   */
+  const attempt = (issue: ReviewIssue, scope: Span | null): Outcome => {
+    const base = scope ? markdown.slice(scope.start, scope.end) : markdown;
+    const offset = scope?.start ?? 0;
+    const hits: Span[] = [];
+    for (let at = base.indexOf(issue.quote); at >= 0; at = base.indexOf(issue.quote, at + 1)) hits.push({ start: offset + at, end: offset + at + issue.quote.length });
+    // 本单元里没有：逐章核对引了别的章里的句子时交给合并处理基于全文判断，否则就是找不到
+    if (hits.length === 0) return scope && markdown.includes(issue.quote) ? { result: 'overlap', where: null } : { result: 'quote_not_found' };
+    if (hits.length > 1) {
+      // 初稿里就不唯一：都没被改过时照旧按"定位不唯一"拒绝；有的已经被改过时，说不清它指哪一处，交给合并处理
+      return hits.some((h) => tracked.touched(h)) ? { result: 'overlap', where: null } : { result: 'quote_not_unique' };
+    }
+    const where = hits[0]!;
+    if (tracked.touched(where)) return { result: 'overlap', where };
+    return commit(issue, tracked.toCurrent(where).start, false);
+  };
+
+  /** 落实合并处理给出的修订。它是对着当前文章提的，按当前文章定位，要求唯一 */
+  const refine = (issue: ReviewIssue): Outcome => {
+    const current = tracked.current;
+    const at = current.indexOf(issue.quote);
+    if (at < 0) return { result: 'quote_not_found' };
+    if (current.indexOf(issue.quote, at + 1) >= 0) return { result: 'quote_not_unique' };
+    return commit(issue, at, true);
+  };
+
+  /**
+   * 建议指的那一处（初稿坐标 where）现在是不是已经改成了它想要的文字。
+   * 那一处连同改过它的替换合起来看：建议的替换文字必须出现在同一个位置上——紧接在没变的前文之后，或紧挨在没变的后文之前。
+   * 只在这段范围里"找得到"替换文字不算：一次较大的替换可能同时改了别的子句，那里出现相同的文字不能说明这一处改好了。
+   */
   const coveredAt = (where: Span | null, issue: ReviewIssue): boolean => {
     if (!where || issue.replacement.trim() === '' || !tracked.touched(where)) return false;
     const region = tracked.region(where);
-    return region.current.includes(issue.replacement) && !region.original.includes(issue.replacement);
+    const before = region.original.slice(0, where.start - region.start);
+    const after = region.original.slice(where.end - region.start);
+    return region.current.startsWith(before + issue.replacement) || region.current.endsWith(issue.replacement + after);
   };
 
   const place = (stage: SuggestionStage, issue: ReviewIssue, scope: Span | null) => {
@@ -225,7 +240,7 @@ export async function finalizeArticle(input: FinalizeInput, model: FinalizeModel
         continue;
       }
       const next: ReviewIssue = { type: issue.type, quote: item.quote, replacement: item.replacement, evidence: item.evidence.trim() || issue.evidence, problem: issue.problem };
-      const outcome = attempt(next, null, true);
+      const outcome = refine(next);
       if (outcome.result === 'applied') {
         unapplied.push({ stage, disposition: 'superseded', ...issue, note: item.note });
         continue;

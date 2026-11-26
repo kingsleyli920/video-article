@@ -98,9 +98,10 @@ export class TrackedText {
 
   /**
    * 初稿的这一段连同与它重叠的所有替换，合起来在初稿和当前文本里各是什么。
-   * 用来判断"这一处现在是不是已经是建议想要的样子"。
+   * start、end 是合起来的范围在初稿里的位置。调用方据此判断"这一处现在是不是已经是建议想要的样子"，
+   * 注意范围可能比传入的那一处大（一次替换改了整段时），里面别的子句不属于这一处。
    */
-  region(original: Span): { original: string; current: string } {
+  region(original: Span): { start: number; end: number; original: string; current: string } {
     let { start, end } = original;
     for (const e of this.edits) {
       if (e.start < original.end && original.start < e.end) {
@@ -109,7 +110,7 @@ export class TrackedText {
       }
     }
     const cur = this.toCurrent({ start, end });
-    return { original: this.original.slice(start, end), current: this.current.slice(cur.start, cur.end) };
+    return { start, end, original: this.original.slice(start, end), current: this.current.slice(cur.start, cur.end) };
   }
 
   /** 把当前坐标的一段换成 text，记成对初稿的一次替换；碰到已有的替换时并成一次 */
