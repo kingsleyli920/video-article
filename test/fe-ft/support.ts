@@ -301,6 +301,15 @@ export function closePage(): void {
   vi.useRealTimers();
   vi.restoreAllMocks();
   document.body.replaceChildren();
+  // 每个用例从干净的浏览器存储开始，上一个用例保存的文章不带到下一个
+  localStorage.clear();
+}
+
+/** 模拟刷新页面：页面内容和脚本状态全部重来，浏览器本地存储保留 */
+export async function reloadPage(): Promise<void> {
+  document.body.innerHTML = bodyMarkup();
+  vi.resetModules();
+  await import('../../src/client/main');
 }
 
 /** 填链接（和可选的要求）并点"生成文章" */

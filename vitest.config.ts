@@ -16,8 +16,8 @@ export default defineConfig({
     },
     projects: [
       { test: { name: 'be-unit', include: ['test/be-unit/**/*.test.ts'], environment: 'node' } },
-      { test: { name: 'fe-unit', include: ['test/fe-unit/**/*.test.ts'], environment: 'jsdom' } },
-      { test: { name: 'fe-ft', include: ['test/fe-ft/**/*.test.ts'], environment: 'jsdom' } },
+      { test: { name: 'fe-unit', include: ['test/fe-unit/**/*.test.ts'], environment: 'jsdom', setupFiles: ['test/harness/fe-setup.ts'] } },
+      { test: { name: 'fe-ft', include: ['test/fe-ft/**/*.test.ts'], environment: 'jsdom', setupFiles: ['test/harness/fe-setup.ts'] } },
       {
         plugins: [
           cloudflareTest({

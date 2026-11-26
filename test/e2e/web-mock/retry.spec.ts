@@ -125,8 +125,8 @@ test('成功并展开 5W1H 后再生成一次：旧内容全部清掉，新 5W1H
   expect(JSON.parse(api.generations[1]!.postData ?? 'null')).toEqual({ url: SAMPLE_URL, instructions: '只讲开源' });
 });
 
-// 抓：刷新后残留上一次的文章、状态条或 5W1H，或者刷新时自动重发生成请求
-test('生成完成后刷新页面：回到干净的初始状态，不重发请求', async ({ page, api }) => {
+// 抓：刷新后文章丢失；或者刷新时自动重发生成请求、把刷新前展开的 5W1H 面板原样留着、数字提示没有跟着恢复
+test('生成完成后刷新页面：恢复这篇文章，不重发请求，5W1H 面板是收起的', async ({ page, api }) => {
   api.queueGeneration(sseReply(generationEvents({ end: ['done', done({ numberWarnings: WARNINGS })] })));
   api.queueSummary(summaryReply('1', SUMMARY_1));
   await page.goto('/');
@@ -138,13 +138,19 @@ test('生成完成后刷新页面：回到干净的初始状态，不重发请�
   await expect(page.locator('.summary-table')).toBeVisible();
 
   await page.reload();
-  await expectInitialState(page);
+  await expect(page.locator('#status')).toContainText('已恢复上次生成的文章');
+  await expect(page.locator('#article')).toHaveAttribute('data-state', 'done');
+  await expect(page.locator('.article-notice p')).toHaveCount(WARNINGS.length);
+  await expect(page.locator('.summary-table')).toHaveCount(0);
+  await expect(page.getByLabel('YouTube 链接')).toHaveValue(SAMPLE_URL);
+  await expect(page.getByLabel(/生成要求/)).toHaveValue('写给投资人');
+  await expect(page.locator('#submit')).toBeEnabled();
   expect(api.generations).toHaveLength(1);
   expect(api.summaries).toHaveLength(1);
 });
 
-// 抓：离开再按返回键回来时页面残留旧文章、状态条或 5W1H，或者返回后无法再次生成
-test('离开页面再按返回键回来：没有旧结果，可以重新生成', async ({ page, api }) => {
+// 抓：离开再按返回键回来时文章丢失，或者回来后无法再次生成、再次生成后还留着上一篇的 5W1H
+test('离开页面再按返回键回来：恢复上次的文章，可以再生成一篇', async ({ page, api }) => {
   api.queueGeneration(sseReply(generationEvents({})), sseReply(generationEvents({ meta: meta({ generationId: 'gen-back' }) })));
   api.queueSummary(summaryReply('1', SUMMARY_1), summaryReply('1', SUMMARY_1));
   await page.goto('/');
@@ -157,11 +163,13 @@ test('离开页面再按返回键回来：没有旧结果，可以重新生成',
   await page.goto('about:blank');
   await page.goBack();
   await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
-  await expectInitialState(page);
+  await expect(page.locator('#status')).toContainText('已恢复上次生成的文章');
+  await expect(page.locator('#article')).toHaveAttribute('data-state', 'done');
+  await expect(page.locator('.summary-table')).toHaveCount(0);
 
-  await page.getByRole('button', { name: '填入示例视频' }).click();
   await page.getByRole('button', { name: '生成文章' }).click();
-  await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok');
+  await expect(page.locator('#status')).toContainText('已完成');
+  await expect(page.locator('.summary-table')).toHaveCount(0);
   await page.locator('.summary-toggle').first().click();
   await expect(page.locator('.summary-table')).toBeVisible();
   expect(api.generations).toHaveLength(2);
@@ -171,9 +179,8 @@ test('离开页面再按返回键回来：没有旧结果，可以重新生成',
   ]);
 });
 
-// 抓：返回键回到页面时，浏览器把上次填的"生成要求"恢复进输入框，而链接框（autocomplete="off"）是空的，两个输入框状态不一致
-// 已知失败：src/client/index.html 的 textarea#instructions 没有 autocomplete="off"，Chromium 返回时会恢复它的内容
-test('离开页面再按返回键回来：生成要求输入框和链接框一样是空的', async ({ page, api }) => {
+// 抓：离开再回来时两个输入框状态不一致（一个被浏览器恢复、一个是空的），或者完成的文章没有跟着回来
+test('生成完成后离开页面再按返回键回来：文章和两个输入框一起恢复', async ({ page, api }) => {
   api.queueGeneration(sseReply(generationEvents({})));
   await page.goto('/');
   await page.getByLabel('YouTube 链接').fill(SAMPLE_URL);
@@ -183,6 +190,8 @@ test('离开页面再按返回键回来：生成要求输入框和链接框一�
 
   await page.goto('about:blank');
   await page.goBack();
-  await expect(page.getByLabel('YouTube 链接')).toHaveValue('');
-  await expect(page.getByLabel(/生成要求/)).toHaveValue('');
+  await expect(page.locator('#status')).toContainText('已恢复上次生成的文章');
+  await expect(page.locator('#article')).toHaveAttribute('data-state', 'done');
+  await expect(page.getByLabel('YouTube 链接')).toHaveValue(SAMPLE_URL);
+  await expect(page.getByLabel(/生成要求/)).toHaveValue('写给投资人');
 });

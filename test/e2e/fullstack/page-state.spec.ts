@@ -1,5 +1,5 @@
 /**
- * L5 全栈（受控上游）：刷新后的初始状态、YouTube 拦截、本地被拦后换区域取字幕。
+ * L5 全栈（受控上游）：刷新后恢复上次完成的文章、YouTube 拦截、本地被拦后换区域取字幕。
  * 换区域用的 Durable Object 在 wrangler dev 里和 Worker 同一个进程，播放器请求同样发到模拟上游：
  * 前 3 次是本地的三种客户端，第 4 次起是各区域（每个区域最多 3 次）。
  */
@@ -12,8 +12,9 @@ test.beforeEach(async () => {
   await resetUpstream();
 });
 
-// 抓：刷新后残留上一次的文章、状态条、5W1H 面板或表单输入，表单仍处于锁定状态；刷新后不能再次生成
-test('刷新页面后回到干净的初始状态，并能再次生成', async ({ page }) => {
+// 抓：刷新后文章丢失，或者恢复出的文章 5W1H 不可用、表单仍处于锁定状态；刷新后不能再次生成，
+// 或再次生成后页面上还留着上一篇的 5W1H 面板
+test('生成完成后刷新页面：恢复这篇文章和输入，5W1H 用服务端保存的同一次生成，并能再次生成', async ({ page }) => {
   await page.goto('/');
   await fillAndGenerate(page, VIDEO_URL, '刷新前的要求');
   await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok', { timeout: 15_000 });
@@ -21,17 +22,22 @@ test('刷新页面后回到干净的初始状态，并能再次生成', async ({
   await expect(chapter(page, '2').locator('.summary-table tr')).toHaveCount(6);
 
   await page.reload();
-  await expect(page.locator('#status')).toBeHidden();
-  await expect(page.locator('#status')).toBeEmpty();
-  await expect(page.locator('#article')).toBeEmpty();
-  await expect(page.locator('#article')).not.toHaveAttribute('data-state');
-  await expect(page.getByLabel('YouTube 链接')).toHaveValue('');
-  await expect(page.getByLabel('生成要求')).toHaveValue('');
+  await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok');
+  await expect(page.locator('#status')).toContainText('已恢复上次生成的文章');
+  await expect(page.locator('#article')).toHaveAttribute('data-state', 'done');
+  await expect(page.locator('#article h1')).toHaveText('对话测试嘉宾：受控上游');
+  await expect(page.getByLabel('YouTube 链接')).toHaveValue(VIDEO_URL);
+  await expect(page.getByLabel('生成要求')).toHaveValue('刷新前的要求');
   expect(await controlsIdle(page)).toEqual(IDLE_CONTROLS);
+  // 刷新前展开过的 5W1H 面板不保留，恢复后是收起的；再点一次，由真实的 Worker 用保存的那次生成返回（走缓存）
+  await expect(page.locator('#article .summary-table')).toHaveCount(0);
+  await summaryToggle(page, '第二章：数字').click();
+  await expect(chapter(page, '2').locator('.summary-table tr')).toHaveCount(6);
 
   // 刷新后再生成一次：正常完成，5W1H 是这次的新面板（未展开）
-  await fillAndGenerate(page, VIDEO_URL);
-  await expect(page.locator('#status')).toHaveAttribute('data-tone', 'ok', { timeout: 15_000 });
+  await page.getByLabel('生成要求').fill('');
+  await page.getByRole('button', { name: '生成文章' }).click();
+  await expect(page.locator('#status')).toContainText('已完成', { timeout: 15_000 });
   await expect(page.locator('#article h1')).toHaveText('对话测试嘉宾：受控上游');
   await expect(page.locator('#article .summary-table')).toHaveCount(0);
   await expect(summaryToggle(page, '第二章：数字')).toHaveAttribute('aria-expanded', 'false');
