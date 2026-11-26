@@ -235,7 +235,7 @@ README 里五项说明的展开版：每一步具体怎么做、为什么这样�
 
 - 逐条对应原题的验收结论、每个缺陷的原因和修复、字幕恢复的实测数据：[docs/REQUIREMENTS_ACCEPTANCE.md](REQUIREMENTS_ACCEPTANCE.md)。
 - 当前线上版本上的修复和复验（版本号见该文档开头）（独立审查提出的问题、语气清单核对、修订覆盖按位置判断、线上浏览器全流程），以及更早版本的六篇真实复验：[docs/FINAL_ACCEPTANCE.md](FINAL_ACCEPTANCE.md)。
-- 不调用真实模型的测试 1,060 项：vitest 970 项，Playwright 90 项。最近一轮只改了后端收尾逻辑，重跑的是后端三层 751 项；前端两层和 Playwright 是更早一轮的结果，之后页面和前端没有改动。分层结果见 [docs/history/TEST_MATRIX.md](history/TEST_MATRIX.md)。
+- 不调用真实模型的测试 1,084 项：vitest 992 项（后端三层 751，前端两层 241），Playwright 92 项。各层不是同一轮跑的：后端三层是修订校验那一轮跑的，前端两层和 Playwright 是加刷新恢复那一轮跑的；前端两层和 Playwright 是更早一轮的结果，之后页面和前端没有改动。分层结果见 [docs/history/TEST_MATRIX.md](history/TEST_MATRIX.md)。
 - 真实模型在线上跑过的案例都通读并回字幕核对过；V13、V15 两篇经过多轮才通过，过程见 [docs/history/CONTENT_REVALIDATION.md](history/CONTENT_REVALIDATION.md)。
 - 更早各轮的记录：[补充验收](history/ADDITIONAL_ACCEPTANCE.md)、[模型评估](history/MODEL_EVALUATION.md)、[受控运行记录](history/CODEX_VALIDATION.md)。
 
