@@ -45,10 +45,16 @@ export async function startE2EWorker(options: E2EWorkerOptions): Promise<E2EWork
   rmSync(assetsDir, { recursive: true, force: true });
   cpSync(join(ROOT, 'dist/client'), assetsDir, { recursive: true });
 
+  // 每个实例跑自己的一份源码快照：wrangler dev 监视入口所在的目录，测试运行期间有人改动 src/（编辑器保存、别的任务）
+  // 会让它热重载、掐断进行中的请求，表现为恰好一条正在执行的用例失败。快照放在项目目录下，依赖仍从项目的 node_modules 解析
+  const sourceDir = join(dir, 'src');
+  rmSync(sourceDir, { recursive: true, force: true });
+  cpSync(join(ROOT, 'src'), sourceDir, { recursive: true });
+
   const base = JSON.parse(stripJsonComments(readFileSync(join(ROOT, 'wrangler.jsonc'), 'utf8'))) as Record<string, unknown>;
   const config = {
     name: 'video-article-e2e',
-    main: join(ROOT, 'src/worker/index.ts'),
+    main: join(sourceDir, 'worker/index.ts'),
     compatibility_date: base.compatibility_date,
     assets: { directory: assetsDir },
     durable_objects: base.durable_objects,

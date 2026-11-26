@@ -315,6 +315,7 @@ npm run smoke -- <站点地址>                 # 冒烟检查：页面、静态
 **验证**：
 
 - 逐条对应原题的验收结论、每个缺陷的原因和修复、字幕恢复的实测数据：[docs/REQUIREMENTS_ACCEPTANCE.md](docs/REQUIREMENTS_ACCEPTANCE.md)。
+- 当前线上版本的六篇真实复验、浏览器全流程和一次测试失败的处理：[docs/FINAL_ACCEPTANCE.md](docs/FINAL_ACCEPTANCE.md)。
 - 不调用真实模型的测试 840 项全部通过：vitest 750 项，Playwright 90 项。分层结果见 [docs/TEST_MATRIX.md](docs/TEST_MATRIX.md)。
 - 真实模型在线上跑过的案例都通读并回字幕核对过；V13、V15 两篇经过多轮才通过，过程见 [docs/CONTENT_REVALIDATION.md](docs/CONTENT_REVALIDATION.md)。
 - 更早各轮的记录：[补充验收](docs/ADDITIONAL_ACCEPTANCE.md)、[模型评估](docs/MODEL_EVALUATION.md)、[受控运行记录](docs/CODEX_VALIDATION.md)。
